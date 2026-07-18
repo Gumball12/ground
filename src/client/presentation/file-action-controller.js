@@ -86,7 +86,6 @@ export class FileActionController {
     this.view = view;
     this.refresh = refresh;
     this.createButton = document.getElementById('sidebarCreateBtn');
-    this.refreshButton = document.getElementById('refreshFilesBtn');
     this.actionDialog = document.getElementById('fileActionDialog');
     this.actionForm = document.getElementById('fileActionForm');
     this.actionTitle = document.getElementById('fileActionTitle');
@@ -109,7 +108,6 @@ export class FileActionController {
     this.createButton?.addEventListener('click', () => {
       this.openRootCreateMenu({ anchor: this.createButton });
     });
-    this.refreshButton?.addEventListener('click', () => this.refresh());
     this.actionCancelButton?.addEventListener('click', () => this.closeActionDialog());
     this.actionForm?.addEventListener('submit', (event) => {
       event.preventDefault();

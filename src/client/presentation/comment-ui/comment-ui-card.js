@@ -340,20 +340,6 @@ function createThreadElement(thread) {
   const article = document.createElement('article');
   article.className = 'comment-thread-card';
 
-  const header = document.createElement('div');
-  header.className = 'ui-record-header comment-thread-card-header';
-
-  const heading = document.createElement('div');
-  heading.className = 'comment-thread-card-heading';
-
-  const author = document.createElement('span');
-  author.className = 'comment-thread-card-author';
-  author.textContent = thread.createdByName;
-
-  const time = document.createElement('span');
-  time.className = 'comment-thread-card-time';
-  time.textContent = this.formatTimestamp(thread.createdAt);
-
   const actions = document.createElement('div');
   actions.className = 'ui-record-actions comment-thread-card-actions';
 
@@ -407,13 +393,12 @@ function createThreadElement(thread) {
   });
 
   actions.append(jump, reply, resolve);
-  heading.append(author, time);
-  header.append(heading, actions);
 
-  article.append(header);
-
-  thread.messages.forEach((message) => {
-    article.appendChild(this.createMessageElement(thread, message));
+  thread.messages.forEach((message, index) => {
+    article.appendChild(this.createMessageElement(thread, message, {
+      actions: index === 0 ? actions : null,
+      isThreadStart: index === 0,
+    }));
   });
 
   if (this.activeCard?.replyThreadId === thread.id) {
@@ -424,9 +409,10 @@ function createThreadElement(thread) {
 }
 
 /** @this {any} */
-function createMessageElement(thread, message) {
+function createMessageElement(thread, message, { actions = null, isThreadStart = false } = {}) {
   const container = document.createElement('div');
   container.className = 'comment-message-card';
+  container.classList.toggle('is-thread-start', isThreadStart);
 
   const meta = document.createElement('div');
   meta.className = 'ui-record-meta comment-message-card-meta';
@@ -445,6 +431,9 @@ function createMessageElement(thread, message) {
   );
 
   meta.append(author, time);
+  if (actions) {
+    meta.appendChild(actions);
+  }
   container.append(meta, renderedBody);
   container.appendChild(this.createReactionBar(thread, message));
   return container;

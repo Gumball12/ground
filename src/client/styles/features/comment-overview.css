@@ -87,11 +87,16 @@
     box-shadow var(--transition-interactive);
 }
 
-.comment-overview-thread:hover,
-.comment-overview-thread:focus-visible {
+.comment-overview-thread:hover {
   border-color: transparent;
-  background: var(--color-surface-offset);
-  box-shadow: inset 3px 0 0 var(--color-comment);
+  background: var(--surface-comment-record-hover);
+  box-shadow: none;
+}
+
+.comment-overview-thread:focus-visible {
+  border-color: var(--border-comment-strong);
+  background: var(--surface-comment-record-hover);
+  box-shadow: var(--shadow-focus-compact);
   outline: none;
 }
 

@@ -80,6 +80,8 @@ test('shows empty state when no file is selected', async ({ page }) => {
   await openHome(page);
   await expect(page.locator('#emptyState')).toBeVisible();
   await expect(page.locator('.empty-state-title')).toContainText('Welcome to CollabMD');
+  await expect(page.locator('#sidebarCreateBtn')).toBeVisible();
+  await expect(page.locator('#refreshFilesBtn')).toHaveCount(0);
 });
 
 test('prompts first-time visitors for a display name', async ({ browser }) => {
@@ -106,6 +108,23 @@ test('sidebar shows vault file tree', async ({ page }) => {
   await openHome(page);
   await expect(page.locator('#fileTree')).toBeVisible();
   await expect(page.locator('#fileTree')).toContainText('README');
+});
+
+test('balances vertical whitespace in the sidebar tabs', async ({ page }) => {
+  await openHome(page);
+
+  const spacing = await page.locator('#sidebarTabs').evaluate((container) => {
+    const icon = container.querySelector('.ui-nav-tab:not(.hidden) .ui-nav-tab-icon');
+    const containerRect = container.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+
+    return {
+      bottom: containerRect.bottom - iconRect.bottom,
+      top: iconRect.top - containerRect.top,
+    };
+  });
+
+  expect(Math.abs(spacing.top - spacing.bottom)).toBeLessThanOrEqual(1);
 });
 
 test('renders markdown preview when a file is opened', async ({ page }) => {
@@ -525,8 +544,8 @@ test('quick switcher reveals the opened file in the file tree', async ({ page })
     expect(response.ok()).toBe(true);
   }
 
-  await page.locator('#refreshFilesBtn').click();
   await expect(page.locator('#fileTree')).toContainText('zz-folder-39');
+  await expect(page.locator('#fileTree .file-tree-dir[data-path^="zz-folder-"]')).toHaveCount(40);
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
   await expect(page.locator('#quickSwitcher')).toHaveClass(/visible/);
@@ -535,23 +554,23 @@ test('quick switcher reveals the opened file in the file tree', async ({ page })
 
   await waitForEditor(page);
 
-  const afterState = await page.locator('#fileTree').evaluate((element) => {
+  await expect.poll(async () => page.locator('#fileTree').evaluate((element) => {
     const active = element.querySelector('.file-tree-file.active');
     const activeRect = active?.getBoundingClientRect();
     const treeRect = element.getBoundingClientRect();
 
     return {
       activePath: active?.getAttribute('data-path') ?? null,
-      activeTop: activeRect?.top ?? null,
-      activeBottom: activeRect?.bottom ?? null,
-      treeBottom: treeRect.bottom,
-      treeTop: treeRect.top,
+      isVisible: Boolean(
+        activeRect
+        && activeRect.top >= treeRect.top
+        && activeRect.bottom <= treeRect.bottom + 1
+      ),
     };
+  })).toEqual({
+    activePath: 'zz-folder-39/note-39.md',
+    isVisible: true,
   });
-
-  expect(afterState.activePath).toBe('zz-folder-39/note-39.md');
-  expect(afterState.activeTop).toBeGreaterThanOrEqual(afterState.treeTop);
-  expect(afterState.activeBottom).toBeLessThanOrEqual(afterState.treeBottom + 1);
 });
 
 test('quick switcher text search opens a grouped match at the matching line', async ({ page }) => {

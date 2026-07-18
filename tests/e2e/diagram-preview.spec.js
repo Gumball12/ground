@@ -866,7 +866,7 @@ test('switching directly between excalidraw files reuses the warm iframe instanc
       files: {},
     }),
   });
-  await page.locator('#refreshFilesBtn').click();
+  await page.reload();
   await expect(page.locator('#fileTree')).toContainText('new-diagram');
 
   await page.locator('#fileTree .file-tree-item', { hasText: 'sample-excalidraw' }).first().click();
@@ -941,7 +941,6 @@ test('switching directly between excalidraw files updates the reused iframe scen
     }
   }, { timeout: 60000 }).toEqual([]);
 
-  await page.locator('#refreshFilesBtn').click();
   await expect(page.locator('#fileTree')).toContainText('new-diagram');
   await page.locator('#fileTree .file-tree-item', { hasText: 'new-diagram' }).first().click();
 
@@ -979,7 +978,7 @@ test('switching away from a direct excalidraw preview hides stale iframe overlay
     content: README_TEST_DOCUMENT,
     path: switchMarkdownPath,
   });
-  await page.locator('#refreshFilesBtn').click();
+  await page.reload();
   await expect(page.locator('#fileTree')).toContainText('switch-readme');
 
   await page.locator('#fileTree .file-tree-item', { hasText: 'switch-readme' }).first().click();
@@ -997,7 +996,6 @@ test('switching from an unrelated direct excalidraw file to sample-full removes 
   await expect(page.locator('#fileTree')).toBeVisible();
 
   await duplicateVaultFile(page, 'sample-excalidraw.excalidraw', 'new-diagram.excalidraw');
-  await page.locator('#refreshFilesBtn').click();
   await expect(page.locator('#fileTree')).toContainText('new-diagram');
 
   await page.locator('#fileTree .file-tree-item', { hasText: 'new-diagram' }).first().click();

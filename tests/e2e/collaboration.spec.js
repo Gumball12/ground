@@ -988,6 +988,32 @@ test('renders comment controls for text files', async ({ page }) => {
   await expect(page.locator('.comment-selection-chip')).toBeHidden();
 });
 
+test('uses a blended hover surface for comment overview rows', async ({ page }) => {
+  await clearReadmeCollaborationSidecars();
+  await openFile(page, 'README.md');
+  await createComment(page, {
+    body: 'Check the overview hover treatment.',
+    targetText: 'Welcome to the test vault',
+    useInlineChip: true,
+  });
+
+  await page.locator('#commentsSidebarTab').click();
+  const overviewRow = page.locator('.comment-overview-thread');
+  await expect(overviewRow).toBeVisible();
+  await overviewRow.hover();
+
+  const hoverStyle = await overviewRow.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow,
+    };
+  });
+
+  expect(hoverStyle.backgroundImage).toContain('linear-gradient');
+  expect(hoverStyle.boxShadow).toBe('none');
+});
+
 test('reveals a stable inline chip only after selection commit', async ({ page }) => {
   await openFile(page, 'README.md');
 
@@ -1014,6 +1040,15 @@ test('focuses the comment textbox when opening the composer', async ({ page }) =
   await (await waitForCommentSelectionChip(page)).click();
   await expect(page.locator('.comment-card')).toBeVisible();
   await expect(page.locator('.comment-card-input')).toBeFocused();
+  const composerStyle = await page.locator('.comment-card-input').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      paddingTop: Number.parseFloat(style.paddingTop),
+    };
+  });
+  expect(composerStyle.paddingTop).toBeGreaterThanOrEqual(8);
+  expect(composerStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
   await expect(page.locator('.cm-editor')).not.toHaveClass(/cm-focused/);
   await page.keyboard.type('inline');
   await expect(page.locator('.comment-card-input')).toHaveValue('inline');

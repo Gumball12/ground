@@ -189,6 +189,44 @@ describe('CommentUiController browser behavior', () => {
     expect(controller.reactionPicker).toBeNull();
   });
 
+  it('shows the initial comment author once with thread actions in the message header', () => {
+    const setup = createController();
+    controller = setup.controller;
+
+    controller.setThreads([
+      {
+        anchor: { startLine: 1, endLine: 1, quote: 'Line 1' },
+        createdAt: 1,
+        createdByName: 'Alice',
+        id: 'thread-1',
+        messages: [
+          {
+            body: 'First comment',
+            createdAt: 2,
+            id: 'message-1',
+            reactions: [],
+            userName: 'Alice',
+          },
+        ],
+      },
+    ]);
+
+    const group = controller.getThreadGroups()[0];
+    controller.openThreadGroup(group, {
+      anchor: group.anchor,
+      origin: 'editor',
+      sourceRect: createRect({ left: 12, top: 24, width: 100, height: 24 }),
+    });
+
+    expect(controller.cardRoot.querySelectorAll('.comment-message-card-author')).toHaveLength(1);
+    expect(controller.cardRoot.querySelector('.comment-message-card-author')?.textContent).toBe('Alice');
+    expect(controller.cardRoot.querySelector('.comment-thread-card-author')).toBeNull();
+    expect(
+      controller.cardRoot.querySelector('.comment-message-card-meta > .comment-thread-card-actions'),
+    ).not.toBeNull();
+    expect(controller.cardRoot.querySelector('.comment-message-card')?.classList.contains('is-thread-start')).toBe(true);
+  });
+
   it('preserves a new comment draft when thread updates trigger a card rerender', async () => {
     const setup = createController();
     controller = setup.controller;
