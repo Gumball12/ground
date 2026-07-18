@@ -179,10 +179,6 @@
 .qs-result-item:hover,
 .qs-result-item.selected {
   background: var(--color-surface-offset);
-}
-
-.qs-result-item.selected {
-  box-shadow: inset 3px 0 0 var(--color-primary);
   color: var(--color-text);
 }
 
@@ -284,10 +280,6 @@
 .qs-text-item:hover,
 .qs-text-item.selected {
   background: var(--color-surface-offset);
-}
-
-.qs-text-item.selected {
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .qs-text-line {

@@ -16,7 +16,6 @@
   --ui-record-bg-hover: var(--color-surface-offset);
   --ui-record-border-active: transparent;
   --ui-record-bg-active: var(--color-surface-offset);
-  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
 }
 
 .git-history-subject {
@@ -152,7 +151,6 @@
   --ui-record-bg-hover: var(--color-surface-offset);
   --ui-record-border-active: transparent;
   --ui-record-bg-active: var(--color-surface-offset);
-  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
   box-sizing: border-box;
   display: block;
   max-width: 100%;

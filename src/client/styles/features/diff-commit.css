@@ -80,7 +80,6 @@
   --ui-record-bg-hover: var(--color-surface-offset);
   --ui-record-border-active: transparent;
   --ui-record-bg-active: var(--color-surface-offset);
-  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
 }
 
 .diff-index-item-top,
@@ -121,7 +120,6 @@
 
 .diff-commit-section.active {
   border-color: var(--border-accent-strong);
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .diff-commit-section-header {

@@ -46,7 +46,6 @@
   --ui-record-bg-hover: var(--color-surface-offset);
   --ui-record-border-active: var(--border-comment-active);
   --ui-record-bg-active: var(--color-surface-offset);
-  --ui-record-shadow-active: inset 3px 0 0 var(--color-comment);
 }
 
 .comments-drawer-item-header {

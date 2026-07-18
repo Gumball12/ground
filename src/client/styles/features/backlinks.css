@@ -222,7 +222,6 @@
 .backlink-item:hover {
   border-color: transparent;
   background: var(--color-surface-offset);
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .backlink-item:focus-visible {
