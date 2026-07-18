@@ -6,15 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background:
-    radial-gradient(circle at 50% 8%, oklch(from var(--color-primary) l c h / 0.18), transparent 28%),
-    radial-gradient(circle at 60% 45%, oklch(from var(--color-primary) l c h / 0.08), transparent 18%),
-    linear-gradient(
-      180deg,
-      oklch(from var(--color-bg) calc(l - 0.06) c h / 0.9),
-      oklch(from var(--color-bg) calc(l - 0.08) c h / 0.96)
-    );
-  backdrop-filter: blur(18px);
+  background: oklch(from var(--color-bg) l c h / 0.94);
+  backdrop-filter: blur(12px);
 }
 
 .auth-gate-card {
@@ -22,11 +15,9 @@
   padding: var(--space-8);
   border: 1px solid var(--border-accent-soft);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, var(--color-surface), var(--color-surface-2));
+  background: var(--color-surface);
   color: var(--color-text);
-  box-shadow:
-    var(--shadow-card-strong),
-    var(--shadow-sheet-inset);
+  box-shadow: var(--shadow-card-strong);
   font-family: var(--font-body);
 }
 

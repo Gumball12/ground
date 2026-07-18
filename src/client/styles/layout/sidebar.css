@@ -410,38 +410,34 @@ body.is-file-tree-dragging * {
   min-height: 44px;
 }
 
-.create-action-sheet-option {
+.ui-button.create-action-sheet-option {
   gap: 10px;
   min-height: 60px;
   padding: 0 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background:
-    linear-gradient(180deg, oklch(from var(--color-surface-offset) calc(l + 0.02) c h / 0.9), var(--color-surface-offset)),
-    var(--color-surface-offset);
+  background: var(--color-surface-offset);
   color: var(--color-text);
-  box-shadow:
-    inset 0 1px 0 oklch(from var(--color-text) l c h / 0.03),
-    0 10px 24px oklch(from var(--color-bg) l c h / 0.08);
+  box-shadow: var(--shadow-sm);
   transition:
     border-color var(--transition-interactive),
     background var(--transition-interactive),
-    box-shadow var(--transition-interactive),
-    transform var(--transition-interactive);
+    box-shadow var(--transition-interactive);
 }
 
-.create-action-sheet-option:hover,
-.create-action-sheet-option:focus-visible {
-  border-color: oklch(from var(--color-primary) calc(l + 0.06) c h / 0.4);
-  background:
-    linear-gradient(180deg, oklch(from var(--color-primary-highlight) calc(l + 0.02) c h / 0.72), var(--color-surface-offset)),
-    var(--color-surface-offset);
-  box-shadow:
-    inset 0 1px 0 oklch(from var(--color-text) l c h / 0.04),
-    0 14px 30px oklch(from var(--color-bg) l c h / 0.12);
+.ui-button.create-action-sheet-option:hover {
+  border-color: var(--border-accent-muted);
+  background: var(--surface-accent-subtle);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+}
+
+.ui-button.create-action-sheet-option:focus-visible {
+  border-color: var(--border-accent-strong);
+  background: var(--surface-accent-subtle);
+  box-shadow: var(--shadow-focus-compact);
   color: var(--color-text);
   outline: none;
-  transform: translateY(-1px);
 }
 
 .create-action-sheet-option .create-menu-item-icon {

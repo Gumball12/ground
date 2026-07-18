@@ -115,7 +115,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-6);
-  background: radial-gradient(circle at top, oklch(from var(--color-primary) l c h / 0.16), transparent 38%), oklch(from var(--color-bg) l c h / 0.82);
+  background: oklch(from var(--color-bg) l c h / 0.86);
   backdrop-filter: blur(10px);
 }
 
@@ -126,7 +126,7 @@
   padding: var(--space-6);
   border: 1px solid oklch(from var(--color-primary) l c h / 0.25);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, var(--color-surface), var(--color-surface-2));
+  background: var(--color-surface);
   box-shadow: var(--shadow-lg);
 }
 
