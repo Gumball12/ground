@@ -915,7 +915,11 @@ export class GitPanelController {
       return;
     }
 
-    this.panel.innerHTML = `<div class="git-panel-empty">${escapeHtml(message)}</div>`;
+    this.panel.innerHTML = `
+      <div class="git-panel-empty ui-empty-state ui-empty-state--compact">
+        <p class="ui-empty-state-copy">${escapeHtml(message)}</p>
+      </div>
+    `;
   }
 
   render() {

@@ -108,6 +108,15 @@ export function appShellTemplate() {
         <div id="gitPanel" class="git-panel hidden" aria-label="Git changes"></div>
       </aside>
 
+      <button
+        type="button"
+        class="sidebar-backdrop"
+        id="sidebarBackdrop"
+        aria-label="Close navigation"
+        aria-hidden="true"
+        hidden
+      ></button>
+
       <main class="main-area" id="mainContent">
         <header class="toolbar" role="banner">
           <div class="toolbar-left">
@@ -120,16 +129,6 @@ export function appShellTemplate() {
             </button>
             <div class="toolbar-room-info">
               <span class="toolbar-room-name" id="activeFileName">CollabMD</span>
-              <button
-                type="button"
-                class=${badgeClassNames({ tone: 'accent', extra: ['toolbar-badge', 'toolbar-badge-button'] })}
-                id="userCount"
-                aria-controls="presencePanel"
-                aria-expanded="false"
-                data-presence-panel-trigger="true"
-              ></button>
-              <span class=${badgeClassNames({ tone: 'accent', hidden: true, extra: 'toolbar-badge' })} id="toolbarDiffBadge">Diff</span>
-              <span class=${badgeClassNames({ tone: 'accent', hidden: true, extra: 'toolbar-badge' })} id="gitOperationStatus" aria-live="polite" aria-atomic="true"></span>
             </div>
           </div>
 
@@ -166,6 +165,19 @@ export function appShellTemplate() {
               </svg>
               <span class="ui-toolbar-button-label">Preview</span>
             </button>
+
+            <div class="toolbar-status-cluster" aria-label="Workspace status">
+              <span class=${badgeClassNames({ tone: 'accent', hidden: true, extra: 'toolbar-badge' })} id="toolbarDiffBadge">Diff</span>
+              <span class=${badgeClassNames({ tone: 'muted', hidden: true, extra: 'toolbar-badge' })} id="gitOperationStatus" aria-live="polite" aria-atomic="true"></span>
+              <button
+                type="button"
+                class=${badgeClassNames({ tone: 'muted', extra: ['toolbar-badge', 'toolbar-badge-button'] })}
+                id="userCount"
+                aria-controls="presencePanel"
+                aria-expanded="false"
+                data-presence-panel-trigger="true"
+              ></button>
+            </div>
 
             <div class="user-avatars toolbar-presence-cluster" id="userAvatars"></div>
 
@@ -337,7 +349,7 @@ export function appShellTemplate() {
             <h2 class="empty-state-title">Welcome to CollabMD</h2>
             <p class="empty-state-desc">Open a file from the sidebar, or get started quickly:</p>
             <div class="empty-state-actions">
-              <button class=${buttonClassNames({ variant: 'secondary', extra: 'empty-state-btn' })} id="emptyStateNewFileBtn">
+              <button class=${buttonClassNames({ variant: 'primary', extra: 'empty-state-btn' })} id="emptyStateNewFileBtn">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -426,7 +438,7 @@ export function appShellTemplate() {
                     </svg>
                     <span class="ui-action-label">Comments</span>
                   </button>
-                  <button class=${buttonClassNames({ variant: 'ghost', size: 'compact', toggle: true })} id="outlineToggle" aria-label="Toggle outline" title="Toggle outline">
+                  <button class=${buttonClassNames({ variant: 'ghost', size: 'compact', toggle: true })} id="outlineToggle" aria-label="Toggle outline" aria-controls="outlinePanel" aria-expanded="false" title="Toggle outline">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                       <line x1="3" y1="6" x2="21" y2="6"></line>
                       <line x1="3" y1="12" x2="15" y2="12"></line>
@@ -469,14 +481,21 @@ export function appShellTemplate() {
                   <div class="comments-drawer-header">
                     <span class="comments-drawer-title">Comments</span>
                   </div>
-                  <div id="commentsDrawerEmpty" class="comments-drawer-empty">
-                    Add a comment from the editor or the preview bubbles.
+                  <div id="commentsDrawerEmpty" class="comments-drawer-empty ui-empty-state ui-empty-state--compact">
+                    <p class="ui-empty-state-title">No comments yet</p>
+                    <p class="ui-empty-state-copy">Select text in the editor or use a preview bubble to start a thread.</p>
                   </div>
                   <div id="commentsDrawerList" class="comments-drawer-list"></div>
                 </aside>
-                <aside id="outlinePanel" class="outline-panel hidden" aria-label="Document outline">
+                <aside id="outlinePanel" class="outline-panel hidden" aria-label="Document outline" aria-hidden="true">
                   <div class="outline-header">
                     <span class="outline-title">Outline</span>
+                    <button class=${iconButtonClassNames({ extra: 'outline-close-btn' })} id="outlineClose" type="button" aria-label="Close outline" title="Close outline">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
                   </div>
                   <nav id="outlineNav" class="outline-nav"></nav>
                 </aside>
@@ -645,6 +664,11 @@ export function appShellTemplate() {
         </div>
         <div class="qs-results" id="quickSwitcherResults"></div>
         <div class="qs-hint" id="quickSwitcherHint">Type to search files</div>
+        <div class="qs-footer" aria-hidden="true">
+          <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+          <span><kbd>↵</kbd> Open</span>
+          <span><kbd>Tab</kbd> Switch mode</span>
+        </div>
       </div>
     </div>
   `;

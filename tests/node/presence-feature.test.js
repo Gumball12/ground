@@ -459,6 +459,21 @@ test('presenceFeature clears open trigger state when presence disconnects', () =
   });
 });
 
+test('presenceFeature does not suggest following when only the local user is online', () => {
+  withFakeDocument(() => {
+    const { context, presencePanelStatus } = createPresenceContext({
+      globalUsers: [
+        { clientId: 'local', color: '#111111', currentFile: 'README.md', isLocal: true, name: 'Owner' },
+      ],
+      presencePanelOpen: true,
+    });
+
+    context.renderPresencePanel();
+
+    assert.equal(presencePanelStatus.textContent, 'You’re the only person here right now.');
+  });
+});
+
 test('presenceFeature renders an overflow trigger that opens the full participant panel', () => {
   withFakeDocument(() => {
     const { context, presencePanel, presencePanelList, userAvatars } = createPresenceContext({
@@ -503,7 +518,7 @@ test('presenceFeature orders panel users with local first, followed next, then a
 
     context.renderPresencePanel();
 
-    assert.equal(presencePanelStatus.textContent, '4 online. Click someone to follow.');
+    assert.equal(presencePanelStatus.textContent, '3 teammates online. Select someone to follow.');
 
     const names = presencePanelList.children.map((row) => getTreeText(findFirstByClass(row, 'presence-panel-user-name')));
     assert.deepEqual(names, ['Owner', 'Bob', 'Alice', 'Zoe']);

@@ -255,10 +255,10 @@ export const chatFeature = {
     let pressed = false;
 
     if (permission === 'unsupported') {
-      label = 'No alerts';
+      label = 'Alerts unavailable';
       title = 'Browser notifications are unavailable here';
     } else if (permission === 'denied') {
-      label = 'Alerts blocked';
+      label = 'Alerts off';
       title = 'Browser notifications are blocked for this site';
     } else if (permission === 'granted') {
       pressed = this.chatNotificationsEnabled;

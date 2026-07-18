@@ -166,12 +166,25 @@ test.describe('mobile outline', () => {
     await page.locator('#outlineToggle').click();
 
     await expect(page.locator('#outlinePanel')).toBeVisible();
+    await expect(page.locator('#outlineClose')).toBeVisible();
     await expect(page.locator('#outlineNav')).toContainText('My Vault');
     await expect(page.locator('#outlineNav')).toContainText('Links');
 
     await page.locator('#outlineNav .outline-item', { hasText: 'Links' }).click();
 
     await expect(page.locator('#outlinePanel')).toBeHidden();
+  });
+
+  test('closes the outline from its mobile close affordance', async ({ page }) => {
+    await openFile(page, 'README.md', { waitFor: 'preview' });
+
+    await page.locator('#outlineToggle').click();
+    await expect(page.locator('#outlinePanel')).toBeVisible();
+
+    await page.locator('#outlineClose').click();
+
+    await expect(page.locator('#outlinePanel')).toBeHidden();
+    await expect(page.locator('#outlineToggle')).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
@@ -696,6 +709,20 @@ test.describe('mobile sidebar', () => {
     await page.locator('#sidebarClose').click();
 
     await expect(sidebar).toBeHidden();
+  });
+
+  test('dims the workspace and closes the sidebar when tapping the backdrop', async ({ page }) => {
+    await openHome(page);
+
+    const sidebar = await ensureMobileSidebarVisible(page);
+    const backdrop = page.locator('#sidebarBackdrop');
+    await expect(backdrop).toBeVisible();
+    await expect(backdrop).toHaveAttribute('aria-hidden', 'false');
+
+    await backdrop.click({ position: { x: 380, y: 420 } });
+
+    await expect(sidebar).toBeHidden();
+    await expect(backdrop).toBeHidden();
   });
 
   test('closes the sidebar after selecting a file on mobile', async ({ page }) => {

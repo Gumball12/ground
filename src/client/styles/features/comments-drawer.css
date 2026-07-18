@@ -4,17 +4,16 @@
   width: var(--preview-floating-comments-width, var(--panel-comments-width));
   min-width: var(--panel-comments-min-width);
   border-left: 1px solid var(--color-divider);
-  background: var(--surface-comment-shell);
+  background: var(--color-surface);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  box-shadow: inset 1px 0 0 oklch(from var(--color-comment) l c h / 0.06);
 }
 
 .comments-drawer-header {
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-divider);
-  background: var(--surface-comment-shell-header);
+  background: var(--color-surface);
 }
 
 .comments-drawer-title {
@@ -26,9 +25,7 @@
 }
 
 .comments-drawer-empty {
-  padding: var(--space-4);
-  color: var(--color-text-muted);
-  font-size: var(--text-label);
+  margin: auto 0;
 }
 
 .comments-drawer-list {
@@ -43,15 +40,13 @@
   --ui-record-padding: calc(var(--space-2) + 2px);
   --ui-record-gap: var(--space-1);
   --ui-record-radius: var(--radius-lg);
-  --ui-record-border: var(--border-comment-soft);
-  --ui-record-bg: var(--surface-comment-record);
-  --ui-record-border-hover: oklch(from var(--color-comment) l c h / 0.18);
-  --ui-record-bg-hover: var(--surface-comment-record-hover);
-  --ui-record-shadow-hover: var(--shadow-md);
+  --ui-record-border: transparent;
+  --ui-record-bg: transparent;
+  --ui-record-border-hover: transparent;
+  --ui-record-bg-hover: var(--color-surface-offset);
   --ui-record-border-active: var(--border-comment-active);
-  --ui-record-bg-active: var(--surface-comment-record-active);
-  --ui-record-shadow-active: var(--shadow-comment-outline);
-  --ui-record-hover-transform: translateY(-1px);
+  --ui-record-bg-active: var(--color-surface-offset);
+  --ui-record-shadow-active: inset 3px 0 0 var(--color-comment);
 }
 
 .comments-drawer-item-header {
@@ -80,10 +75,11 @@
   margin: 0;
   overflow: auto;
   overflow-wrap: anywhere;
-  padding: 6px 10px;
-  border: 1px solid var(--border-comment-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface-comment-offset);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-left: 2px solid var(--border-comment-active);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-muted);
   white-space: pre-wrap;
   word-break: break-word;

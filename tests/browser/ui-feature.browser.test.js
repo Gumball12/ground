@@ -11,6 +11,7 @@ import { createAppShellFeatureSurface } from '../../src/client/bootstrap/app-she
 function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
   document.body.innerHTML = `
     <aside id="sidebar"></aside>
+    <button id="sidebar-backdrop" hidden></button>
     <button id="files-tab"></button>
     <button id="comments-tab"></button>
     <button id="git-tab"></button>
@@ -31,6 +32,7 @@ function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) 
       gitSearch: document.getElementById('git-search'),
       gitSidebarTab: document.getElementById('git-tab'),
       sidebar: document.getElementById('sidebar'),
+      sidebarBackdrop: document.getElementById('sidebar-backdrop'),
     },
     gitPanel: {
       setActive: vi.fn(),
@@ -211,6 +213,22 @@ describe('uiFeature browser helpers', () => {
 
     expect(context.elements.sidebar.classList.contains('collapsed')).toBe(true);
     expect(context.elements.sidebar.hidden).toBe(true);
+    expect(context.elements.sidebarBackdrop.hidden).toBe(true);
+  });
+
+  it('syncs the mobile sidebar backdrop with drawer visibility', () => {
+    const context = createSidebarContext({ mobile: true });
+
+    context.applySidebarVisibility(true);
+
+    expect(context.elements.sidebar.hidden).toBe(false);
+    expect(context.elements.sidebarBackdrop.hidden).toBe(false);
+    expect(context.elements.sidebarBackdrop.getAttribute('aria-hidden')).toBe('false');
+
+    context.applySidebarVisibility(false);
+
+    expect(context.elements.sidebarBackdrop.hidden).toBe(true);
+    expect(context.elements.sidebarBackdrop.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('opens the display name dialog and persists submitted names', () => {

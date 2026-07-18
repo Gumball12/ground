@@ -8,15 +8,15 @@
 }
 
 .git-history-row {
-  --ui-record-padding: 10px 11px;
+  --ui-record-padding: var(--space-2) var(--space-3);
   --ui-record-gap: 4px;
-  --ui-record-border: var(--color-border);
-  --ui-record-bg: var(--surface-overlay-raised);
-  --ui-record-border-hover: var(--border-accent-muted);
-  --ui-record-bg-hover: var(--surface-fill-subtle);
-  --ui-record-border-active: var(--border-accent-stronger);
-  --ui-record-bg-active: var(--surface-accent-subtle);
-  --ui-record-shadow-active: var(--shadow-accent-inset);
+  --ui-record-border: transparent;
+  --ui-record-bg: transparent;
+  --ui-record-border-hover: transparent;
+  --ui-record-bg-hover: var(--color-surface-offset);
+  --ui-record-border-active: transparent;
+  --ui-record-bg-active: var(--color-surface-offset);
+  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
 }
 
 .git-history-subject {
@@ -91,9 +91,8 @@
   overflow: hidden;
   padding: var(--space-3);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-xl);
-  background: var(--surface-overlay-raised);
-  box-shadow: var(--shadow-elevated-soft);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 
 .file-history-sidebar-header {
@@ -147,13 +146,13 @@
 .file-history-item {
   --ui-record-padding: var(--space-3);
   --ui-record-gap: var(--space-2);
-  --ui-record-border: var(--color-border);
-  --ui-record-bg: var(--surface-overlay-offset);
-  --ui-record-border-hover: var(--color-border);
-  --ui-record-bg-hover: var(--surface-fill-strong);
-  --ui-record-border-active: var(--border-accent-strong);
-  --ui-record-bg-active: var(--surface-accent-subtle);
-  --ui-record-shadow-active: var(--shadow-accent-inset);
+  --ui-record-border: transparent;
+  --ui-record-bg: transparent;
+  --ui-record-border-hover: transparent;
+  --ui-record-bg-hover: var(--color-surface-offset);
+  --ui-record-border-active: transparent;
+  --ui-record-bg-active: var(--color-surface-offset);
+  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
   box-sizing: border-box;
   display: block;
   max-width: 100%;
@@ -162,13 +161,11 @@
 }
 
 .file-history-item.active {
-  border-color: var(--border-accent-strong);
-  box-shadow: var(--shadow-accent-outline);
+  border-color: transparent;
 }
 
 .file-history-item-local {
-  --ui-record-border: color-mix(in srgb, var(--color-primary) 20%, var(--color-divider));
-  --ui-record-bg: color-mix(in srgb, var(--surface-accent-subtle) 58%, var(--surface-overlay-offset));
+  --ui-record-bg: var(--surface-accent-subtle);
 }
 
 .file-history-item-top,
@@ -239,8 +236,8 @@
   gap: var(--space-3) var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, var(--surface-accent-subtle), var(--color-surface));
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
   overflow: hidden;
 }
 
@@ -284,8 +281,8 @@
 
 .file-history-detail-body {
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-xl);
-  background: var(--surface-overlay-raised);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
   min-height: auto;
   min-width: 0;
   overflow-x: auto;

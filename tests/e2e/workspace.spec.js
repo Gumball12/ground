@@ -823,7 +823,20 @@ test('moves files back to the vault root through the root drop target', async ({
   await waitForEditor(page);
 
   await expect(page.locator(`#fileTree .file-tree-file[data-path="${nestedFilePath}"]`)).toBeVisible();
-  await expect(page.locator('#fileTree .file-tree-root-drop-zone')).toBeVisible();
+
+  const rootDropZone = page.locator('#fileTree .file-tree-root-drop-zone');
+  await expect(rootDropZone).toBeHidden();
+
+  await page.evaluate((pathValue) => {
+    const source = document.querySelector(`#fileTree .file-tree-file[data-path="${CSS.escape(pathValue)}"]`);
+    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() }));
+  }, nestedFilePath);
+  await expect(rootDropZone).toBeVisible();
+  await page.evaluate((pathValue) => {
+    const source = document.querySelector(`#fileTree .file-tree-file[data-path="${CSS.escape(pathValue)}"]`);
+    source.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
+  }, nestedFilePath);
+  await expect(rootDropZone).toBeHidden();
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await dragFileTreeFileToRoot(page, { sourceFilePath: nestedFilePath });

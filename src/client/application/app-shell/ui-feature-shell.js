@@ -314,6 +314,10 @@ function bindEvents() {
     this.closeSidebarOnMobile();
   });
 
+  this.elements.sidebarBackdrop?.addEventListener('click', () => {
+    this.closeSidebarOnMobile();
+  });
+
   this.elements.filesSidebarTab?.addEventListener('click', () => {
     this.setSidebarTab('files');
   });

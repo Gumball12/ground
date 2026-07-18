@@ -27,6 +27,25 @@ function formatLineLabel(anchor = {}) {
   return startLine === endLine ? `Line ${startLine}` : `Lines ${startLine}-${endLine}`;
 }
 
+function createOverviewState({ copy, title, tone = '' }) {
+  const state = document.createElement('div');
+  state.className = 'comment-overview-empty ui-empty-state ui-empty-state--compact';
+  if (tone) {
+    state.dataset.tone = tone;
+  }
+
+  const heading = document.createElement('p');
+  heading.className = 'ui-empty-state-title';
+  heading.textContent = title;
+
+  const description = document.createElement('p');
+  description.className = 'ui-empty-state-copy';
+  description.textContent = copy;
+
+  state.append(heading, description);
+  return state;
+}
+
 export class CommentOverviewController {
   constructor({
     panelElement,
@@ -109,26 +128,32 @@ export class CommentOverviewController {
     this.panel.replaceChildren();
 
     if (this.errorMessage) {
-      const error = document.createElement('div');
-      error.className = 'comment-overview-empty';
-      error.textContent = this.errorMessage;
+      const error = createOverviewState({
+        copy: this.errorMessage,
+        title: 'Comments unavailable',
+        tone: 'error',
+      });
+      error.setAttribute('role', 'alert');
       this.panel.appendChild(error);
       return;
     }
 
     if (this.loading && asArray(this.overview.files).length === 0) {
-      const loading = document.createElement('div');
-      loading.className = 'comment-overview-empty';
-      loading.textContent = 'Loading open comments...';
+      const loading = createOverviewState({
+        copy: 'Checking the vault for active threads…',
+        title: 'Loading comments',
+      });
+      loading.setAttribute('role', 'status');
       this.panel.appendChild(loading);
       return;
     }
 
     const files = asArray(this.overview.files);
     if (files.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'comment-overview-empty';
-      empty.textContent = 'No open comments';
+      const empty = createOverviewState({
+        copy: 'Open comments from any document will appear here.',
+        title: 'You’re all caught up',
+      });
       this.panel.appendChild(empty);
       return;
     }

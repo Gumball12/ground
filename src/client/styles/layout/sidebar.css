@@ -19,6 +19,11 @@
   border-right: none;
 }
 
+.sidebar-backdrop,
+.sidebar-backdrop[hidden] {
+  display: none;
+}
+
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -82,13 +87,14 @@
 
 .sidebar-search-input {
   width: 100%;
-  padding: var(--space-1) var(--space-2);
+  min-height: var(--control-h-sm);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-surface-offset);
   color: var(--color-text);
   outline: none;
-  transition: border-color var(--transition-interactive);
+  transition: border-color var(--transition-interactive), background var(--transition-interactive), box-shadow var(--transition-interactive);
   font-size: var(--text-xs);
 }
 
@@ -96,8 +102,14 @@
   color: var(--color-text-faint);
 }
 
+.sidebar-search-input:hover:not(:focus) {
+  background: var(--color-surface-offset-2);
+}
+
 .sidebar-search-input:focus {
   border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-focus);
 }
 
 @keyframes pulse-dot {
@@ -114,10 +126,11 @@
 }
 
 .file-tree {
+  position: relative;
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: var(--space-2) 0;
+  padding: var(--space-2);
   transition: box-shadow var(--transition-interactive), background var(--transition-interactive);
 }
 
@@ -139,22 +152,29 @@
 }
 
 .file-tree-root-drop-zone {
-  display: block;
-  margin: 0 var(--space-2);
-  margin-bottom: var(--space-2);
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  left: var(--space-2);
+  z-index: 4;
+  display: none;
+  margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px dashed transparent;
+  border: 1px dashed var(--color-border);
   border-radius: var(--radius-lg);
-  background: transparent;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
   color: var(--color-text-faint);
   font-size: var(--text-xs);
   line-height: 1.3;
-  opacity: 0.88;
   transition:
-    opacity var(--transition-interactive),
     border-color var(--transition-interactive),
     background var(--transition-interactive),
     color var(--transition-interactive);
+}
+
+body.is-file-tree-dragging .file-tree-root-drop-zone {
+  display: block;
 }
 
 .file-tree-root-drop-zone:hover {
@@ -187,7 +207,7 @@
   padding-bottom: 4px;
   padding-left: calc(8px + var(--depth, 0) * 16px);
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--color-text-muted);
   text-align: left;
@@ -217,7 +237,7 @@ body.is-file-tree-dragging * {
   left: calc(8px + (var(--depth, 1) - 1) * 16px + 6px);
   width: 1px;
   background-color: var(--color-border);
-  opacity: 0.3;
+  opacity: 0.2;
 }
 
 .file-tree-file {
@@ -246,6 +266,7 @@ body.is-file-tree-dragging * {
 .file-tree-file.active {
   background: var(--color-primary-highlight);
   color: var(--color-primary);
+  font-weight: 600;
 }
 
 .file-tree-chevron {

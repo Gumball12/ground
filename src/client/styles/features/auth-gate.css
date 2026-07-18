@@ -21,7 +21,7 @@
   width: min(100%, 440px);
   padding: var(--space-8);
   border: 1px solid var(--border-accent-soft);
-  border-radius: var(--radius-xl-plus);
+  border-radius: var(--radius-xl);
   background: linear-gradient(180deg, var(--color-surface), var(--color-surface-2));
   color: var(--color-text);
   box-shadow:
@@ -31,7 +31,7 @@
 }
 
 .auth-gate-card h1 {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-3);
   font-family: var(--font-display);
   font-size: var(--text-xl);
   line-height: 1.05;
@@ -39,7 +39,7 @@
 }
 
 .auth-gate-card p {
-  margin: 0 0 22px;
+  margin: 0 0 var(--space-6);
   color: var(--color-text-muted);
   line-height: 1.5;
   font-size: var(--text-sm);
@@ -60,7 +60,7 @@
 
 .auth-gate-input {
   min-height: var(--control-h-lg);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-overlay);
   color: inherit;
 }
@@ -79,7 +79,7 @@
   width: 100%;
   justify-content: center;
   min-height: var(--control-h-lg);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,

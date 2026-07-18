@@ -2,19 +2,16 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--space-2);
   background: var(--color-surface);
 }
 
 .comment-overview-empty {
-  padding: var(--space-5) var(--space-3);
-  color: var(--color-text-faint);
-  text-align: center;
-  font-size: var(--text-xs);
+  min-height: 160px;
 }
 
 .comment-overview-file {
-  padding: 9px 0 10px;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid color-mix(in oklab, var(--color-divider) 80%, transparent);
 }
 
@@ -77,10 +74,10 @@
   width: 100%;
   gap: 6px;
   margin: 0 0 4px;
-  padding: 8px;
-  border: 1px solid color-mix(in oklab, var(--color-border) 58%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--color-surface-2) 88%, var(--color-surface) 12%);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
@@ -92,9 +89,9 @@
 
 .comment-overview-thread:hover,
 .comment-overview-thread:focus-visible {
-  border-color: color-mix(in oklab, var(--color-comment) 36%, var(--color-border));
+  border-color: transparent;
   background: var(--color-surface-offset);
-  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--color-comment) 88%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-comment);
   outline: none;
 }
 
@@ -119,7 +116,7 @@
   color: var(--color-comment);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -188,7 +185,7 @@
   min-width: 16px;
   height: 16px;
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .file-tree-file.has-comments .file-tree-name {

@@ -1,7 +1,7 @@
 /**
  * @typedef {object} UiSidebarContext
  * @property {string} activeSidebarTab
- * @property {{ sidebar?: HTMLElement | null, filesSidebarTab?: HTMLElement | null, commentsSidebarTab?: HTMLElement | null, gitSidebarTab?: HTMLElement | null, fileSearch?: HTMLElement | null, gitSearch?: HTMLElement | null, commentOverviewPanel?: HTMLElement | null }} elements
+ * @property {{ sidebar?: HTMLElement | null, sidebarBackdrop?: HTMLElement | null, filesSidebarTab?: HTMLElement | null, commentsSidebarTab?: HTMLElement | null, gitSidebarTab?: HTMLElement | null, fileSearch?: HTMLElement | null, gitSearch?: HTMLElement | null, commentOverviewPanel?: HTMLElement | null }} elements
  * @property {{ setSidebarVisible(showSidebar: boolean): void, getSidebarVisible(): string | null | undefined }} preferences
  * @property {{ setActive(active: boolean): void }} gitPanel
  * @property {boolean} gitRepoAvailable
@@ -63,13 +63,22 @@ function applySidebarVisibility(showSidebar) {
   const sidebar = this.elements.sidebar;
   if (!sidebar) return;
 
+  const isMobile = this.isMobileViewport();
   const isCollapsed = !showSidebar;
-  const hideForMobile = isCollapsed && this.isMobileViewport();
+  const hideForMobile = isCollapsed && isMobile;
+  const showBackdrop = showSidebar && isMobile;
 
   sidebar.classList.toggle('collapsed', isCollapsed);
   sidebar.toggleAttribute('hidden', hideForMobile);
-  sidebar.setAttribute('aria-hidden', hideForMobile ? 'true' : 'false');
+  sidebar.setAttribute('aria-hidden', isCollapsed ? 'true' : 'false');
   sidebar.inert = isCollapsed;
+
+  const backdrop = this.elements.sidebarBackdrop;
+  backdrop?.toggleAttribute('hidden', !showBackdrop);
+  backdrop?.setAttribute('aria-hidden', showBackdrop ? 'false' : 'true');
+  if (backdrop) {
+    backdrop.inert = !showBackdrop;
+  }
 }
 
 /** @this {UiSidebarContext} */

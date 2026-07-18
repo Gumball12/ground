@@ -12,6 +12,7 @@ export class OutlineController {
     this.onNavigateToHeading = onNavigateToHeading;
     this.onWillOpen = onWillOpen;
     this.panel = document.getElementById('outlinePanel');
+    this.closeButton = document.getElementById('outlineClose');
     this.navigation = document.getElementById('outlineNav');
     this.previewContainer = document.getElementById('previewContainer');
     this.toggleButton = document.getElementById('outlineToggle');
@@ -39,6 +40,7 @@ export class OutlineController {
 
   initialize() {
     this.toggleButton?.addEventListener('click', () => this.toggle());
+    this.closeButton?.addEventListener('click', () => this.close());
     document.addEventListener('pointerdown', this.handleDocumentPointerDown);
   }
 
@@ -58,6 +60,8 @@ export class OutlineController {
     this.outlineOpen = nextState;
     this.panel?.classList.toggle('hidden', !this.outlineOpen);
     this.toggleButton?.classList.toggle('active', this.outlineOpen);
+    this.panel?.setAttribute('aria-hidden', String(!this.outlineOpen));
+    this.toggleButton?.setAttribute('aria-expanded', String(this.outlineOpen));
 
     if (this.outlineOpen) {
       this.refresh();

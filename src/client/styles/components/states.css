@@ -36,9 +36,47 @@
   background: var(--color-surface-offset-2);
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-micro);
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.ui-empty-state {
+  display: grid;
+  place-content: center;
+  gap: var(--space-1);
+  min-height: 120px;
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.ui-empty-state--compact {
+  min-height: 88px;
+  padding: var(--space-4) var(--space-3);
+}
+
+.ui-empty-state-title,
+.ui-empty-state-copy {
+  margin: 0;
+}
+
+.ui-empty-state-title {
+  color: var(--color-text);
+  font-size: var(--text-ui-sm);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ui-empty-state-copy {
+  max-width: 30ch;
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+  line-height: 1.45;
+}
+
+.ui-empty-state[data-tone='error'] .ui-empty-state-title {
+  color: var(--color-error);
 }
 
 .ui-status-badge {

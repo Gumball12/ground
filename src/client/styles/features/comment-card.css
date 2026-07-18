@@ -13,9 +13,9 @@
   max-height: min(78vh, 720px);
   overflow: hidden;
   padding: var(--space-4);
-  border: 1px solid var(--border-comment-strong);
-  border-radius: var(--radius-xl-plus);
-  background: var(--surface-comment-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
   box-shadow: var(--shadow-card-strong);
   animation: comment-card-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -75,9 +75,10 @@
 .comment-card-quote,
 .comment-thread-card-excerpt {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-comment-muted);
-  border-radius: var(--radius-md);
-  background: var(--surface-comment-offset);
+  border: 0;
+  border-left: 2px solid var(--border-comment-active);
+  border-radius: 0;
+  background: var(--color-surface-offset);
   color: var(--color-text-muted);
   font-size: var(--text-label);
 }
@@ -156,10 +157,11 @@
 }
 
 .comment-message-card {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-comment-soft);
-  border-radius: var(--radius-md);
-  background: var(--surface-comment-subtle-strong);
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
 }
 
 .comment-message-card-body {

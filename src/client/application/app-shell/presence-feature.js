@@ -232,7 +232,10 @@ export const presenceFeature = {
     const effectiveConnectionState = getConnectedPresenceState(this);
     if (status) {
       if (effectiveConnectionState.status === 'connected') {
-        status.textContent = `${this.globalUsers.length} online. Click someone to follow.`;
+        const remoteUserCount = this.globalUsers.filter((user) => !user.isLocal).length;
+        status.textContent = remoteUserCount === 0
+          ? 'You’re the only person here right now.'
+          : `${remoteUserCount} ${remoteUserCount === 1 ? 'teammate' : 'teammates'} online. Select someone to follow.`;
       } else if (effectiveConnectionState.status === 'connecting') {
         status.textContent = effectiveConnectionState.unreachable ? 'Server unreachable.' : 'Connecting presence...';
       } else {

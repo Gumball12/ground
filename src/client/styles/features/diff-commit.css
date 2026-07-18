@@ -6,7 +6,7 @@
   gap: var(--space-2);
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-divider);
-  background: linear-gradient(180deg, var(--surface-accent-subtle), var(--color-surface));
+  background: var(--color-surface);
 }
 
 .diff-commit-subject {
@@ -49,9 +49,8 @@
   overflow: hidden;
   padding: 8px;
   border: 1px solid var(--color-divider);
-  border-radius: calc(var(--radius-lg) + 2px);
-  background: var(--surface-overlay-raised);
-  box-shadow: var(--shadow-elevated-soft);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 
 .diff-commit-index-header {
@@ -75,13 +74,13 @@
 .diff-index-item {
   --ui-record-padding: 8px 9px;
   --ui-record-gap: 4px;
-  --ui-record-border: var(--color-border);
-  --ui-record-bg: var(--surface-overlay-offset);
-  --ui-record-border-hover: var(--color-border);
-  --ui-record-bg-hover: var(--surface-fill-strong);
-  --ui-record-border-active: var(--border-accent-strong);
-  --ui-record-bg-active: var(--surface-accent-subtle);
-  --ui-record-shadow-active: var(--shadow-accent-inset);
+  --ui-record-border: transparent;
+  --ui-record-bg: transparent;
+  --ui-record-border-hover: transparent;
+  --ui-record-bg-hover: var(--color-surface-offset);
+  --ui-record-border-active: transparent;
+  --ui-record-bg-active: var(--color-surface-offset);
+  --ui-record-shadow-active: inset 3px 0 0 var(--color-primary);
 }
 
 .diff-index-item-top,
@@ -116,13 +115,13 @@
 .diff-commit-section {
   overflow: hidden;
   border: 1px solid var(--color-divider);
-  border-radius: calc(var(--radius-lg) + 2px);
-  background: var(--surface-overlay-raised);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 
 .diff-commit-section.active {
   border-color: var(--border-accent-strong);
-  box-shadow: var(--shadow-accent-outline);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .diff-commit-section-header {
@@ -132,7 +131,7 @@
   gap: var(--space-3);
   width: 100%;
   padding: 10px 14px;
-  background: var(--surface-overlay-offset);
+  background: var(--color-surface);
   text-align: left;
 }
 
@@ -201,7 +200,7 @@
 .diff-commit-shell-focused .diff-commit-main .diff-file-block {
   overflow: hidden;
   border: 1px solid var(--color-divider);
-  border-radius: calc(var(--radius-lg) + 2px);
+  border-radius: var(--radius-lg);
 }
 
 .diff-file-block {

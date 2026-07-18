@@ -45,7 +45,7 @@
 }
 
 .skeleton-line--break {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 @keyframes pulse-skeleton {
@@ -68,7 +68,7 @@
   min-width: 120px;
   padding: var(--space-1);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-md);
   transform-origin: top left;

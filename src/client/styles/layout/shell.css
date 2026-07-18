@@ -45,10 +45,10 @@
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  height: 28px;
+  height: 30px;
   padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--color-divider);
-  background: var(--color-surface-offset);
+  background: var(--color-surface);
 }
 
 .pane-header-actions {
@@ -65,11 +65,11 @@
 }
 
 .pane-label {
-  color: var(--color-text-muted);
+  color: var(--color-text-faint);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   font-size: var(--text-meta);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .pane-label-meta {

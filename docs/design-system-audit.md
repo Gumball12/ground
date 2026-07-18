@@ -29,6 +29,14 @@
 - Prefer primitive plus variant composition over feature-local one-off controls.
 - Keep JS behavior hooks stable while gradually shifting markup to shared primitive classes.
 
+## Geometry and Elevation Conventions
+- Form controls (buttons, inputs, icon buttons, chips) use `--radius-md`; small rows and inline items use `--radius-sm`.
+- Trigger-anchored popovers and menus (context menus, overflow menus, dropdown panels) use `--radius-lg` with `--shadow-md`/`--shadow-lg`.
+- Centered dialogs, command-palette modals, and large floating cards/docks use `--radius-xl` with `--shadow-lg`/`--shadow-card-strong`.
+- Avoid off-scale derivations (`calc()` on radius tokens or raw px radii); pick the nearest token step instead.
+- Padding on panels, menus, and cards should come from the `--space-*` scale rather than raw px values.
+- Sidebar tree rows use rounded `--radius-md` highlights inside the padded tree container; transient drop targets reveal only during drag (`body.is-file-tree-dragging`) and overlay content instead of shifting layout.
+
 ## Definition of Done
 - Every styling area is either a single-purpose stylesheet or an explicit manifest that imports named submodules by responsibility.
 - Shared tokens, shared components, feature styles, and third-party overrides are separated by layer instead of mixed in the same file.

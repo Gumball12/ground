@@ -6,7 +6,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
-  background: var(--color-surface-2);
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-divider);
 }
 
@@ -31,10 +31,9 @@
 
 .diff-toolbar-actions-group-git {
   padding: var(--space-1);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-lg);
-  background: var(--surface-overlay);
-  box-shadow: var(--shadow-sheet-inset);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-offset);
 }
 
 .diff-toolbar-actions-divider {

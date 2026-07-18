@@ -4,8 +4,8 @@
   --ui-record-padding: var(--space-3);
   --ui-record-gap: var(--space-2);
   --ui-record-radius: var(--radius-md);
-  --ui-record-border: var(--color-border);
-  --ui-record-bg: var(--color-surface-2);
+  --ui-record-border: var(--color-divider);
+  --ui-record-bg: var(--color-surface);
   --ui-record-color: var(--color-text-muted);
   --ui-record-border-hover: var(--ui-record-border);
   --ui-record-bg-hover: var(--color-surface-offset);
@@ -68,6 +68,8 @@
 .ui-record-meta {
   flex-wrap: wrap;
   color: var(--color-text-faint);
+  font-size: var(--text-meta);
+  line-height: 1.35;
 }
 
 .ui-record-copy {
@@ -87,6 +89,7 @@
 .ui-record-subtitle {
   overflow: hidden;
   color: var(--color-text-faint);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
