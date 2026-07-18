@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 
 function getDocumentNewline(markdownText = '') {
   return String(markdownText).includes('\r\n') ? '\r\n' : '\n';
@@ -37,7 +37,7 @@ export function extractYamlFrontmatter(markdownText = '') {
 
   let parsedData;
   try {
-    parsedData = yaml.load(frontmatterSource || '{}');
+    parsedData = loadYaml(frontmatterSource || '{}');
   } catch {
     return null;
   }
@@ -56,4 +56,3 @@ export function extractYamlFrontmatter(markdownText = '') {
     startLine: 1,
   };
 }
-

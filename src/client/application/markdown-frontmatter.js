@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import { dump as dumpYaml } from 'js-yaml';
 
 import { escapeHtml } from '../domain/vault-utils.js';
 
@@ -31,7 +31,7 @@ function formatScalarValue(value) {
 }
 
 function serializeComplexValue(value) {
-  return yaml.dump(value, {
+  return dumpYaml(value, {
     lineWidth: -1,
     noRefs: true,
   }).trim();

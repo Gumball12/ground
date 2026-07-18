@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import { dump as dumpYaml, loadAll as loadAllYaml } from 'js-yaml';
 
 const SUPPORTED_VIEW_TYPES = new Set(['cards', 'list', 'table']);
 
@@ -278,8 +278,17 @@ function createFormulaLookup(formulas = {}) {
   return lookup;
 }
 
+export function parseBaseSource(source = '') {
+  const documents = loadAllYaml(String(source ?? ''));
+  if (documents.length > 1) {
+    throw new Error('Base source must contain a single YAML document');
+  }
+
+  return documents[0] ?? {};
+}
+
 export function normalizeBaseDefinition(source = '') {
-  const raw = yaml.load(String(source ?? '')) ?? {};
+  const raw = parseBaseSource(source);
   const rawObject = isPlainObject(raw) ? raw : {};
   const rawProperties = isPlainObject(rawObject.properties) ? rawObject.properties : {};
   const formulas = normalizeFormulaEntries(rawObject.formulas, rawProperties);
@@ -378,5 +387,5 @@ export function normalizeRawDefinitionForWrite(definition) {
 
 export function serializeBaseDefinition(definition) {
   const raw = normalizeRawDefinitionForWrite(definition);
-  return `${yaml.dump(raw, { lineWidth: -1, noRefs: true }).trim()}\n`;
+  return `${dumpYaml(raw, { lineWidth: -1, noRefs: true }).trim()}\n`;
 }

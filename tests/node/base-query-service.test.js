@@ -141,6 +141,17 @@ test('normalizeBaseDefinition precomputes formula lookup aliases', () => {
   assert.equal(definition.formulaLookup.get('formula.rank'), 'formula.rank');
 });
 
+test('normalizeBaseDefinition preserves empty YAML document behavior', () => {
+  ['', '  \n', '# Comment-only base\n'].forEach((source) => {
+    const definition = normalizeBaseDefinition(source);
+
+    assert.deepEqual(definition.raw, {});
+    assert.equal(definition.views.length, 1);
+    assert.equal(definition.views[0].name, 'Table');
+    assert.equal(definition.views[0].type, 'table');
+  });
+});
+
 test('BaseQueryService resolves this from the embedding source file and preserves unsupported views', async (t) => {
   const { cleanup, service, writeVaultFile } = await createBaseWorkspace();
   t.after(cleanup);

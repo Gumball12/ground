@@ -1,9 +1,10 @@
-import yaml from 'js-yaml';
+import { dump as dumpYaml } from 'js-yaml';
 
 import {
   findView,
   normalizeBaseDefinition,
   normalizeRawDefinitionForWrite,
+  parseBaseSource,
 } from './base-definition.js';
 
 function isPlainObject(value) {
@@ -11,7 +12,7 @@ function isPlainObject(value) {
 }
 
 function cloneRawSource(source = '') {
-  const parsed = yaml.load(String(source ?? '')) ?? {};
+  const parsed = parseBaseSource(source);
   return isPlainObject(parsed) ? parsed : {};
 }
 
@@ -112,5 +113,5 @@ export function transformBaseSource(source = '', mutation = {}) {
       throw new Error(`Unsupported base mutation: ${mutationType || 'unknown'}`);
   }
 
-  return `${yaml.dump(normalizeRawDefinitionForWrite(rawDefinition), { lineWidth: -1, noRefs: true }).trim()}\n`;
+  return `${dumpYaml(normalizeRawDefinitionForWrite(rawDefinition), { lineWidth: -1, noRefs: true }).trim()}\n`;
 }
