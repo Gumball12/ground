@@ -1180,6 +1180,49 @@ test('hides editor thread markers when their anchor scrolls out of view', async 
   await expect(editorBadge).toHaveCount(0);
 });
 
+test('scrolls the editor and preview to a comment selected from the drawer', async ({ page }) => {
+  await clearReadmeCollaborationSidecars();
+  await openFile(page, 'README.md');
+  await replaceEditorContent(page, Array.from(
+    { length: 180 },
+    (_, index) => `## Section ${index + 1}\n\nLine ${index + 1} for comment navigation testing.`,
+  ).join('\n\n'));
+
+  await createComment(page, {
+    body: 'Return to this anchored line.',
+    collapseSelection: true,
+    targetText: 'Line 4 for comment navigation testing.',
+  });
+
+  await page.locator('.cm-scroller').evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await expect.poll(async () => (
+    page.locator('#previewContainer').evaluate((element) => element.scrollTop)
+  )).toBeGreaterThan(0);
+
+  await page.locator('#commentsToggle').click();
+  await page.locator('.comments-drawer-item').click();
+
+  await expect.poll(async () => (
+    page.locator('.cm-lineNumbers .cm-gutterElement').evaluateAll((elements) => (
+      elements.some((element) => element.textContent === '15')
+    ))
+  )).toBe(true);
+  await expect.poll(async () => page.evaluate(() => {
+    const container = document.getElementById('previewContainer');
+    const target = document.querySelector('#previewContent [data-source-line="15"]');
+    if (!container || !target) {
+      return false;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    return targetRect.bottom >= containerRect.top && targetRect.top <= containerRect.bottom;
+  })).toBe(true);
+});
+
 test('aligns preview thread markers to a fixed right rail', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');

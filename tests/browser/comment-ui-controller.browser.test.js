@@ -19,7 +19,7 @@ function flushFrame() {
   });
 }
 
-function createController() {
+function createController({ onNavigateToLine = () => {} } = {}) {
   document.body.innerHTML = `
     <div id="editor"></div>
     <button id="comment-selection"><span class="ui-action-label">Comment</span></button>
@@ -59,7 +59,7 @@ function createController() {
     commentsToggleButton,
     editorContainer,
     onCreateThread: async () => 'thread-1',
-    onNavigateToLine: () => {},
+    onNavigateToLine,
     onReplyToThread: async () => 'message-2',
     onResolveThread: async () => true,
     onToggleReaction: async () => true,
@@ -100,6 +100,34 @@ describe('CommentUiController browser behavior', () => {
 
     controller.closeDrawer();
     expect(setup.commentsDrawer.classList.contains('hidden')).toBe(true);
+  });
+
+  it('navigates to a thread anchor when its drawer item is clicked', () => {
+    const navigatedLines = [];
+    const setup = createController({
+      onNavigateToLine: (lineNumber) => navigatedLines.push(lineNumber),
+    });
+    controller = setup.controller;
+
+    controller.setThreads([
+      {
+        anchor: { endLine: 8, quote: 'Anchored range', startLine: 5 },
+        createdAt: 1,
+        createdByName: 'Alice',
+        id: 'thread-1',
+        messages: [{ body: 'Existing thread', createdAt: 2, id: 'message-1', reactions: [], userName: 'Alice' }],
+      },
+    ]);
+    controller.setDrawerOpen(true);
+
+    setup.commentsDrawer.querySelector('.comments-drawer-item').click();
+
+    expect(navigatedLines).toEqual([5]);
+    expect(controller.activeCard).toMatchObject({
+      groupKey: controller.getThreadGroups()[0].key,
+      mode: 'group',
+      origin: 'drawer',
+    });
   });
 
   it('opens overview-selected threads as editor-anchored cards', () => {

@@ -226,8 +226,19 @@ export class CollabMdAppShell {
       previewElement: this.elements.previewContent,
       onCreateThread: ({ anchor, body }) => this.features.createCommentThread({ anchor, body }),
       onNavigateToLine: (lineNumber) => {
+        const session = this.session;
         this.scrollSyncController.suspendSync(250);
-        this.session?.scrollToLine(lineNumber, 0.2);
+        const didScroll = session?.scrollToLine(lineNumber, 0.2);
+        if (didScroll) {
+          requestAnimationFrame(() => {
+            if (this.session !== session) {
+              return;
+            }
+
+            this.scrollSyncController.suspendSync(0);
+            this.scrollSyncController.syncPreviewToEditor();
+          });
+        }
       },
       onReplyToThread: (threadId, body) => this.features.replyToCommentThread(threadId, body),
       onToggleReaction: (threadId, messageId, emoji) => this.session?.toggleCommentReaction(threadId, messageId, emoji),

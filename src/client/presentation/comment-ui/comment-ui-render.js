@@ -78,6 +78,7 @@ function renderDrawer() {
       event.preventDefault();
     });
     button.addEventListener('click', () => {
+      this.onNavigateToLine?.(group.anchor?.startLine ?? 1);
       this.openThreadGroup(group, {
         anchor: group.anchor,
         origin: 'drawer',
