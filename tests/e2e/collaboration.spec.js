@@ -988,7 +988,7 @@ test('renders comment controls for text files', async ({ page }) => {
   await expect(page.locator('.comment-selection-chip')).toBeHidden();
 });
 
-test('uses a blended hover surface for comment overview rows', async ({ page }) => {
+test('uses a flat blended hover surface for comment overview rows', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
   await createComment(page, {
@@ -1005,12 +1005,14 @@ test('uses a blended hover surface for comment overview rows', async ({ page }) 
   const hoverStyle = await overviewRow.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
+      backgroundColor: style.backgroundColor,
       backgroundImage: style.backgroundImage,
       boxShadow: style.boxShadow,
     };
   });
 
-  expect(hoverStyle.backgroundImage).toContain('linear-gradient');
+  expect(hoverStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(hoverStyle.backgroundImage).toBe('none');
   expect(hoverStyle.boxShadow).toBe('none');
 });
 
