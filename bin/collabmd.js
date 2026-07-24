@@ -196,7 +196,7 @@ try {
       console.log('          Generated for this host run only');
     }
   } else if (config.auth.strategy === 'oidc') {
-    console.log('  Auth:   oidc (not implemented yet)');
+    console.log('  Auth:   oidc (Google)');
   } else {
     console.log('  Auth:   none');
   }
