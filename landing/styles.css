@@ -292,6 +292,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   display: inline-block;
   padding-inline-end: 0.07em;
   margin-inline-end: -0.07em;
+  padding-block: 0.04em 0.14em;
+  margin-block: -0.04em -0.14em;
 }
 .hero-sub {
   color: var(--muted);
