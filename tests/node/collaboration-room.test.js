@@ -9,6 +9,8 @@ import { CollaborationRoom } from '../../src/server/domain/collaboration/collabo
 import { RoomRegistry } from '../../src/server/domain/collaboration/room-registry.js';
 import { createCommentThreadSharedType } from '../../src/domain/comment-threads.js';
 import {
+  EXCALIDRAW_META_KEY,
+  EXCALIDRAW_SCHEMA_VERSION_KEY,
   buildExcalidrawRoomScene,
   replaceExcalidrawRoomScene,
 } from '../../src/domain/excalidraw-room-codec.js';
@@ -289,7 +291,7 @@ test('CollaborationRoom primes a collaboration snapshot after content hydration 
   assert.equal(snapshotWrites[0].snapshot instanceof Uint8Array, true);
 });
 
-test('CollaborationRoom discards an invalid snapshot and rebuilds from persisted content', async () => {
+test('CollaborationRoom replaces an invalid snapshot only after rebuilding persisted content', async () => {
   const snapshotWrites = [];
   let deletedSnapshotPath = null;
   const room = new CollaborationRoom({
@@ -321,7 +323,7 @@ test('CollaborationRoom discards an invalid snapshot and rebuilds from persisted
   await room.hydrate();
   await Promise.resolve();
 
-  assert.equal(deletedSnapshotPath, 'broken-snapshot.excalidraw');
+  assert.equal(deletedSnapshotPath, null);
   assert.deepEqual(buildExcalidrawRoomScene(room.doc), {
     appState: { gridSize: 20, viewBackgroundColor: '#ffffff' },
     elements: [],
@@ -333,6 +335,56 @@ test('CollaborationRoom discards an invalid snapshot and rebuilds from persisted
   assert.equal(snapshotWrites.length, 1);
   assert.equal(snapshotWrites[0].path, 'broken-snapshot.excalidraw');
   assert.equal(snapshotWrites[0].snapshot instanceof Uint8Array, true);
+});
+
+test('CollaborationRoom rejects an incompatible Excalidraw snapshot schema and rehydrates from the durable file', async () => {
+  const staleDoc = new Y.Doc();
+  replaceExcalidrawRoomScene(staleDoc, {
+    appState: {},
+    elements: [{ id: 'stale-shape', type: 'rectangle', version: 1, versionNonce: 1 }],
+    files: {},
+    source: 'collabmd',
+    type: 'excalidraw',
+    version: 2,
+  });
+  staleDoc.getMap(EXCALIDRAW_META_KEY).set(EXCALIDRAW_SCHEMA_VERSION_KEY, 999);
+  const snapshotWrites = [];
+  const room = new CollaborationRoom({
+    maxBufferedAmountBytes: 1024,
+    name: 'incompatible-snapshot.excalidraw',
+    onEmpty: () => {},
+    vaultFileStore: {
+      async readCollaborationSnapshot() {
+        return Y.encodeStateAsUpdate(staleDoc);
+      },
+      async readCommentThreads() {
+        return [];
+      },
+      async readExcalidrawFile() {
+        return JSON.stringify({
+          appState: {},
+          elements: [{ id: 'durable-shape', type: 'rectangle', version: 2, versionNonce: 2 }],
+          files: {},
+          source: 'collabmd',
+          type: 'excalidraw',
+          version: 2,
+        });
+      },
+      async writeCollaborationSnapshot(path, snapshot) {
+        snapshotWrites.push({ path, snapshot });
+        return { ok: true };
+      },
+      async writeExcalidrawFile() {},
+    },
+  });
+
+  await room.hydrate();
+
+  assert.deepEqual(buildExcalidrawRoomScene(room.doc).elements.map((element) => element.id), ['durable-shape']);
+  assert.equal(snapshotWrites.length, 1);
+  assert.equal(snapshotWrites[0].path, 'incompatible-snapshot.excalidraw');
+  staleDoc.destroy();
+  await room.destroy();
 });
 
 test('CollaborationRoom reloads live room content from disk without scheduling a persist', async () => {

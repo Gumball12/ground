@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import * as Y from 'yjs';
 
 import {
+  EXCALIDRAW_META_KEY,
+  EXCALIDRAW_SCHEMA_VERSION_KEY,
   applySceneDiffToExcalidrawRoom,
   buildExcalidrawRoomScene,
   isExcalidrawRoomDocStructured,
@@ -79,6 +81,14 @@ test('migrates legacy codemirror scene content into structured Excalidraw room s
 
   assert.equal(isExcalidrawRoomDocStructured(doc), true);
   assert.deepEqual(buildExcalidrawRoomScene(doc).elements.map((element) => element.id), ['shape-legacy']);
+});
+
+test('rejects non-empty structured maps when the schema version is incompatible', () => {
+  const doc = new Y.Doc();
+  replaceExcalidrawRoomScene(doc, createScene([createElement('stale-shape')]));
+  doc.getMap(EXCALIDRAW_META_KEY).set(EXCALIDRAW_SCHEMA_VERSION_KEY, 999);
+
+  assert.equal(isExcalidrawRoomDocStructured(doc), false);
 });
 
 test('merges concurrent structured updates for different elements into one valid scene', () => {
@@ -173,6 +183,73 @@ test('live scene diffs preserve files omitted from stale local payloads', () => 
   assert.deepEqual(Object.keys(scene.files).sort(), ['imageA', 'imageB']);
   assert.equal(scene.files.imageA.version, 2);
   assert.equal(scene.files.imageB.version, 1);
+});
+
+test('structured reconciliation preserves bindings, groups, frames, and tombstones', () => {
+  const docA = new Y.Doc();
+  const docB = new Y.Doc();
+  const frame = {
+    ...createElement('frame', { index: 'a0' }),
+    type: 'frame',
+  };
+  const groupedShape = {
+    ...createElement('grouped-shape', { index: 'a1' }),
+    boundElements: [{ id: 'bound-text', type: 'text' }, { id: 'arrow', type: 'arrow' }],
+    frameId: 'frame',
+    groupIds: ['group-1'],
+  };
+  const boundText = {
+    ...createElement('bound-text', { index: 'a2' }),
+    containerId: 'grouped-shape',
+    frameId: 'frame',
+    groupIds: ['group-1'],
+    originalText: 'preserved',
+    text: 'preserved',
+    type: 'text',
+  };
+  const arrow = {
+    ...createElement('arrow', { index: 'a3' }),
+    endBinding: { elementId: 'grouped-shape', focus: 0, gap: 1 },
+    frameId: 'frame',
+    points: [[0, 0], [100, 100]],
+    startBinding: null,
+    type: 'arrow',
+  };
+
+  replaceExcalidrawRoomScene(docA, createScene([frame, groupedShape, boundText, arrow]));
+  syncDocs(docA, docB);
+  syncDocs(docB, docA);
+
+  applySceneDiffToExcalidrawRoom(docA, createScene([{
+    ...groupedShape,
+    version: 2,
+    versionNonce: 20,
+    x: 40,
+  }]));
+  applySceneDiffToExcalidrawRoom(docB, createScene([{
+    ...arrow,
+    isDeleted: true,
+    version: 2,
+    versionNonce: 21,
+  }]));
+
+  syncDocs(docA, docB);
+  syncDocs(docB, docA);
+
+  const scene = buildExcalidrawRoomScene(docA);
+  assert.deepEqual(scene.elements.find((element) => element.id === 'grouped-shape'), {
+    ...groupedShape,
+    version: 2,
+    versionNonce: 20,
+    x: 40,
+  });
+  assert.deepEqual(scene.elements.find((element) => element.id === 'bound-text'), boundText);
+  assert.deepEqual(scene.elements.find((element) => element.id === 'arrow'), {
+    ...arrow,
+    isDeleted: true,
+    version: 2,
+    versionNonce: 21,
+  });
 });
 
 test('explicit deleted-element tombstones win live diffs and stay out of persisted content', () => {

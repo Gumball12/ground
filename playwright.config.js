@@ -19,6 +19,27 @@ const crossBrowserDiagramPreviewProjects = process.env.PLAYWRIGHT_DIAGRAM_PREVIE
   ]
   : [];
 
+const crossBrowserExcalidrawReliabilityProjects = process.env.PLAYWRIGHT_EXCALIDRAW_RELIABILITY_CROSS_BROWSER === '1'
+  ? [
+    {
+      grep: /@excalidraw-smoke/,
+      name: 'firefox-excalidraw-reliability',
+      testMatch: /excalidraw-reliability\.spec\.js/,
+      use: {
+        browserName: 'firefox',
+      },
+    },
+    {
+      grep: /@excalidraw-smoke/,
+      name: 'webkit-excalidraw-reliability',
+      testMatch: /excalidraw-reliability\.spec\.js/,
+      use: {
+        browserName: 'webkit',
+      },
+    },
+  ]
+  : [];
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 45000,
@@ -42,5 +63,6 @@ export default defineConfig({
       },
     },
     ...crossBrowserDiagramPreviewProjects,
+    ...crossBrowserExcalidrawReliabilityProjects,
   ],
 });

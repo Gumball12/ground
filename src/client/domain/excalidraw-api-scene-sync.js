@@ -32,7 +32,7 @@ export function buildExcalidrawFileSyncPlan(currentFiles = {}, nextFiles = {}) {
   return {
     conflictingFileIds,
     missingFiles,
-    requiresRemount: conflictingFileIds.length > 0,
+    requiresFileReplacement: conflictingFileIds.length > 0,
   };
 }
 
@@ -46,15 +46,18 @@ export function applySceneUpdateWithFiles(api, {
   const currentFiles = api?.getFiles?.() || {};
   const syncPlan = buildExcalidrawFileSyncPlan(currentFiles, files);
 
-  if (syncPlan.requiresRemount) {
+  if (syncPlan.requiresFileReplacement && typeof api?.replaceFiles !== 'function') {
     onFileConflict(syncPlan);
     return {
       ...syncPlan,
       applied: false,
+      requiresRemount: true,
     };
   }
 
-  if (syncPlan.missingFiles.length > 0) {
+  if (syncPlan.requiresFileReplacement) {
+    api.replaceFiles(Object.values(files));
+  } else if (syncPlan.missingFiles.length > 0) {
     api.addFiles(syncPlan.missingFiles);
   }
 
@@ -66,5 +69,6 @@ export function applySceneUpdateWithFiles(api, {
   return {
     ...syncPlan,
     applied: true,
+    requiresRemount: false,
   };
 }

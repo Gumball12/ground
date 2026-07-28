@@ -83,6 +83,12 @@ export class WorkspaceRouteController {
     }
 
     const route = this.navigation.getHashRoute();
+    const nextFilePath = route.type === 'file' ? route.filePath : null;
+    const canLeave = await this.prepareActiveExcalidrawDisconnect(nextFilePath);
+    if (!canLeave) {
+      return;
+    }
+
     if (route.type === 'empty') {
       this.requestPreviewRouteAnchor?.(null);
       this.gitPanel.setSelection();
@@ -132,7 +138,10 @@ export class WorkspaceRouteController {
       this.preserveSidebarTabRoutePath = null;
       this.setSidebarTab('files');
     }
-    await this.openFile(route.filePath, { drawioMode: route.drawioMode || null });
+    const didOpen = await this.openFile(route.filePath, { drawioMode: route.drawioMode || null });
+    if (!didOpen) {
+      return;
+    }
     this.revealEditorMatch(route);
     this.requestPreviewRouteAnchor?.(route.anchor ?? null, route.filePath);
   }
@@ -282,6 +291,27 @@ export class WorkspaceRouteController {
     if (shouldRevealInTree) {
       this.revealFileInTree(filePath, { clearSearch: true });
     }
+
+    return true;
+  }
+
+  async prepareActiveExcalidrawDisconnect(nextFilePath = null) {
+    const activeFilePath = this.workspaceCoordinator.stateStore?.get?.('currentFilePath') || null;
+    if (
+      activeFilePath
+      && activeFilePath !== nextFilePath
+      && this.workspaceCoordinator.isExcalidrawFile?.(activeFilePath)
+    ) {
+      const canLeave = await this.excalidrawEmbed.prepareFileDisconnect(activeFilePath, {
+        timeoutMs: 10000,
+      });
+      if (!canLeave) {
+        this.navigation.navigateToFile(activeFilePath);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   preserveSidebarTabForNextFileRoute(filePath) {

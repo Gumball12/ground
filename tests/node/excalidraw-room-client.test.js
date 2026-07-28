@@ -38,11 +38,20 @@ function createFakeProvider() {
     disconnect() {
       this.disconnected = true;
     },
+    emit(type, payload) {
+      if (type === 'sync') {
+        this.synced = Boolean(payload);
+      }
+      listeners.get(type)?.forEach((handler) => handler(payload));
+    },
     off(type, handler) {
-      listeners.delete(`${type}:${handler}`);
+      listeners.get(type)?.delete(handler);
     },
     on(type, handler) {
-      listeners.set(`${type}:${handler}`, handler);
+      if (!listeners.has(type)) {
+        listeners.set(type, new Set());
+      }
+      listeners.get(type).add(handler);
     },
     synced: true,
   };
@@ -154,6 +163,91 @@ test('ExcalidrawRoomClient syncs local scene updates into the structured room st
     head: null,
     length: null,
   });
+});
+
+test('ExcalidrawRoomClient rejects fallback writes before authoritative sync', async () => {
+  const provider = createFakeProvider();
+  provider.synced = false;
+  const ydoc = new Y.Doc();
+  const states = [];
+  const client = new ExcalidrawRoomClient({
+    filePath: 'diagram.excalidraw',
+    onConnectionStateChange: ({ state }) => states.push(state),
+    resolveWsBaseUrlFn: () => 'ws://localhost:3000',
+    setTimeoutFn: (callback) => {
+      queueMicrotask(callback);
+      return 1;
+    },
+    syncTimeoutMs: 0,
+    vaultClient: {
+      async readFile() {
+        return { content: createScene('saved-shape') };
+      },
+    },
+    websocketProviderFactory: () => provider,
+    ydocFactory: () => ydoc,
+  });
+
+  await client.connect();
+
+  assert.equal(client.getConnectionState(), 'fallback-readonly');
+  assert.equal(client.canWriteToRoom, false);
+  assert.equal(client.scheduleSceneSync(
+    [{ id: 'fallback-edit', isDeleted: false, version: 1, versionNonce: 1 }],
+    {},
+    {},
+  ), false);
+  assert.equal(client.hasPendingWrites(), false);
+  assert.equal(client.flushSceneSync(), false);
+  assert.equal(client.commitSceneJson(createScene('fallback-edit')), false);
+  assert.deepEqual(buildExcalidrawRoomScene(ydoc).elements, []);
+  assert.deepEqual(states, ['connecting', 'fallback-readonly']);
+
+  client.disconnect();
+});
+
+test('ExcalidrawRoomClient retains pending authoritative edits while reconnecting', async () => {
+  const timers = [];
+  const provider = createFakeProvider();
+  const ydoc = new Y.Doc();
+  const client = new ExcalidrawRoomClient({
+    filePath: 'diagram.excalidraw',
+    resolveWsBaseUrlFn: () => 'ws://localhost:3000',
+    setTimeoutFn: (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    vaultClient: {
+      async readFile() {
+        return { content: createScene('saved-shape') };
+      },
+    },
+    websocketProviderFactory: () => provider,
+    ydocFactory: () => ydoc,
+  });
+
+  await client.connect();
+  client.scheduleSceneSync(
+    [{ id: 'queued-shape', isDeleted: false, version: 1, versionNonce: 1 }],
+    {},
+    {},
+  );
+  provider.emit('sync', false);
+
+  assert.equal(client.getConnectionState(), 'reconnecting-readonly');
+  assert.equal(client.hasPendingWrites(), true);
+  assert.equal(client.flushSceneSync(), false);
+  assert.deepEqual(buildExcalidrawRoomScene(ydoc).elements.map((element) => element.id), ['saved-shape']);
+
+  provider.emit('sync', true);
+  assert.equal(client.getConnectionState(), 'authoritative');
+  assert.equal(client.flushSceneSync(), true);
+  assert.deepEqual(
+    buildExcalidrawRoomScene(ydoc).elements.map((element) => element.id).sort(),
+    ['queued-shape', 'saved-shape'],
+  );
+
+  client.disconnect();
 });
 
 test('ExcalidrawRoomClient preserves concurrent remote app state while flushing queued element updates', async () => {

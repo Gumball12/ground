@@ -50,7 +50,7 @@ test('buildExcalidrawFileSyncPlan separates missing files from same-id payload c
 
   assert.deepEqual(syncPlan.missingFiles.map((file) => file.id), ['missing']);
   assert.deepEqual(syncPlan.conflictingFileIds, ['replaced']);
-  assert.equal(syncPlan.requiresRemount, true);
+  assert.equal(syncPlan.requiresFileReplacement, true);
 });
 
 test('applySceneUpdateWithFiles adds missing files before applying the scene update', () => {
@@ -127,4 +127,34 @@ test('applySceneUpdateWithFiles refuses same-id payload replacement and reports 
   assert.deepEqual(result.conflictingFileIds, ['imageA']);
   assert.deepEqual(conflicts, ['imageA']);
   assert.equal(updateSceneCalls, 0);
+});
+
+test('applySceneUpdateWithFiles replaces the authoritative file map without remounting when supported', () => {
+  const calls = [];
+  const nextFile = createBinaryFile('imageA', { dataURL: DATA_URL_B, version: 2 });
+  const api = {
+    getFiles() {
+      return { imageA: createBinaryFile('imageA') };
+    },
+    replaceFiles(files) {
+      calls.push(['replaceFiles', files]);
+    },
+    updateScene(payload) {
+      calls.push(['updateScene', payload]);
+    },
+  };
+
+  const result = applySceneUpdateWithFiles(api, {
+    captureUpdate: 'never',
+    files: { imageA: nextFile },
+    sceneUpdate: { elements: [{ fileId: 'imageA', id: 'image-element', type: 'image' }] },
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.requiresRemount, false);
+  assert.deepEqual(calls[0], ['replaceFiles', [nextFile]]);
+  assert.deepEqual(calls[1], ['updateScene', {
+    captureUpdate: 'never',
+    elements: [{ fileId: 'imageA', id: 'image-element', type: 'image' }],
+  }]);
 });

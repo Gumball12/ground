@@ -254,10 +254,10 @@ export class ExcalidrawEmbedController {
     });
   }
 
-  prepareFileDisconnect(filePath, { timeoutMs = 250 } = {}) {
+  prepareFileDisconnect(filePath, { timeoutMs = 10000 } = {}) {
     const entry = this._findEntryByFilePath(filePath);
     if (!entry?.iframe?.contentWindow) {
-      return Promise.resolve(false);
+      return Promise.resolve(true);
     }
 
     const requestId = `disconnect-${++this.disconnectRequestCounter}`;
@@ -274,7 +274,29 @@ export class ExcalidrawEmbedController {
       };
 
       const timeoutId = window.setTimeout(() => {
-        finish(false);
+        const shouldDiscard = window.confirm(
+          'This diagram has not reconnected, so its latest queued changes may not be saved. Discard pending changes and leave?',
+        );
+        if (!shouldDiscard) {
+          this._postMessageToEntry(entry, {
+            source: 'collabmd-host',
+            type: 'cancel-disconnect',
+            requestId,
+          });
+          this.toastController?.show?.('Stayed on the diagram while it reconnects');
+          finish(false);
+          return;
+        }
+
+        this._postMessageToEntry(entry, {
+          source: 'collabmd-host',
+          type: 'discard-and-disconnect',
+          requestId,
+        });
+        const request = this.pendingDisconnectRequests.get(requestId);
+        if (request) {
+          request.timeoutId = window.setTimeout(() => finish(true), 1000);
+        }
       }, timeoutMs);
 
       this.pendingDisconnectRequests.set(requestId, {
@@ -656,6 +678,9 @@ export class ExcalidrawEmbedController {
     }
     if (hostSearchParams.has('syncTimeoutMs')) {
       iframeUrl.searchParams.set('syncTimeoutMs', hostSearchParams.get('syncTimeoutMs'));
+    }
+    if (hostSearchParams.get('excalidrawDebug') === '1') {
+      iframeUrl.searchParams.set('excalidrawDebug', '1');
     }
 
     return iframeUrl;
@@ -1199,6 +1224,23 @@ export class ExcalidrawEmbedController {
       if (request?.entry === entry) {
         request.resolve(true);
       }
+      return;
+    }
+
+    if (msg.type === 'disconnect-blocked') {
+      entry.authorityState = msg.state || 'reconnecting-readonly';
+      this.toastController?.show?.('Waiting for the diagram to reconnect before leaving');
+      return;
+    }
+
+    if (msg.type === 'excalidraw-authority-state') {
+      entry.authorityState = msg.state || 'closed';
+      entry.hasPendingWrites = Boolean(msg.hasPendingWrites);
+      return;
+    }
+
+    if (msg.type === 'park-blocked') {
+      entry.authorityState = msg.state || 'reconnecting-readonly';
     }
   }
 

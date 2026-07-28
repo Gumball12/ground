@@ -221,15 +221,7 @@ export function isExcalidrawRoomDocStructured(ydoc) {
   }
 
   const meta = ydoc.getMap(EXCALIDRAW_META_KEY);
-  if (Number(meta.get(EXCALIDRAW_SCHEMA_VERSION_KEY)) === EXCALIDRAW_ROOM_SCHEMA_VERSION) {
-    return true;
-  }
-
-  return (
-    ydoc.getMap(EXCALIDRAW_ELEMENTS_KEY).size > 0
-    || ydoc.getMap(EXCALIDRAW_FILES_KEY).size > 0
-    || ydoc.getMap(EXCALIDRAW_APP_STATE_KEY).size > 0
-  );
+  return Number(meta.get(EXCALIDRAW_SCHEMA_VERSION_KEY)) === EXCALIDRAW_ROOM_SCHEMA_VERSION;
 }
 
 export function ensureExcalidrawRoomSchema(ydoc) {

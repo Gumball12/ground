@@ -32,13 +32,23 @@ import {
 import {
   normalizeDocumentMode,
 } from './domain/excalidraw-document-switch.js';
+import {
+  createExcalidrawDiagnosticRing,
+  summarizeExcalidrawScene,
+} from './domain/excalidraw-diagnostics.js';
 import { isPlainQuickSwitcherShortcut } from './domain/keyboard-shortcuts.js';
 import { ensureClientAuthenticated } from './infrastructure/auth-client.js';
-import { ExcalidrawRoomClient } from './infrastructure/excalidraw-room-client.js';
+import {
+  EXCALIDRAW_ROOM_CONNECTION_STATE,
+  ExcalidrawRoomClient,
+} from './infrastructure/excalidraw-room-client.js';
 import { vaultApiClient } from './infrastructure/vault-api-client.js';
 
 const params = new URLSearchParams(window.location.search);
 const isTestMode = params.get('test') === '1';
+const diagnostics = createExcalidrawDiagnosticRing({
+  enabled: params.get('excalidrawDebug') === '1',
+});
 const parentOrigin = window.location.origin;
 const syncTimeoutMs = Number.parseInt(params.get('syncTimeoutMs') || '', 10);
 
@@ -55,10 +65,8 @@ let localAwarenessUser = resolveLocalAwarenessUser({
 let appliedSceneJson = '';
 
 let collabReady = false;
-let suppressOnChange = false;
 let pendingRemoteSceneJson = '';
 let pendingCollaborators = null;
-let pendingSuppressionReleases = 0;
 let activeCollaborators = new Map();
 let followedSocketId = null;
 let pendingHostFollowPeerId = null;
@@ -76,14 +84,42 @@ let roomClientGeneration = 0;
 let reactRoot = null;
 let editorRenderKey = 0;
 let skipRoomDisconnectOnUnmount = false;
+let roomConnectionState = EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING;
+let parkRequestedWhileBlocked = false;
+const pendingDisconnectRequestIds = new Set();
 const reportedFileConflictSignatures = new Set();
+
+if (diagnostics.enabled) {
+  window.__COLLABMD_EXCALIDRAW_DEBUG__ = diagnostics;
+}
 
 function getDocumentViewState(mode = currentDocument.mode) {
   const normalizedMode = normalizeDocumentMode(mode);
+  const authorityReadOnly = roomConnectionState !== EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE;
   return {
-    viewModeEnabled: normalizedMode === 'preview',
+    viewModeEnabled: normalizedMode === 'preview' || authorityReadOnly,
     zenModeEnabled: normalizedMode === 'preview',
   };
+}
+
+function getAuthorityBannerText() {
+  if (normalizeDocumentMode(currentDocument.mode) === 'preview') {
+    return '';
+  }
+
+  if (roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.FALLBACK_READONLY) {
+    return 'Showing the saved diagram. Editing will resume after live sync completes.';
+  }
+
+  if (roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY) {
+    return 'Connection lost. Editing is paused while the diagram reconnects.';
+  }
+
+  if (roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING) {
+    return 'Connecting to the live diagram…';
+  }
+
+  return '';
 }
 
 function applyDocumentMode(mode = currentDocument.mode) {
@@ -105,6 +141,13 @@ function createRoomClient(filePath) {
       }
 
       queueCollaboratorsRender(collaborators);
+    },
+    onConnectionStateChange: (event) => {
+      if (generation !== roomClientGeneration) {
+        return;
+      }
+
+      handleRoomConnectionStateChange(event);
     },
     onRemoteSceneJson: (sceneJson) => {
       if (generation !== roomClientGeneration) {
@@ -148,6 +191,10 @@ function buildExcalidrawProps({ initialData } = {}) {
     onPointerUpdate: (payload) => {
       roomClient?.scheduleLocalPointerAwareness(payload);
     },
+    historyOptions: {
+      traversal: 'single-entry',
+    },
+    onHistoryAction: handleHistoryAction,
     theme: currentTheme,
     ...getDocumentViewState(),
     UIOptions: {
@@ -175,13 +222,90 @@ function renderExcalidrawApp({ initialData } = {}) {
   reactRoot.render(
     React.createElement(
       'div',
-      { style: { height: '100vh', width: '100%' } },
+      { className: 'excalidraw-editor-shell' },
       React.createElement(Excalidraw, {
         key: `editor-${editorRenderKey}`,
         ...buildExcalidrawProps({ initialData }),
       }),
+      getAuthorityBannerText()
+        ? React.createElement('div', {
+          className: 'excalidraw-authority-banner',
+          role: 'status',
+        }, getAuthorityBannerText())
+        : null,
     ),
   );
+}
+
+function recordSceneDiagnostic(event, details = {}, sceneJson = '') {
+  if (!diagnostics.enabled) {
+    return;
+  }
+
+  let sceneSummary = {};
+  if (sceneJson) {
+    try {
+      sceneSummary = summarizeExcalidrawScene(parseSceneJson(sceneJson));
+    } catch {
+      sceneSummary = {};
+    }
+  }
+
+  diagnostics.record(event, {
+    ...sceneSummary,
+    connectionState: roomConnectionState,
+    generation: roomClientGeneration,
+    hasPendingWrites: roomClient?.hasPendingWrites?.() || false,
+    ...details,
+  });
+}
+
+function handleHistoryAction({ action = '', outcome = '' } = {}) {
+  recordSceneDiagnostic('history-action', { action, outcome });
+  if (outcome !== 'no-visible-change' || !excalidrawAPI) {
+    return;
+  }
+
+  const label = action === 'redo' ? 'Redo' : 'Undo';
+  excalidrawAPI.setToast?.({
+    message: `${label} skipped: a collaborator changed that item`,
+  });
+}
+
+function handleRoomConnectionStateChange({
+  canWrite = false,
+  hasPendingWrites = false,
+  previousState = EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED,
+  state,
+} = {}) {
+  roomConnectionState = state || EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED;
+  recordSceneDiagnostic('authority-state', {
+    canWrite,
+    hasPendingWrites,
+    previousState,
+    state: roomConnectionState,
+  }, roomClient?.getLastSceneJson?.() || '');
+  postToParent('excalidraw-authority-state', {
+    canWrite,
+    hasPendingWrites,
+    previousState,
+    state: roomConnectionState,
+  });
+
+  if (reactRoot) {
+    renderExcalidrawApp();
+  }
+
+  if (
+    roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE
+    && previousState === EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY
+  ) {
+    excalidrawAPI?.setToast?.({ message: 'Live diagram reconnected' });
+  }
+
+  if (roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE) {
+    void resolvePendingDisconnectRequests();
+  }
 }
 
 function applySurfaceTheme(theme = currentTheme) {
@@ -225,6 +349,7 @@ function applyLocalUserPatch(nextUser = {}) {
 
 if (isTestMode) {
   window.__COLLABMD_EXCALIDRAW_TEST__ = {
+    disconnectTransport: () => roomClient?.provider?.disconnect?.(),
     getElementBounds: (elementId) => {
       const element = excalidrawAPI?.getSceneElementsIncludingDeleted?.()?.find((entry) => entry.id === elementId && !entry.isDeleted);
       if (!element) {
@@ -256,6 +381,13 @@ if (isTestMode) {
     getFileIds: () => (
       Object.keys(excalidrawAPI?.getFiles?.() || {}).sort()
     ),
+    getFileVersion: (fileId) => excalidrawAPI?.getFiles?.()?.[fileId]?.version ?? null,
+    getEditorId: () => excalidrawAPI?.id || null,
+    getForkCapabilities: () => ({
+      replaceFiles: typeof excalidrawAPI?.replaceFiles === 'function',
+    }),
+    getAuthorityState: () => roomConnectionState,
+    getDiagnosticTrace: () => diagnostics.exportTrace(),
     getHistoryState: () => getNativeHistoryState(),
     getLocalUserName: () => localAwarenessUser?.name || '',
     getLocalPeerId: () => localAwarenessUser?.peerId || '',
@@ -278,6 +410,7 @@ if (isTestMode) {
     ),
     isReady: () => collabReady && Boolean(excalidrawAPI) && Boolean(getNativeHistoryButton('undo')) && Boolean(getNativeHistoryButton('redo')),
     redoShared: () => triggerNativeHistory('redo'),
+    reconnectTransport: () => roomClient?.provider?.connect?.(),
     setScene: (scene) => {
       applyLocalScene(normalizeScene(scene), {
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
@@ -371,6 +504,7 @@ function applySceneFromJson(rawJson, {
   }
 
   appliedSceneJson = normalizedJson;
+  recordSceneDiagnostic('remote-scene-received', {}, normalizedJson);
 
   if (!excalidrawAPI || !collabReady) {
     pendingRemoteSceneJson = normalizedJson;
@@ -383,21 +517,6 @@ function applySceneFromJson(rawJson, {
   }
 
   updateApiScene(scene);
-}
-
-function releaseOnChangeSuppressionAfterPaint({ trackedSharedSnapshot = false } = {}) {
-  pendingSuppressionReleases += 1;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      pendingSuppressionReleases = Math.max(0, pendingSuppressionReleases - 1);
-      if (trackedSharedSnapshot) {
-        roomClient?.endApplyingSharedSnapshot();
-      }
-      if (pendingSuppressionReleases === 0) {
-        suppressOnChange = false;
-      }
-    });
-  });
 }
 
 function releaseViewportBroadcastSuppressionAfterPaint() {
@@ -439,8 +558,12 @@ function logFileConflictOnce(conflictingFileIds = []) {
 
   reportedFileConflictSignatures.add(signature);
   console.warn(
-    `[excalidraw:${currentDocument.filePath}] Remounting editor after receiving conflicting binary file payload(s) for existing file ids: ${conflictingFileIds.join(', ')}`,
+    `[excalidraw:${currentDocument.filePath}] The installed Excalidraw API cannot replace conflicting binary file payload(s) without a remount: ${conflictingFileIds.join(', ')}`,
   );
+  recordSceneDiagnostic('binary-file-conflict', {
+    fileCount: conflictingFileIds.length,
+    reason: 'replace-files-api-unavailable',
+  });
 }
 
 function requestEditorRemount(scene) {
@@ -471,9 +594,8 @@ function applySceneToMountedApi(scene, {
   const nextSceneUpdate = buildApiSceneUpdate(scene, {
     appStateOverrides,
   });
-  let applyResult = null;
+  let applyResult;
 
-  suppressOnChange = true;
   if (trackedSharedSnapshot) {
     roomClient?.beginApplyingSharedSnapshot();
   }
@@ -489,13 +611,8 @@ function applySceneToMountedApi(scene, {
       },
     });
   } finally {
-    if (applyResult?.requiresRemount) {
-      if (trackedSharedSnapshot) {
-        roomClient?.endApplyingSharedSnapshot();
-      }
-      suppressOnChange = false;
-    } else {
-      releaseOnChangeSuppressionAfterPaint({ trackedSharedSnapshot });
+    if (trackedSharedSnapshot) {
+      roomClient?.endApplyingSharedSnapshot();
     }
   }
 
@@ -735,9 +852,7 @@ function clearEditorApiStateBindings() {
 
 function resetRealtimeRoomState() {
   collabReady = false;
-  suppressOnChange = false;
   pendingRemoteSceneJson = '';
-  pendingSuppressionReleases = 0;
   pendingCollaborators = null;
   activeCollaborators = new Map();
   followedSocketId = null;
@@ -755,8 +870,12 @@ function resetRealtimeRoomState() {
 
 function disconnectRealtimeRoom({ preserveEditorBindings = false } = {}) {
   const activeRoomClient = roomClient;
+  const previousState = roomConnectionState;
   roomClient = null;
   roomClientGeneration += 1;
+  roomConnectionState = EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED;
+  pendingDisconnectRequestIds.clear();
+  parkRequestedWhileBlocked = false;
 
   resetRealtimeRoomState();
   if (!preserveEditorBindings) {
@@ -764,6 +883,16 @@ function disconnectRealtimeRoom({ preserveEditorBindings = false } = {}) {
   }
 
   activeRoomClient?.disconnect();
+  recordSceneDiagnostic('room-disconnected', {
+    previousState,
+    state: roomConnectionState,
+  });
+  postToParent('excalidraw-authority-state', {
+    canWrite: false,
+    hasPendingWrites: false,
+    previousState,
+    state: roomConnectionState,
+  });
 }
 
 let didDisconnectRealtimeRoom = false;
@@ -794,8 +923,39 @@ async function waitForPendingRoomWrites({
 }
 
 async function prepareRealtimeRoomDisconnect() {
-  roomClient?.flushSceneSync();
+  if (!roomClient) {
+    return true;
+  }
+
+  if (roomClient.getConnectionState() !== EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE) {
+    return false;
+  }
+
+  roomClient.flushSceneSync();
   await waitForPendingRoomWrites();
+  return roomClient?.getConnectionState() === EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE;
+}
+
+async function resolvePendingDisconnectRequests() {
+  if (pendingDisconnectRequestIds.size === 0 && !parkRequestedWhileBlocked) {
+    return;
+  }
+
+  const canDisconnect = await prepareRealtimeRoomDisconnect();
+  if (!canDisconnect) {
+    return;
+  }
+
+  const requestIds = [...pendingDisconnectRequestIds];
+  pendingDisconnectRequestIds.clear();
+  requestIds.forEach((requestId) => {
+    postToParent('disconnect-ready', { requestId });
+  });
+
+  if (parkRequestedWhileBlocked) {
+    parkRequestedWhileBlocked = false;
+    disconnectRealtimeRoom({ preserveEditorBindings: true });
+  }
 }
 
 async function connectDocumentClient(filePath) {
@@ -812,6 +972,14 @@ async function connectDocumentClient(filePath) {
 }
 
 window.addEventListener('pagehide', disconnectRealtimeRoomOnce);
+window.addEventListener('beforeunload', (event) => {
+  if (roomConnectionState !== EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 window.addEventListener('message', (event) => {
   if (event.origin !== parentOrigin) {
@@ -827,12 +995,10 @@ window.addEventListener('message', (event) => {
     currentTheme = message.theme || 'dark';
     applySurfaceTheme(currentTheme);
     if (excalidrawAPI) {
-      suppressOnChange = true;
       excalidrawAPI.updateScene({
         appState: { theme: currentTheme },
         captureUpdate: CaptureUpdateAction.NEVER,
       });
-      releaseOnChangeSuppressionAfterPaint();
     }
     renderExcalidrawApp();
     return;
@@ -855,29 +1021,71 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'prepare-disconnect') {
     void (async () => {
-      await prepareRealtimeRoomDisconnect();
-      postToParent('disconnect-ready', {
-        requestId: message.requestId || '',
+      const requestId = message.requestId || '';
+      if (await prepareRealtimeRoomDisconnect()) {
+        postToParent('disconnect-ready', { requestId });
+        return;
+      }
+
+      pendingDisconnectRequestIds.add(requestId);
+      postToParent('disconnect-blocked', {
+        requestId,
+        state: roomConnectionState,
       });
     })();
     return;
   }
 
+  if (message.type === 'cancel-disconnect') {
+    pendingDisconnectRequestIds.delete(message.requestId || '');
+    return;
+  }
+
+  if (message.type === 'discard-and-disconnect') {
+    const requestId = message.requestId || '';
+    pendingDisconnectRequestIds.delete(requestId);
+    recordSceneDiagnostic('disconnect-discarded', {
+      reason: 'user-confirmed',
+      state: roomConnectionState,
+    });
+    disconnectRealtimeRoom({ preserveEditorBindings: true });
+    postToParent('disconnect-ready', {
+      discarded: true,
+      requestId,
+    });
+    return;
+  }
+
   if (message.type === 'park-room') {
     void (async () => {
-      await prepareRealtimeRoomDisconnect();
-      disconnectRealtimeRoom({ preserveEditorBindings: true });
+      if (await prepareRealtimeRoomDisconnect()) {
+        disconnectRealtimeRoom({ preserveEditorBindings: true });
+        return;
+      }
+
+      parkRequestedWhileBlocked = true;
+      postToParent('park-blocked', { state: roomConnectionState });
     })();
   }
 });
 
 function scheduleSyncToRoom(elements, appState, files) {
-  if (!collabReady || !roomClient || suppressOnChange) {
+  if (!collabReady || !roomClient) {
     return;
   }
 
   const liveElements = getLiveSceneElementsForSync(elements);
-  roomClient.scheduleSceneSync(liveElements, appState, files);
+  const scheduled = roomClient.scheduleSceneSync(liveElements, appState, files);
+  if (diagnostics.enabled) {
+    recordSceneDiagnostic(scheduled ? 'local-scene-scheduled' : 'local-scene-rejected', {
+      canWrite: roomClient.canWriteToRoom,
+      hasPendingWrites: roomClient.hasPendingWrites(),
+    }, JSON.stringify({
+      appState,
+      elements: liveElements,
+      files,
+    }));
+  }
 }
 
 function initializeEditor(api) {

@@ -43,6 +43,7 @@
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
     "test:e2e:prebuilt": "playwright test",
+    "test:excalidraw:stress": "node scripts/run-excalidraw-reliability-stress.mjs",
     "test:guardrails": "node --test tests/node/architecture-boundaries.test.js tests/node/facade-structure.test.js tests/node/style-system-guardrails.test.js",
     "test:integration": "npm run build && node scripts/run-node-tests.mjs integration",
     "test:integration:prebuilt": "node scripts/run-node-tests.mjs integration",

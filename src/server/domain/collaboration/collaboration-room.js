@@ -240,6 +240,7 @@ export class CollaborationRoom {
         const startedAt = Date.now();
         let hydrateSource = 'empty';
         let snapshotExists = false;
+        let snapshotNeedsReplacement = false;
         let snapshotValid = false;
         let commentThreadCount = 0;
         let snapshotReadDurationMs = 0;
@@ -280,9 +281,9 @@ export class CollaborationRoom {
                 return;
               } catch (error) {
                 console.warn(
-                  `[room:${this.name}] Discarding invalid collaboration snapshot: ${error.message}`,
+                  `[room:${this.name}] Ignoring invalid collaboration snapshot until durable content is rehydrated: ${error.message}`,
                 );
-                await this.documentStore.deleteSnapshot?.();
+                snapshotNeedsReplacement = true;
               }
             }
 
@@ -311,9 +312,14 @@ export class CollaborationRoom {
                 populateCommentThreads(comments, commentThreads);
               }, 'hydrate');
 
-              void this.documentStore.writeSnapshot(Y.encodeStateAsUpdate(this.doc)).catch((error) => {
-                console.error(`[room:${this.name}] Failed to prime collaboration snapshot: ${error.message}`);
-              });
+              const replacementSnapshot = Y.encodeStateAsUpdate(this.doc);
+              if (snapshotNeedsReplacement) {
+                await this.documentStore.writeSnapshot(replacementSnapshot);
+              } else {
+                void this.documentStore.writeSnapshot(replacementSnapshot).catch((error) => {
+                  console.error(`[room:${this.name}] Failed to prime collaboration snapshot: ${error.message}`);
+                });
+              }
             }
           }
 

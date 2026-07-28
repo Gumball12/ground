@@ -30,6 +30,15 @@ const DEFAULT_EMPTY_SCENE_GUARD_MS = 250;
 const DEFAULT_SAVE_THROTTLE_MS = 48;
 const DEFAULT_SYNC_TIMEOUT_MS = 4000;
 
+export const EXCALIDRAW_ROOM_CONNECTION_STATE = Object.freeze({
+  AUTHORITATIVE: 'authoritative',
+  CLOSED: 'closed',
+  CONNECTING: 'connecting',
+  DISCONNECTING: 'disconnecting',
+  FALLBACK_READONLY: 'fallback-readonly',
+  RECONNECTING_READONLY: 'reconnecting-readonly',
+});
+
 function stableJson(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableJson(entry)).join(',')}]`;
@@ -80,6 +89,7 @@ export class ExcalidrawRoomClient {
     filePath = '',
     now = () => Date.now(),
     onCollaboratorsChange = () => {},
+    onConnectionStateChange = () => {},
     onRemoteSceneJson = () => {},
     requestAnimationFrameFn = (callback) => requestAnimationFrame(callback),
     resolveWsBaseUrlFn = resolveWsBaseUrl,
@@ -96,6 +106,7 @@ export class ExcalidrawRoomClient {
     this.filePath = filePath;
     this.now = now;
     this.onCollaboratorsChange = onCollaboratorsChange;
+    this.onConnectionStateChange = onConnectionStateChange;
     this.onRemoteSceneJson = onRemoteSceneJson;
     this.requestAnimationFrameFn = requestAnimationFrameFn;
     this.resolveWsBaseUrlFn = resolveWsBaseUrlFn;
@@ -114,6 +125,7 @@ export class ExcalidrawRoomClient {
     this.awareness = null;
     this.localUser = null;
     this.handleProviderSync = null;
+    this.handleProviderStatus = null;
     this.lastSceneJson = '';
     this.sceneSyncTimer = null;
     this.sceneSyncDueAt = 0;
@@ -128,6 +140,8 @@ export class ExcalidrawRoomClient {
     this.pendingEmptySceneCandidate = null;
     this.canWriteToRoom = false;
     this.waitingForAuthoritativeSync = false;
+    this.connectionState = EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED;
+    this.hasAuthoritativeSync = false;
     this.applyingSharedSnapshotDepth = 0;
     this.suppressStructuredSceneUpdateDepth = 0;
 
@@ -149,7 +163,6 @@ export class ExcalidrawRoomClient {
         return;
       }
 
-      this.unlockRoomWrites();
       this.pendingEmptySceneCandidate = null;
       this.lastSceneJson = JSON.stringify(parseSceneJson(remoteJson));
       this.onRemoteSceneJson(this.lastSceneJson);
@@ -162,6 +175,46 @@ export class ExcalidrawRoomClient {
 
   getLocalUser() {
     return this.localUser;
+  }
+
+  getConnectionState() {
+    return this.connectionState;
+  }
+
+  hasPendingWrites() {
+    return Boolean(this.pendingSceneSyncPayload);
+  }
+
+  setConnectionState(nextState) {
+    if (!Object.values(EXCALIDRAW_ROOM_CONNECTION_STATE).includes(nextState)) {
+      throw new Error(`Unsupported Excalidraw room connection state: ${nextState}`);
+    }
+
+    const previousState = this.connectionState;
+    this.connectionState = nextState;
+    this.canWriteToRoom = nextState === EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE;
+    this.waitingForAuthoritativeSync = (
+      nextState === EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING
+      || nextState === EXCALIDRAW_ROOM_CONNECTION_STATE.FALLBACK_READONLY
+      || nextState === EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY
+    );
+
+    if (!this.canWriteToRoom && this.sceneSyncTimer !== null) {
+      this.clearTimeoutFn(this.sceneSyncTimer);
+      this.sceneSyncTimer = null;
+      this.sceneSyncDueAt = 0;
+    }
+
+    if (previousState === nextState) {
+      return;
+    }
+
+    this.onConnectionStateChange({
+      canWrite: this.canWriteToRoom,
+      hasPendingWrites: this.hasPendingWrites(),
+      previousState,
+      state: nextState,
+    });
   }
 
   getHistoryState() {
@@ -217,10 +270,13 @@ export class ExcalidrawRoomClient {
 
   async connect({ initialUser = null } = {}) {
     this.localUser = initialUser;
+    this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING);
 
     if (!this.filePath) {
       const scene = createEmptyScene();
       this.lastSceneJson = JSON.stringify(scene);
+      this.hasAuthoritativeSync = true;
+      this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE);
       return scene;
     }
 
@@ -245,13 +301,37 @@ export class ExcalidrawRoomClient {
 
     this.handleProviderSync = (isSynced) => {
       if (!isSynced) {
+        this.setConnectionState(
+          this.hasAuthoritativeSync
+            ? EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY
+            : EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING,
+        );
         return;
       }
 
-      this.unlockRoomWrites();
+      this.markAuthoritative();
       this.handleStructuredSceneUpdate();
     };
     this.provider.on('sync', this.handleProviderSync);
+    this.handleProviderStatus = ({ status } = {}) => {
+      if (status === 'connected') {
+        if (this.hasAuthoritativeSync && !this.provider?.synced) {
+          this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY);
+        }
+        return;
+      }
+
+      if (status === 'connecting' || status === 'disconnected') {
+        this.setConnectionState(
+          this.hasAuthoritativeSync
+            ? EXCALIDRAW_ROOM_CONNECTION_STATE.RECONNECTING_READONLY
+            : this.connectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.FALLBACK_READONLY
+              ? EXCALIDRAW_ROOM_CONNECTION_STATE.FALLBACK_READONLY
+              : EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING,
+        );
+      }
+    };
+    this.provider.on('status', this.handleProviderStatus);
 
     const didInitialSyncFinish = await this.waitForSync(this.provider, this.syncTimeoutMs);
 
@@ -272,9 +352,12 @@ export class ExcalidrawRoomClient {
       initialJson = JSON.stringify(createEmptyScene());
     }
 
-    this.waitingForAuthoritativeSync = usedApiFallback && !didInitialSyncFinish;
-    this.canWriteToRoom = !this.waitingForAuthoritativeSync;
     this.lastSceneJson = JSON.stringify(parseSceneJson(initialJson));
+    if (didInitialSyncFinish || this.provider?.synced) {
+      this.markAuthoritative();
+    } else {
+      this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.FALLBACK_READONLY);
+    }
     if (!usedApiFallback && this.canWriteToRoom && !isExcalidrawRoomDocStructured(this.ydoc)) {
       this.ydoc.transact(() => {
         this.replaceStructuredSceneWithinTransaction(this.lastSceneJson);
@@ -375,9 +458,9 @@ export class ExcalidrawRoomClient {
     });
   }
 
-  unlockRoomWrites() {
-    this.waitingForAuthoritativeSync = false;
-    this.canWriteToRoom = true;
+  markAuthoritative() {
+    this.hasAuthoritativeSync = true;
+    this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE);
     if (!this.getStructuredSceneJson() && this.lastSceneJson) {
       this.commitSceneJson(this.lastSceneJson, {
         origin: 'excalidraw-authoritative-seed',
@@ -469,20 +552,25 @@ export class ExcalidrawRoomClient {
   }
 
   scheduleSceneSync(elements, appState, files) {
+    if (!this.canWriteToRoom) {
+      return false;
+    }
+
     this.pendingSceneSyncPayload = {
       appState,
       baseSceneJson: this.lastSceneJson,
       elements,
       files,
     };
-    if (!this.canWriteToRoom) {
-      return;
-    }
-
     this.scheduleSceneSyncFlush();
+    return true;
   }
 
   scheduleSceneSyncFlush() {
+    if (!this.canWriteToRoom) {
+      return false;
+    }
+
     const elapsed = this.now() - this.lastSceneSyncAt;
     const delay = Math.max(0, this.saveThrottleMs - elapsed);
     const dueAt = this.now() + delay;
@@ -499,11 +587,12 @@ export class ExcalidrawRoomClient {
       this.sceneSyncDueAt = 0;
       this.flushSceneSync();
     }, delay);
+    return true;
   }
 
   flushSceneSync() {
-    if (!this.ydoc || !this.pendingSceneSyncPayload) {
-      return;
+    if (!this.canWriteToRoom || !this.ydoc || !this.pendingSceneSyncPayload) {
+      return false;
     }
 
     const {
@@ -544,7 +633,7 @@ export class ExcalidrawRoomClient {
 
     if (!hasChanges) {
       this.pendingEmptySceneCandidate = null;
-      return;
+      return false;
     }
 
     const json = JSON.stringify(sceneData);
@@ -558,6 +647,7 @@ export class ExcalidrawRoomClient {
     if (this.pendingSceneSyncPayload) {
       this.scheduleSceneSyncFlush();
     }
+    return true;
   }
 
   hasRemoteCollaborators() {
@@ -727,6 +817,10 @@ export class ExcalidrawRoomClient {
   commitSceneJson(nextJson, {
     origin = 'excalidraw-room-write',
   } = {}) {
+    if (!this.canWriteToRoom) {
+      return false;
+    }
+
     const normalizedJson = JSON.stringify(parseSceneJson(nextJson));
     if (!this.ydoc) {
       const didChange = normalizedJson !== this.lastSceneJson;
@@ -755,6 +849,7 @@ export class ExcalidrawRoomClient {
 
   disconnect() {
     this.flushSceneSync();
+    this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.DISCONNECTING);
     this.clearTimeoutFn(this.sceneSyncTimer);
     this.sceneSyncTimer = null;
     this.sceneSyncDueAt = 0;
@@ -788,7 +883,11 @@ export class ExcalidrawRoomClient {
     if (this.provider && this.handleProviderSync) {
       this.provider.off('sync', this.handleProviderSync);
     }
+    if (this.provider && this.handleProviderStatus) {
+      this.provider.off('status', this.handleProviderStatus);
+    }
     this.handleProviderSync = null;
+    this.handleProviderStatus = null;
     this.provider?.disconnect();
     this.provider?.destroy();
     this.provider = null;
@@ -800,8 +899,8 @@ export class ExcalidrawRoomClient {
     this.roomFiles = null;
     this.roomAppState = null;
     this.localUser = null;
-    this.canWriteToRoom = false;
-    this.waitingForAuthoritativeSync = false;
+    this.hasAuthoritativeSync = false;
+    this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED);
     this.applyingSharedSnapshotDepth = 0;
     this.suppressStructuredSceneUpdateDepth = 0;
   }

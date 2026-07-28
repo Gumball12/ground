@@ -244,6 +244,72 @@ test('WorkspaceRouteController routes hash changes to empty, git diff, git file 
   ]);
 });
 
+test('WorkspaceRouteController keeps the active Excalidraw route when reconnecting navigation is declined', async () => {
+  const events = [];
+  const fixture = createController({
+    excalidrawEmbed: {
+      async prepareFileDisconnect(filePath, options) {
+        events.push(['prepare-disconnect', filePath, options.timeoutMs]);
+        return false;
+      },
+      setHydrationPaused() {},
+    },
+    navigation: {
+      getHashRoute: () => ({ filePath: 'next.md', type: 'file' }),
+      navigateToFile: (filePath) => events.push(['navigate', filePath]),
+    },
+    workspaceCoordinator: {
+      cleanupSession() {},
+      getSession: () => null,
+      isExcalidrawFile: (filePath) => filePath.endsWith('.excalidraw'),
+      openFile: async (filePath) => events.push(['open-file', filePath]),
+      stateStore: {
+        get: (key) => (key === 'currentFilePath' ? 'active.excalidraw' : null),
+      },
+    },
+  });
+
+  await fixture.controller.handleHashChange();
+
+  assert.deepEqual(events, [
+    ['prepare-disconnect', 'active.excalidraw', 10000],
+    ['navigate', 'active.excalidraw'],
+  ]);
+});
+
+test('WorkspaceRouteController guards non-file routes before leaving an active Excalidraw room', async () => {
+  const events = [];
+  const fixture = createController({
+    excalidrawEmbed: {
+      async prepareFileDisconnect(filePath) {
+        events.push(['prepare-disconnect', filePath]);
+        return false;
+      },
+      setHydrationPaused() {},
+    },
+    navigation: {
+      getHashRoute: () => ({ type: 'git-history' }),
+      navigateToFile: (filePath) => events.push(['navigate', filePath]),
+    },
+    workspaceCoordinator: {
+      cleanupSession() {},
+      getSession: () => null,
+      isExcalidrawFile: (filePath) => filePath.endsWith('.excalidraw'),
+      openFile() {},
+      stateStore: {
+        get: (key) => (key === 'currentFilePath' ? 'active.excalidraw' : null),
+      },
+    },
+  });
+
+  await fixture.controller.handleHashChange();
+
+  assert.deepEqual(events, [
+    ['prepare-disconnect', 'active.excalidraw'],
+    ['navigate', 'active.excalidraw'],
+  ]);
+});
+
 test('WorkspaceRouteController resets editor state when showing the empty workspace', () => {
   const { controller, currentFilePath, events, previewContent, session, sessionLoadToken } = createController();
 

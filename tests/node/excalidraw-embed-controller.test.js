@@ -141,6 +141,79 @@ test('persists follow intent even before the embed entry exists', async () => {
   assert.equal(controller.followedPeerIdsByFilePath.get('sample-excalidraw.excalidraw'), 'peer-99');
 });
 
+test('prepareFileDisconnect requires explicit discard after reconnect timeout', async () => {
+  const originalWindow = globalThis.window;
+  const timers = [];
+  const messages = [];
+  const entry = {
+    filePath: 'reconnecting.excalidraw',
+    iframe: { contentWindow: {} },
+  };
+
+  globalThis.window = {
+    clearTimeout() {},
+    confirm: () => true,
+    setTimeout(callback) {
+      timers.push(callback);
+      return timers.length;
+    },
+  };
+
+  try {
+    const controller = {
+      disconnectRequestCounter: 0,
+      pendingDisconnectRequests: new Map(),
+      _findEntryByFilePath: () => entry,
+      _postMessageToEntry: (_entry, payload) => messages.push(payload),
+    };
+
+    const result = ExcalidrawEmbedController.prototype.prepareFileDisconnect.call(
+      controller,
+      entry.filePath,
+      { timeoutMs: 25 },
+    );
+    timers.shift()();
+    timers.shift()();
+
+    assert.equal(await result, true);
+    assert.deepEqual(messages.map((message) => message.type), [
+      'prepare-disconnect',
+      'discard-and-disconnect',
+    ]);
+    assert.equal(controller.pendingDisconnectRequests.size, 0);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('iframe URLs forward the opt-in Excalidraw diagnostic flag', () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {
+    __COLLABMD_CONFIG__: { basePath: '' },
+    location: {
+      origin: 'http://localhost:4173',
+      search: '?excalidrawDebug=1',
+    },
+  };
+
+  try {
+    const controller = {
+      getLocalUser: () => null,
+      getTheme: () => 'dark',
+      _isFilePreviewEntry: ExcalidrawEmbedController.prototype._isFilePreviewEntry,
+    };
+    const iframeUrl = ExcalidrawEmbedController.prototype._buildIframeUrl.call(controller, {
+      filePath: 'debug.excalidraw',
+      instanceId: '1',
+      key: 'debug.excalidraw#file-preview',
+    });
+
+    assert.equal(iframeUrl.searchParams.get('excalidrawDebug'), '1');
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
 test('detachForCommit exits maximized mode before hiding overlay roots', () => {
   let exitCalls = 0;
   const controller = {
