@@ -10,9 +10,7 @@ const sharedGlobals = {
 export default [
   {
     ignores: [
-      '.codex/**',
       'dist/**',
-      'public/assets/**',
       'docs/assets/**',
       'node_modules/**',
       'packaging/homebrew-tap/**',

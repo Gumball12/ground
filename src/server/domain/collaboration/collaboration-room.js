@@ -6,7 +6,6 @@ import * as decoding from 'lib0/decoding';
 
 import { MSG_AWARENESS, MSG_SYNC } from './protocol.js';
 import { CollaborationDocumentStore } from './collaboration-document-store.js';
-import { RoomClientStateStore } from './room-client-state-store.js';
 import { RoomPersistenceController } from './room-persistence-controller.js';
 import { logPerfEvent } from '../../config/perf-logging.js';
 import { populateCommentThreads, serializeCommentThreads } from '../../../domain/comment-threads.js';
@@ -200,7 +199,7 @@ export class CollaborationRoom {
     this.doc = new Y.Doc({ gc: true });
     this.awareness = new awarenessProtocol.Awareness(this.doc);
     this.clients = new Set();
-    this.clientStates = new RoomClientStateStore();
+    this.clientStates = new WeakMap();
     this.hydrated = false;
     this.hydratePromise = null;
     this.deleted = false;
@@ -433,7 +432,7 @@ export class CollaborationRoom {
   }
 
   getClientState(ws) {
-    return this.clientStates.get(ws);
+    return this.clientStates.get(ws) ?? null;
   }
 
   ensureClientState(ws) {
@@ -444,11 +443,17 @@ export class CollaborationRoom {
       return existingState;
     }
 
-    return this.clientStates.register(ws);
+    const state = {
+      backpressureCloseIssued: false,
+      controlledClientIds: new Set(),
+      transportCloseIssued: false,
+    };
+    this.clientStates.set(ws, state);
+    return state;
   }
 
   deleteClientState(ws) {
-    this.clientStates.unregister(ws);
+    this.clientStates.delete(ws);
   }
 
   broadcastToClients(message, { excludeClient = null, failureLabel = 'frame' } = {}) {

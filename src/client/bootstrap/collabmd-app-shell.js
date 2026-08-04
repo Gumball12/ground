@@ -10,7 +10,11 @@ import { commentsFeature } from '../application/app-shell/comments-feature.js';
 import { exportFeature } from '../application/app-shell/export-feature.js';
 import { gitFeature } from '../application/app-shell/git-feature.js';
 import { presenceFeature } from '../application/app-shell/presence-feature.js';
-import { uiFeature } from '../application/app-shell/ui-feature.js';
+import { uiFeatureIdentityMethods } from '../application/app-shell/ui-feature-identity.js';
+import { uiFeatureShellMethods } from '../application/app-shell/ui-feature-shell.js';
+import { uiFeatureSidebarMethods } from '../application/app-shell/ui-feature-sidebar.js';
+import { uiFeatureTabActivityMethods } from '../application/app-shell/ui-feature-tab-activity.js';
+import { uiFeatureToolbarMethods } from '../application/app-shell/ui-feature-toolbar.js';
 import { workspaceFeature } from '../application/app-shell/workspace-feature.js';
 import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/lobby-presence.js';
 import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
@@ -52,7 +56,13 @@ const APP_SHELL_FEATURES = [
   gitFeature,
   lazyControllerFeature,
   presenceFeature,
-  uiFeature,
+  {
+    ...uiFeatureShellMethods,
+    ...uiFeatureSidebarMethods,
+    ...uiFeatureIdentityMethods,
+    ...uiFeatureToolbarMethods,
+    ...uiFeatureTabActivityMethods,
+  },
   workspaceFeature,
 ];
 

@@ -1,3 +1,20 @@
+function readStorage(storage, key, fallback) {
+  try {
+    const value = storage.getItem(key);
+    return value == null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(storage, key, value) {
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 export class BrowserPreferencesPort {
   constructor({
     chatNotificationsKey,
@@ -14,66 +31,34 @@ export class BrowserPreferencesPort {
   }
 
   getUserName() {
-    try {
-      return this.storage.getItem(this.userNameKey) || '';
-    } catch {
-      return '';
-    }
+    return readStorage(this.storage, this.userNameKey, '') || '';
   }
 
   setUserName(name) {
-    try {
-      this.storage.setItem(this.userNameKey, name);
-    } catch {
-      // Ignore storage errors.
-    }
+    writeStorage(this.storage, this.userNameKey, name);
   }
 
   getLineWrappingEnabled() {
-    try {
-      return this.storage.getItem(this.lineWrappingKey) !== 'false';
-    } catch {
-      return true;
-    }
+    return readStorage(this.storage, this.lineWrappingKey, null) !== 'false';
   }
 
   setLineWrappingEnabled(enabled) {
-    try {
-      this.storage.setItem(this.lineWrappingKey, String(enabled));
-    } catch {
-      // Ignore storage errors.
-    }
+    writeStorage(this.storage, this.lineWrappingKey, String(enabled));
   }
 
   getSidebarVisible() {
-    try {
-      return this.storage.getItem(this.sidebarVisibleKey);
-    } catch {
-      return null;
-    }
+    return readStorage(this.storage, this.sidebarVisibleKey, null);
   }
 
   setSidebarVisible(showSidebar) {
-    try {
-      this.storage.setItem(this.sidebarVisibleKey, showSidebar ? 'true' : 'false');
-    } catch {
-      // Ignore storage errors.
-    }
+    writeStorage(this.storage, this.sidebarVisibleKey, showSidebar ? 'true' : 'false');
   }
 
   getChatNotificationsEnabled() {
-    try {
-      return this.storage.getItem(this.chatNotificationsKey) === 'true';
-    } catch {
-      return false;
-    }
+    return readStorage(this.storage, this.chatNotificationsKey, null) === 'true';
   }
 
   setChatNotificationsEnabled(enabled) {
-    try {
-      this.storage.setItem(this.chatNotificationsKey, String(enabled));
-    } catch {
-      // Ignore storage errors.
-    }
+    writeStorage(this.storage, this.chatNotificationsKey, String(enabled));
   }
 }

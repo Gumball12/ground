@@ -1,4 +1,6 @@
-import { normalizeUserName } from './excalidraw-scene.js';
+import { generatePeerId, normalizeUserName } from './room.js';
+
+export { generatePeerId };
 
 export const USER_COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
@@ -14,12 +16,6 @@ export function hashString(value) {
   }
 
   return Math.abs(hash);
-}
-
-export function generatePeerId() {
-  const bytes = new Uint8Array(8);
-  globalThis.crypto?.getRandomValues?.(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export function pickFallbackColor(seed) {

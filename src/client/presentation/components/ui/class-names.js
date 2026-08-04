@@ -5,3 +5,7 @@ export function classNames(...parts) {
       : part || []
   )).join(' ');
 }
+
+export function inputClassNames(options = {}) {
+  return classNames('ui-input', options.extra ?? []);
+}

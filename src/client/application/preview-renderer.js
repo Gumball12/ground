@@ -66,7 +66,7 @@ export class PreviewRenderer {
         }
 
         event.preventDefault();
-        this.enqueueMermaidShell(shell, { prioritize: true });
+        this.mermaidHydrator.enqueueShell(shell, { prioritize: true });
         return;
       }
 
@@ -78,7 +78,7 @@ export class PreviewRenderer {
         }
 
         event.preventDefault();
-        this.enqueuePlantUmlShell(shell, { prioritize: true });
+        this.plantUmlHydrator.enqueueShell(shell, { prioritize: true });
       }
     };
 
@@ -157,12 +157,12 @@ export class PreviewRenderer {
   }
 
   beginDocumentLoad() {
-    this.cancelScheduledRender();
-    this.cancelMermaidHydration();
-    this.cancelPlantUmlHydration();
+    this.renderScheduler.cancel();
+    this.mermaidHydrator.cancelHydration();
+    this.plantUmlHydrator.cancelHydration();
     this.mermaidHydrator.clearPreservedShells();
     this.plantUmlHydrator.clearPreservedShells();
-    this.clearActivePlantUmlShell();
+    this.diagramChrome.clearActiveShell();
     this.onBeforeRenderCommit?.(this.previewElement);
     this.pendingRenderVersion += 1;
     this.activeRenderVersion = this.pendingRenderVersion;
@@ -171,7 +171,7 @@ export class PreviewRenderer {
     this.isLargeDocument = false;
     this.frontmatterCollapsed = false;
     if (this.renderExecutor.hasPendingJob()) {
-      this.resetWorker('Document changed');
+      this.renderExecutor.reset('Document changed');
     }
     const renderHost = this.ensureRenderHost();
     this.normalizePreviewChildren(renderHost);
@@ -197,17 +197,9 @@ export class PreviewRenderer {
     this.mermaidHydrator.applyTheme(theme);
   }
 
-  configureMermaid(mermaid) {
-    this.mermaidHydrator.configureMermaid(mermaid);
-  }
-
-  ensureMermaid() {
-    return this.mermaidHydrator.ensureMermaid();
-  }
-
   queueRender() {
     const markdownText = this.getContent();
-    this.cancelScheduledRender();
+    this.renderScheduler.cancel();
     this.pendingRenderVersion += 1;
     const scheduledVersion = this.pendingRenderVersion;
     this.renderScheduler.queue({
@@ -225,7 +217,10 @@ export class PreviewRenderer {
     }
 
     try {
-      const result = await this.compilePreview(markdownText, renderVersion);
+      const result = await this.renderExecutor.compile(markdownText, renderVersion, {
+        frontmatterCollapsed: this.frontmatterCollapsed,
+        frontmatterInteractive: true,
+      });
       if (renderVersion !== this.pendingRenderVersion) {
         return;
       }
@@ -256,31 +251,11 @@ export class PreviewRenderer {
     }
   }
 
-  cancelScheduledRender() {
-    this.renderScheduler.cancel();
-  }
-
-  cancelMermaidHydration() {
-    this.mermaidHydrator.cancelHydration();
-  }
-
-  cancelPlantUmlHydration() {
-    this.plantUmlHydrator.cancelHydration();
-  }
-
-  clearActivePlantUmlShell() {
-    this.diagramChrome.clearActiveShell();
-  }
-
   scheduleActiveMermaidRefit() {
     this.diagramChrome.scheduleActiveRefit({
       kind: 'mermaid',
       root: this.previewElement,
     });
-  }
-
-  syncActivePlantUmlShell() {
-    return this.diagramChrome.syncActiveShell();
   }
 
   scheduleActivePlantUmlRefit() {
@@ -306,19 +281,8 @@ export class PreviewRenderer {
     this.updateHydrationPhase();
   }
 
-  resetWorker(reason, { disable = false } = {}) {
-    this.renderExecutor.reset(reason, { disable });
-  }
-
   scheduleWorkerPrewarm({ timeout = IDLE_RENDER_TIMEOUT_MS } = {}) {
     this.renderExecutor.schedulePrewarm({ timeout });
-  }
-
-  async compilePreview(markdownText, renderVersion) {
-    return this.renderExecutor.compile(markdownText, renderVersion, {
-      frontmatterCollapsed: this.frontmatterCollapsed,
-      frontmatterInteractive: true,
-    });
   }
 
   commitBaseRender({ html, stats }, renderVersion) {
@@ -327,12 +291,12 @@ export class PreviewRenderer {
     this.currentStats = stats;
     this.isLargeDocument = isLargeDocumentStats(stats);
 
-    this.cancelMermaidHydration();
-    this.cancelPlantUmlHydration();
+    this.mermaidHydrator.cancelHydration();
+    this.plantUmlHydrator.cancelHydration();
     document.body.classList.remove('mermaid-maximized-open');
     document.body.classList.remove('plantuml-maximized-open');
-    this.preserveHydratedMermaidsForCommit();
-    this.preserveHydratedPlantUmlsForCommit();
+    this.mermaidHydrator.preserveHydratedShellsForCommit();
+    this.plantUmlHydrator.preserveHydratedShellsForCommit();
 
     this.onBeforeRenderCommit?.(this.previewElement);
     const renderHost = this.ensureRenderHost();
@@ -341,8 +305,8 @@ export class PreviewRenderer {
       renderHost.innerHTML = html;
     }
     this.applyFrontmatterState();
-    this.reconcileHydratedMermaids();
-    this.reconcileHydratedPlantUmls();
+    this.mermaidHydrator.reconcileHydratedShells();
+    this.plantUmlHydrator.reconcileHydratedShells();
     this.setPhase('base');
 
     this.outlineController.refresh();
@@ -352,8 +316,8 @@ export class PreviewRenderer {
       renderVersion,
     });
 
-    const mermaidShellCount = this.setupMermaidHydration(renderVersion);
-    const plantUmlShellCount = this.setupPlantUmlHydration(renderVersion);
+    const mermaidShellCount = this.mermaidHydrator.setupHydration(renderVersion);
+    const plantUmlShellCount = this.plantUmlHydrator.setupHydration(renderVersion);
 
     if (mermaidShellCount === 0 && plantUmlShellCount === 0) {
       this.notifyReady();
@@ -393,82 +357,6 @@ export class PreviewRenderer {
     });
   }
 
-  preserveHydratedMermaidsForCommit() {
-    this.mermaidHydrator.preserveHydratedShellsForCommit();
-  }
-
-  preserveHydratedPlantUmlsForCommit() {
-    this.plantUmlHydrator.preserveHydratedShellsForCommit();
-  }
-
-  reconcileHydratedMermaids() {
-    this.mermaidHydrator.reconcileHydratedShells();
-  }
-
-  reconcileHydratedPlantUmls() {
-    this.plantUmlHydrator.reconcileHydratedShells();
-  }
-
-  syncPreservedMermaidShell(preservedShell, nextShell) {
-    this.mermaidHydrator.syncPreservedShell(preservedShell, nextShell);
-  }
-
-  syncPreservedPlantUmlShell(preservedShell, nextShell) {
-    this.plantUmlHydrator.syncPreservedShell(preservedShell, nextShell);
-  }
-
-  setupMermaidHydration(renderVersion) {
-    return this.mermaidHydrator.setupHydration(renderVersion);
-  }
-
-  hydrateVisibleMermaids() {
-    this.mermaidHydrator.hydrateVisibleShells();
-  }
-
-  enqueueMermaidShell(shell, { prioritize = false } = {}) {
-    this.mermaidHydrator.enqueueShell(shell, { prioritize });
-  }
-
-  scheduleMermaidHydration() {
-    this.mermaidHydrator.scheduleHydration();
-  }
-
-  async flushMermaidHydrationQueue() {
-    await this.mermaidHydrator.flushHydrationQueue();
-  }
-
-  async hydrateMermaidShell(shell, mermaid) {
-    await this.mermaidHydrator.hydrateShell(shell, mermaid);
-  }
-
-  resetHydratedMermaids() {
-    this.mermaidHydrator.resetHydratedShells();
-  }
-
-  setupPlantUmlHydration(renderVersion) {
-    return this.plantUmlHydrator.setupHydration(renderVersion);
-  }
-
-  hydrateVisiblePlantUmls() {
-    this.plantUmlHydrator.hydrateVisibleShells();
-  }
-
-  enqueuePlantUmlShell(shell, { prioritize = false } = {}) {
-    this.plantUmlHydrator.enqueueShell(shell, { prioritize });
-  }
-
-  schedulePlantUmlHydration() {
-    this.plantUmlHydrator.scheduleHydration();
-  }
-
-  async flushPlantUmlHydrationQueue() {
-    await this.plantUmlHydrator.flushHydrationQueue();
-  }
-
-  async hydratePlantUmlShell(shell) {
-    await this.plantUmlHydrator.hydrateShell(shell);
-  }
-
   updateHydrationPhase() {
     if (this.hydrationPaused) {
       if (this.mermaidHydrator.hasPendingWork() || this.plantUmlHydrator.hasPendingWork()) {
@@ -501,37 +389,5 @@ export class PreviewRenderer {
       isLargeDocument: this.isLargeDocument,
       stats: this.currentStats,
     });
-  }
-
-  async fetchPlantUmlSvg(source) {
-    return this.plantUmlHydrator.fetchSvg(source);
-  }
-
-  async fetchPlantUmlSource(filePath) {
-    return this.plantUmlHydrator.fetchSource(filePath);
-  }
-
-  async fetchMermaidSource(filePath) {
-    return this.mermaidHydrator.fetchSource(filePath);
-  }
-
-  resetPlantUmlShell(shell, { clearCache = false, message = 'Renders server-side when visible' } = {}) {
-    this.plantUmlHydrator.resetShell(shell, { clearCache, message });
-  }
-
-  enhancePlantUmlDiagram(shell, svgMarkup) {
-    this.plantUmlHydrator.enhanceDiagram(shell, svgMarkup);
-  }
-
-  enhanceMermaidDiagram(shell, renderedDiagram) {
-    this.mermaidHydrator.enhanceDiagram(shell, renderedDiagram);
-  }
-
-  createMermaidZoomButton(label, ariaLabel) {
-    return this.mermaidHydrator.createZoomButton(label, ariaLabel);
-  }
-
-  createPlantUmlToolButton(label, ariaLabel) {
-    return this.plantUmlHydrator.createToolButton(label, ariaLabel);
   }
 }

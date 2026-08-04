@@ -8,19 +8,15 @@ export class BrowserNotificationPort {
   }
 
   getPermission() {
-    if (typeof this.NotificationImpl !== 'function') {
-      return 'unsupported';
-    }
-
-    return this.NotificationImpl.permission;
+    return typeof this.NotificationImpl === 'function'
+      ? this.NotificationImpl.permission
+      : 'unsupported';
   }
 
   async requestPermission() {
-    if (typeof this.NotificationImpl !== 'function') {
-      return 'unsupported';
-    }
-
-    return this.NotificationImpl.requestPermission();
+    return typeof this.NotificationImpl === 'function'
+      ? this.NotificationImpl.requestPermission()
+      : 'unsupported';
   }
 
   createNotification({ body, onClick, tag, title }) {

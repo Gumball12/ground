@@ -2,9 +2,10 @@ import {
   COMMENT_BODY_MAX_LENGTH,
   normalizeCommentQuoteForComparison,
 } from '../../../domain/comment-threads.js';
+import { clamp } from '../../domain/vault-utils.js';
 import { renderCommentMarkdownToHtml } from '../comment-markdown-renderer.js';
 
-export { COMMENT_BODY_MAX_LENGTH };
+export { COMMENT_BODY_MAX_LENGTH, clamp };
 
 export const COMMENT_CARD_OFFSET = 14;
 export const COMMENT_CARD_WIDTH = 520;
@@ -17,10 +18,6 @@ export const COMMENT_PREVIEW_RAIL_MIN_WIDTH = 400;
 export const COMMENT_PREVIEW_RAIL_BREAKPOINT = 769;
 export const COMMENT_REACTION_PRESET_EMOJIS = Object.freeze(['👍', '❤️', '🎉', '👀', '🚀']);
 export const COMMENT_REACTION_MORE_EMOJIS = Object.freeze(['😂', '🔥', '✅', '🙏', '💡', '🤔', '👏', '😄', '🎯', '🙌']);
-
-export function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
 
 export function sortThreads(threads = []) {
   return [...threads].sort((left, right) => (

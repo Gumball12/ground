@@ -11,7 +11,6 @@ import {
   ensureVaultExtension,
   normalizeVaultPathInput,
 } from '../domain/vault-paths.js';
-import { createWorkspaceRequestId } from '../domain/workspace-request-id.js';
 import { buttonClassNames } from './components/ui/button.js';
 import { CreateMenuPresenter } from './create-menu-presenter.js';
 
@@ -273,7 +272,7 @@ export class FileActionController {
       return null;
     }
 
-    const requestId = createWorkspaceRequestId();
+    const requestId = crypto.randomUUID();
     this.pendingWorkspaceRequestIds.add(requestId);
     return requestId;
   }

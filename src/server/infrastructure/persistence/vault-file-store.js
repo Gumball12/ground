@@ -13,7 +13,6 @@ import {
 } from '../../../domain/file-kind.js';
 import { createCommentOverview } from '../../domain/comment-overview.js';
 import { scanWorkspaceState as scanWorkspaceStateFromAdapter } from '../../domain/workspace-state.js';
-import { getEditableVaultContentKind } from './vault-content-adapter.js';
 import {
   INVALID_VAULT_FILE_PATH_ERROR,
   isIgnoredVaultEntry,
@@ -24,6 +23,22 @@ import {
   sanitizeVaultPath,
   toVaultRelativePath,
 } from './path-utils.js';
+
+const EDITABLE_VAULT_CONTENT_PATH_ERRORS = {
+  base: 'Invalid file path — must end in .base',
+  drawio: 'Invalid file path — must end in .drawio',
+  excalidraw: 'Invalid file path — must end in .excalidraw',
+  markdown: 'Invalid file path',
+  mermaid: 'Invalid file path — must end in .mmd or .mermaid',
+  plantuml: 'Invalid file path — must end in .puml or .plantuml',
+};
+
+function getEditableVaultContentKind(filePath) {
+  const kind = getVaultFileKind(filePath);
+  return EDITABLE_VAULT_CONTENT_PATH_ERRORS[kind]
+    ? { invalidPathError: EDITABLE_VAULT_CONTENT_PATH_ERRORS[kind], kind }
+    : null;
+}
 import { SidecarStore } from './sidecar-store.js';
 import { createWorkspaceStateFileSystemAdapter } from '../workspace/workspace-state-file-system-adapter.js';
 

@@ -22,6 +22,7 @@ import {
   applySceneUpdateWithFiles,
 } from './domain/excalidraw-api-scene-sync.js';
 import {
+  normalizeDocumentMode,
   normalizeScene,
   parseSceneJson,
   sceneToInitialData,
@@ -29,9 +30,6 @@ import {
 import {
   buildReconciledExcalidrawSceneUpdate,
 } from './domain/excalidraw-scene-reconcile.js';
-import {
-  normalizeDocumentMode,
-} from './domain/excalidraw-document-switch.js';
 import {
   createExcalidrawDiagnosticRing,
   summarizeExcalidrawScene,

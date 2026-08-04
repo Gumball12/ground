@@ -14,9 +14,9 @@ function pickRandom(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function generatePeerId() {
+export function generatePeerId() {
   const array = new Uint8Array(8);
-  (globalThis.crypto ?? {}).getRandomValues?.(array);
+  globalThis.crypto?.getRandomValues?.(array);
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 

@@ -1,19 +1,3 @@
-export const MERMAID_ZOOM = {
-  default: 1,
-  animationDurationMs: 160,
-  max: 3,
-  min: 0.5,
-  step: 0.1,
-};
-
-export const PLANTUML_ZOOM = {
-  default: 1,
-  animationDurationMs: 160,
-  max: 3,
-  min: 0.1,
-  step: 0.1,
-};
-
 export const IDLE_RENDER_TIMEOUT_MS = 500;
 export const MERMAID_BATCH_SIZE = 2;
 export const PLANTUML_BATCH_SIZE = 2;

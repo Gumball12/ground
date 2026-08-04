@@ -5,10 +5,10 @@ import {
   buildStoredScene,
   createEmptyScene,
   normalizeScene,
-  normalizeUserName,
   parseSceneJson,
   sceneToInitialData,
 } from '../../src/client/domain/excalidraw-scene.js';
+import { normalizeUserName } from '../../src/client/domain/room.js';
 
 test('normalizeUserName trims whitespace and caps the visible length', () => {
   assert.equal(normalizeUserName('  Andes   Setiawan  '), 'Andes Setiawan');

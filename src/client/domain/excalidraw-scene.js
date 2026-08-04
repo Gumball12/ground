@@ -1,6 +1,5 @@
-export function normalizeUserName(value) {
-  const normalized = String(value || '').trim().replace(/\s+/g, ' ');
-  return normalized ? normalized.slice(0, 24) : null;
+export function normalizeDocumentMode(mode) {
+  return mode === 'preview' ? 'preview' : 'edit';
 }
 
 export function createEmptyScene() {

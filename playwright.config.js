@@ -1,24 +1,5 @@
 import { defineConfig } from '@playwright/test';
 
-const crossBrowserDiagramPreviewProjects = process.env.PLAYWRIGHT_DIAGRAM_PREVIEW_CROSS_BROWSER === '1'
-  ? [
-    {
-      name: 'firefox-diagram-preview',
-      testMatch: /diagram-preview\.spec\.js/,
-      use: {
-        browserName: 'firefox',
-      },
-    },
-    {
-      name: 'webkit-diagram-preview',
-      testMatch: /diagram-preview\.spec\.js/,
-      use: {
-        browserName: 'webkit',
-      },
-    },
-  ]
-  : [];
-
 const crossBrowserExcalidrawReliabilityProjects = process.env.PLAYWRIGHT_EXCALIDRAW_RELIABILITY_CROSS_BROWSER === '1'
   ? [
     {
@@ -62,7 +43,6 @@ export default defineConfig({
         browserName: 'chromium',
       },
     },
-    ...crossBrowserDiagramPreviewProjects,
     ...crossBrowserExcalidrawReliabilityProjects,
   ],
 });

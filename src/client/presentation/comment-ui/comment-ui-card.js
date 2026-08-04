@@ -13,7 +13,7 @@ import {
   isReactionPickerOpen,
 } from './comment-ui-shared.js';
 import { buttonClassNames } from '../components/ui/button.js';
-import { inputClassNames } from '../components/ui/input.js';
+import { inputClassNames } from '../components/ui/class-names.js';
 
 /** @this {any} */
 function ensureCardRoot() {

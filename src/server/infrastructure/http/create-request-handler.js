@@ -1,9 +1,12 @@
 import { createAuthApiHandler } from './create-auth-api-handler.js';
-import { createGitApiHandler } from './create-git-api-handler.js';
+import { createGitApiCommandHandler } from './create-git-api-command-handler.js';
+import { createGitApiQueryHandler } from './create-git-api-query-handler.js';
 import { createHostedApiHandler } from './create-hosted-api-handler.js';
 import { createEsmProxyHandler } from './create-esm-proxy-handler.js';
+import { createPlantUmlApiHandler } from './create-plantuml-api-handler.js';
 import { createStaticHandler } from './create-static-handler.js';
-import { createVaultApiHandler } from './create-vault-api-handler.js';
+import { createVaultApiCommandHandler } from './create-vault-api-command-handler.js';
+import { createVaultApiQueryHandler } from './create-vault-api-query-handler.js';
 import { parseJsonBody } from './request-body.js';
 import {
   applyCorsHeaders,
@@ -61,7 +64,8 @@ export function createRequestHandler(
     githubSetupFlow,
     hostedWorkspaceService,
   });
-  const handleGitApi = createGitApiHandler({
+  const handleGitApiQuery = createGitApiQueryHandler({ gitService });
+  const handleGitApiCommand = createGitApiCommandHandler({
     authService,
     backlinkIndex,
     gitService,
@@ -69,17 +73,22 @@ export function createRequestHandler(
     vaultFileStore,
     workspaceMutationCoordinator,
   });
-  const handleVaultApi = createVaultApiHandler({
+  const handleVaultApiQuery = createVaultApiQueryHandler({
     baseQueryService,
     backlinkIndex,
     config,
-    docxExporter,
-    plantUmlRenderer,
-    roomRegistry,
     searchService,
     vaultFileStore,
     workspaceMutationCoordinator,
   });
+  const handleVaultApiCommand = createVaultApiCommandHandler({
+    backlinkIndex,
+    docxExporter,
+    roomRegistry,
+    vaultFileStore,
+    workspaceMutationCoordinator,
+  });
+  const handlePlantUmlApi = createPlantUmlApiHandler({ plantUmlRenderer });
 
   function handleBasePathRedirect(req, res, originalRequestUrl) {
     if (
@@ -209,11 +218,30 @@ export function createRequestHandler(
       }
     }
 
-    if (await handleVaultApi(req, res, requestUrl)) {
-      return;
+    if (requestUrl.pathname.startsWith('/api/')) {
+      if (await handleVaultApiQuery(req, res, requestUrl)) {
+        return;
+      }
+      if (await handleVaultApiCommand(req, res, requestUrl)) {
+        return;
+      }
+      if (await handlePlantUmlApi(req, res, requestUrl)) {
+        return;
+      }
     }
 
-    if (await handleGitApi(req, res, requestUrl)) {
+    if (requestUrl.pathname.startsWith('/api/git')) {
+      if (!gitService) {
+        jsonResponse(req, res, 503, { error: 'Git integration is not configured' });
+        return;
+      }
+      if (await handleGitApiQuery(req, res, requestUrl)) {
+        return;
+      }
+      if (await handleGitApiCommand(req, res, requestUrl)) {
+        return;
+      }
+      jsonResponse(req, res, 404, { error: 'Git API endpoint not found' });
       return;
     }
 

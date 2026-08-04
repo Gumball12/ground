@@ -111,4 +111,3 @@ export class AppVersionMonitor {
   }
 }
 
-export { extractBuildId };

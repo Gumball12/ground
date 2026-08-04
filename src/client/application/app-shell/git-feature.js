@@ -1,5 +1,4 @@
 import { createWorkspaceChange } from '../../../domain/workspace-change.js';
-import { createWorkspaceRequestId } from '../../domain/workspace-request-id.js';
 
 function normalizeWorkspaceChange(workspaceChange = {}) {
   return createWorkspaceChange(workspaceChange);
@@ -309,7 +308,7 @@ export const gitFeature = {
   },
 
   async postGitAction(actionName, payload) {
-    const requestId = createWorkspaceRequestId();
+    const requestId = crypto.randomUUID();
     this.pendingWorkspaceRequestIds?.add(requestId);
     try {
       switch (actionName) {

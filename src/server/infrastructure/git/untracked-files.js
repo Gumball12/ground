@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { mapWithConcurrency } from './concurrency.js';
+import { mapWithConcurrency } from '../../shared/async-utils.js';
 import { createEmptyStats } from './responses.js';
 import { splitContentLines } from './parsers.js';
 
