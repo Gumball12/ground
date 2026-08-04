@@ -1,19 +1,10 @@
 import { escapeHtml } from '../domain/vault-utils.js';
+import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
 import { segmentedButtonClassNames, segmentedControlClassNames } from './components/ui/segmented-control.js';
 
 const HISTORY_PAGE_SIZE = 30;
 const REFRESH_INTERVAL_MS = 10_000;
-
-function getPathDir(pathValue) {
-  const parts = String(pathValue ?? '').split('/');
-  parts.pop();
-  return parts.join('/');
-}
-
-function getPathLeaf(pathValue) {
-  return String(pathValue ?? '').split('/').pop() || '';
-}
 
 function fileIconSvg() {
   return '<svg class="git-file-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
@@ -728,8 +719,8 @@ export class GitPanelController {
     const isActive = this.selection.source === 'workspace'
       && this.selection.path === file.path
       && this.selection.scope === file.scope;
-    const dirPath = getPathDir(file.path);
-    const displayName = getPathLeaf(file.path);
+    const dirPath = getVaultPathParent(file.path);
+    const displayName = getVaultPathLeaf(file.path);
     const fullPath = String(file.path || '');
     const statusClass = badgeClass(file.status);
     const stageAction = file.scope === 'staged'

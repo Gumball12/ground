@@ -100,7 +100,7 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       return this.loader;
     }
 
-    this.loader = import('../mermaid-runtime.js')
+    this.loader = import('mermaid')
       .then((module) => {
         const mermaid = module?.default;
         if (!mermaid) {

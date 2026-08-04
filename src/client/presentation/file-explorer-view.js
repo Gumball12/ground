@@ -3,21 +3,8 @@ import {
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
 import { escapeHtml } from '../domain/vault-utils.js';
+import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
-
-function getPathLeaf(path) {
-  return String(path ?? '')
-    .replace(/\/+$/u, '')
-    .split('/')
-    .filter(Boolean)
-    .pop() || '';
-}
-
-function getParentPath(pathValue) {
-  const normalized = String(pathValue ?? '').replace(/\/+$/u, '');
-  const separatorIndex = normalized.lastIndexOf('/');
-  return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : '';
-}
 
 function findNodeByPath(nodes = [], pathValue = '') {
   for (const node of nodes) {
@@ -174,7 +161,7 @@ export class FileExplorerView {
     }
 
     const affectedParentPaths = Array.from(new Set(
-      changedPaths.map((pathValue) => getParentPath(pathValue)),
+      changedPaths.map((pathValue) => getVaultPathParent(pathValue)),
     ))
       .sort((left, right) => left.split('/').length - right.split('/').length)
       .filter((pathValue, index, values) => (
@@ -232,7 +219,7 @@ export class FileExplorerView {
         depth: 0,
         filePath: match.path,
         fileType: match.type || (getVaultTreeNodeType(match.path) ?? 'file'),
-        name: match.name || getPathLeaf(match.path),
+        name: match.name || getVaultPathLeaf(match.path),
       }));
     }
     this.treeContainer.appendChild(fragment);
@@ -348,7 +335,7 @@ export class FileExplorerView {
     button.dataset.entryType = 'directory';
     button.innerHTML = `
       <svg class="file-tree-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <span class="file-tree-name">${escapeHtml(node.name || getPathLeaf(node.path))}</span>
+      <span class="file-tree-name">${escapeHtml(node.name || getVaultPathLeaf(node.path))}</span>
     `;
 
     button.addEventListener('click', (event) => {

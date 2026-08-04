@@ -3,6 +3,7 @@ import {
   isPlantUmlFilePath,
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
+import { getVaultPathLeaf } from '../domain/vault-paths.js';
 import { sanitizeSvgMarkup, serializeSvgElement } from './preview-diagram-utils.js';
 
 const LIGHT_EXPORT_MERMAID_CONFIG = Object.freeze({
@@ -23,14 +24,6 @@ const LIGHT_EXPORT_MERMAID_CONFIG = Object.freeze({
 const MERMAID_INIT_DIRECTIVE_PATTERN = /^\s*%%\{\s*(?:init|initialize)\s*:[\s\S]*?\}%%\s*\n?/gim;
 
 let mermaidExportCounter = 0;
-
-function getPathLeaf(pathValue) {
-  return String(pathValue ?? '')
-    .replace(/\/+$/u, '')
-    .split('/')
-    .filter(Boolean)
-    .pop() || '';
-}
 
 function encodeSvgDataUrl(svgMarkup) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
@@ -155,12 +148,12 @@ export function createDiagramExportBaseName({
   sourceLine = '',
   targetPath = '',
 } = {}) {
-  const targetLeaf = getPathLeaf(targetPath);
+  const targetLeaf = getVaultPathLeaf(targetPath);
   if (targetLeaf) {
     return stripVaultFileExtension(targetLeaf) || `${diagramKind}-diagram`;
   }
 
-  const currentLeaf = getPathLeaf(currentFilePath);
+  const currentLeaf = getVaultPathLeaf(currentFilePath);
   const currentStem = stripVaultFileExtension(currentLeaf) || 'document';
   const isStandaloneDiagram = (
     (diagramKind === 'mermaid' && isMermaidFilePath(currentFilePath))

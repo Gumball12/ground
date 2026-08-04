@@ -6,25 +6,18 @@ import { join } from 'node:path';
 import { isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { isIgnoredVaultEntry } from '../persistence/path-utils.js';
 import { parseJsonBody } from './request-body.js';
-import { jsonResponse, sendResponse, sendStreamResponse } from './http-response.js';
+import {
+  createSafeAsciiFilename,
+  encodeContentDispositionFilename,
+  jsonResponse,
+  sendResponse,
+  sendStreamResponse,
+} from './http-response.js';
 
 const SVG_MIME_TYPE = 'image/svg+xml';
 const SVG_ATTACHMENT_CSP = "default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; sandbox";
 const DEFAULT_MAX_ARCHIVE_ENTRIES = 10_000;
 const DEFAULT_MAX_DOWNLOAD_FILE_BYTES = 268_435_456;
-
-function encodeContentDispositionFilename(fileName) {
-  return encodeURIComponent(String(fileName ?? ''))
-    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-
-function createSafeAsciiFilename(fileName) {
-  const fallback = String(fileName ?? '')
-    .replace(/[^\x20-\x7E]+/g, '_')
-    .replace(/["\\]/g, '_')
-    .trim();
-  return fallback || 'attachment';
-}
 
 function createAttachmentHeaders(attachment) {
   const fileName = basename(String(attachment?.path ?? 'attachment'));

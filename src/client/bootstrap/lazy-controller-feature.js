@@ -1,6 +1,4 @@
-function getPathLeaf(filePath = '') {
-  return String(filePath ?? '').split('/').filter(Boolean).pop() || String(filePath ?? '') || 'File';
-}
+import { getVaultPathLeaf } from '../domain/vault-paths.js';
 
 function createLazyControllerProxy({
   createController,
@@ -350,10 +348,10 @@ export const lazyControllerFeature = {
       fallback: {
         getToolbarTitle: ({ commitHash = null, filePath = null, path = null, scope = 'all', source = 'workspace' } = {}) => {
           if (source === 'commit') {
-            if (path) return getPathLeaf(path);
+            if (path) return getVaultPathLeaf(path) || String(path ?? '') || 'File';
             return commitHash ? `Commit ${String(commitHash).slice(0, 7)}` : 'Commit Diff';
           }
-          if (filePath) return getPathLeaf(filePath);
+          if (filePath) return getVaultPathLeaf(filePath) || String(filePath ?? '') || 'File';
           if (scope === 'staged') return 'Staged Changes';
           if (scope === 'working-tree') return 'Working Tree Changes';
           return 'All Changes';

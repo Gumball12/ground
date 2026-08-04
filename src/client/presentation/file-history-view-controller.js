@@ -1,21 +1,12 @@
 import { escapeHtml } from '../domain/vault-utils.js';
+import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
 
 const HISTORY_PAGE_SIZE = 30;
 
-function getPathLeaf(pathValue) {
-  return String(pathValue ?? '').split('/').pop() || '';
-}
-
-function getPathDir(pathValue) {
-  const parts = String(pathValue ?? '').split('/');
-  parts.pop();
-  return parts.join('/');
-}
-
 function renderHistoryTitle(filePath = '') {
-  const fileName = getPathLeaf(filePath);
-  const dirPath = getPathDir(filePath);
+  const fileName = getVaultPathLeaf(filePath);
+  const dirPath = getVaultPathParent(filePath);
   if (!dirPath) {
     return `<span class="file-history-path">${escapeHtml(fileName)}</span>`;
   }

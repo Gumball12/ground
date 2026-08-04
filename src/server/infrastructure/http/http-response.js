@@ -7,6 +7,19 @@ import {
 const COMPRESSIBLE_CONTENT_TYPE_PATTERN = /^(?:text\/|application\/(?:javascript|json|xml)|image\/svg\+xml)/i;
 const MIN_COMPRESSIBLE_BYTES = 1024;
 
+export function encodeContentDispositionFilename(fileName) {
+  return encodeURIComponent(String(fileName ?? ''))
+    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+export function createSafeAsciiFilename(fileName, fallback = 'attachment') {
+  const normalized = String(fileName ?? '')
+    .replace(/[^\x20-\x7E]+/g, '_')
+    .replace(/["\\]/g, '_')
+    .trim();
+  return normalized || fallback;
+}
+
 export const SECURITY_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-Content-Type-Options': 'nosniff',

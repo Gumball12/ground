@@ -1,15 +1,9 @@
 import { resolveApiUrl } from '../domain/runtime-paths.js';
+import { getVaultPathLeaf } from '../domain/vault-paths.js';
+import { createRequestHeaders, parseApiResponse } from './api-client-utils.js';
 
 function encodeHeaderMetadata(value) {
   return encodeURIComponent(String(value ?? ''));
-}
-
-function getPathLeaf(pathValue) {
-  return String(pathValue ?? '')
-    .replace(/\/+$/u, '')
-    .split('/')
-    .filter(Boolean)
-    .pop() || '';
 }
 
 function downloadBlob(blob, fileName) {
@@ -35,27 +29,6 @@ function parseDownloadFileName(contentDisposition = '', fallbackName = 'download
 
   const asciiMatch = String(contentDisposition).match(/filename="([^"]+)"/iu);
   return asciiMatch?.[1] || fallbackName;
-}
-
-function createRequestHeaders(requestId, headers = {}) {
-  const nextHeaders = { ...headers };
-  if (requestId) {
-    nextHeaders['X-CollabMD-Request-Id'] = String(requestId);
-  }
-
-  return nextHeaders;
-}
-
-async function parseApiResponse(response, fallbackError) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    const error = new Error(data.error || fallbackError);
-    error.status = response.status;
-    error.body = data;
-    throw error;
-  }
-
-  return data;
 }
 
 async function triggerDownload(url, {
@@ -287,7 +260,7 @@ export class VaultApiClient {
   }
 
   async downloadFile(path) {
-    const fallbackFileName = getPathLeaf(path) || 'download';
+    const fallbackFileName = getVaultPathLeaf(path) || 'download';
     return triggerDownload(resolveApiUrl(`/download/file?path=${encodeURIComponent(path)}`), {
       fallbackError: 'Failed to download file',
       fallbackFileName,
@@ -295,7 +268,7 @@ export class VaultApiClient {
   }
 
   async downloadDirectory(path) {
-    const directoryName = getPathLeaf(path) || 'vault';
+    const directoryName = getVaultPathLeaf(path) || 'vault';
     return triggerDownload(resolveApiUrl(`/download/directory?path=${encodeURIComponent(path)}`), {
       fallbackError: 'Failed to download folder',
       fallbackFileName: `${directoryName}.zip`,

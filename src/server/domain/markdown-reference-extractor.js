@@ -3,6 +3,7 @@ import {
   isImageAttachmentFilePath,
   isMarkdownFilePath,
 } from '../../domain/file-kind.js';
+import { resolveVaultRelativePath } from '../../domain/vault-paths.js';
 import { resolveWikiTargetWithIndex } from '../../domain/wiki-link-resolver.js';
 
 const INTERNAL_LINK_RE = /(!)?\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
@@ -19,52 +20,6 @@ function isAbsoluteOrExternalUrl(source = '') {
     || /^[a-zA-Z][a-zA-Z\d+.-]*:/u.test(normalized)
     || normalized.startsWith('/')
   );
-}
-
-function normalizePathSegments(pathValue = '') {
-  return String(pathValue ?? '')
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter(Boolean);
-}
-
-function resolveVaultRelativePath(fromFilePath = '', relativePath = '') {
-  const sourceSegments = normalizePathSegments(fromFilePath);
-  const targetSegments = String(relativePath ?? '')
-    .split('/')
-    .map((segment) => {
-      try {
-        return decodeURIComponent(segment);
-      } catch {
-        return segment;
-      }
-    });
-
-  if (targetSegments.length === 0) {
-    return '';
-  }
-
-  sourceSegments.pop();
-  const resolvedSegments = [...sourceSegments];
-
-  for (const rawSegment of targetSegments) {
-    const segment = String(rawSegment ?? '').trim();
-    if (!segment || segment === '.') {
-      continue;
-    }
-
-    if (segment === '..') {
-      if (resolvedSegments.length === 0) {
-        return '';
-      }
-      resolvedSegments.pop();
-      continue;
-    }
-
-    resolvedSegments.push(segment);
-  }
-
-  return resolvedSegments.join('/');
 }
 
 function parseMarkdownImageDestination(sourceText = '') {

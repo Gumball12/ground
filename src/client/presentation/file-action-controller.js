@@ -9,24 +9,12 @@ import {
   createMermaidStarter,
   createPlantUmlStarter,
   ensureVaultExtension,
+  getVaultPathLeaf,
+  getVaultPathParent,
   normalizeVaultPathInput,
 } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
 import { CreateMenuPresenter } from './create-menu-presenter.js';
-
-function getPathLeaf(path) {
-  return String(path ?? '')
-    .replace(/\/+$/u, '')
-    .split('/')
-    .filter(Boolean)
-    .pop() || '';
-}
-
-function getParentPath(pathValue) {
-  const normalized = String(pathValue ?? '').replace(/\/+$/u, '');
-  const separatorIndex = normalized.lastIndexOf('/');
-  return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : '';
-}
 
 function replacePathPrefix(pathValue, oldPrefix, newPrefix) {
   if (pathValue === oldPrefix) {
@@ -537,7 +525,7 @@ export class FileActionController {
     const finalPath = requestedExtension
       ? normalizedPath
       : `${normalizedPath}${extension}`;
-    if (!getPathLeaf(finalPath)) {
+    if (!getVaultPathLeaf(finalPath)) {
       this.showToast('File path is required');
       return false;
     }
@@ -641,8 +629,8 @@ export class FileActionController {
   planMoveEntryByDrop({ destinationDirectory = '', sourcePath = '', sourceType = 'file' } = {}) {
     const normalizedSourcePath = normalizeVaultPathInput(sourcePath);
     const normalizedDestinationDirectory = normalizeVaultPathInput(destinationDirectory);
-    const currentParentPath = getParentPath(normalizedSourcePath);
-    const entryName = getPathLeaf(normalizedSourcePath);
+    const currentParentPath = getVaultPathParent(normalizedSourcePath);
+    const entryName = getVaultPathLeaf(normalizedSourcePath);
 
     if (!normalizedSourcePath || !entryName) {
       return { ok: false, reason: 'Invalid item to move' };

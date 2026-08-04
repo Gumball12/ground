@@ -677,7 +677,7 @@ async function ensureMermaidRuntime() {
     return mermaidLoaderPromise;
   }
 
-  mermaidLoaderPromise = import('../mermaid-runtime.js').then((module) => {
+  mermaidLoaderPromise = import('mermaid').then((module) => {
     const runtime = module?.default;
     if (!runtime) {
       throw new Error('Mermaid runtime failed to initialize');

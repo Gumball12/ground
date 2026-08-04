@@ -1,20 +1,8 @@
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
+import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
-}
-
-function getPathLeaf(pathValue = '') {
-  return String(pathValue)
-    .split('/')
-    .filter(Boolean)
-    .pop() || '';
-}
-
-function getParentPath(pathValue = '') {
-  const normalized = String(pathValue ?? '').replace(/\/+$/u, '');
-  const separatorIndex = normalized.lastIndexOf('/');
-  return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : '';
 }
 
 function formatLineLabel(anchor = {}) {
@@ -177,11 +165,11 @@ export class CommentOverviewController {
 
     const title = document.createElement('h3');
     title.className = 'comment-overview-file-title';
-    title.textContent = stripVaultFileExtension(getPathLeaf(file.filePath));
+    title.textContent = stripVaultFileExtension(getVaultPathLeaf(file.filePath));
 
     const parent = document.createElement('span');
     parent.className = 'comment-overview-file-path';
-    parent.textContent = getParentPath(file.filePath) || file.filePath;
+    parent.textContent = getVaultPathParent(file.filePath) || file.filePath;
 
     const count = document.createElement('span');
     count.className = 'comment-overview-file-count';

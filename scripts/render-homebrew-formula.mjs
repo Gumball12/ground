@@ -2,8 +2,17 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 
-const args = parseArgs(process.argv.slice(2));
+const { values: args } = parseArgs({
+  options: {
+    output: { type: 'string' },
+    owner: { type: 'string' },
+    repo: { type: 'string' },
+    sha256: { type: 'string' },
+    version: { type: 'string' },
+  },
+});
 const rootDir = process.cwd();
 const packageJsonPath = path.join(rootDir, 'package.json');
 const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
@@ -103,28 +112,6 @@ end
 
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, formula);
-
-function parseArgs(argv) {
-  const parsed = {};
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith('--')) {
-      throw new Error(`Unexpected argument: ${token}`);
-    }
-
-    const key = token.slice(2);
-    const value = argv[index + 1];
-    if (!value || value.startsWith('--')) {
-      throw new Error(`Missing value for --${key}`);
-    }
-
-    parsed[key] = value;
-    index += 1;
-  }
-
-  return parsed;
-}
 
 function toFormulaClassName(name) {
   return name

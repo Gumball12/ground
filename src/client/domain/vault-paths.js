@@ -37,6 +37,20 @@ export function composeVaultChildPath(parentDir, childPath) {
   return `${normalizedParent}/${normalizedChild}`;
 }
 
+export function getVaultPathLeaf(pathValue = '') {
+  return String(pathValue ?? '')
+    .replace(/\/+$/u, '')
+    .split('/')
+    .filter(Boolean)
+    .pop() || '';
+}
+
+export function getVaultPathParent(pathValue = '') {
+  const normalized = String(pathValue ?? '').replace(/\/+$/u, '');
+  const separatorIndex = normalized.lastIndexOf('/');
+  return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : '';
+}
+
 export function ensureVaultExtension(pathValue, extension) {
   return pathValue.toLowerCase().endsWith(extension.toLowerCase())
     ? pathValue

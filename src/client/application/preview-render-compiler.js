@@ -2,7 +2,8 @@ import markdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 
 import { isImageAttachmentFilePath } from '../../domain/file-kind.js';
-import { escapeHtml, resolveVaultRelativePath, resolveWikiTarget } from '../domain/vault-utils.js';
+import { resolveVaultRelativePath } from '../../domain/vault-paths.js';
+import { escapeHtml, resolveWikiTarget } from '../domain/vault-utils.js';
 import { extractYamlFrontmatter, renderFrontmatterBlock } from './markdown-frontmatter.js';
 import { analyzeMarkdownComplexity } from './preview-render-profile.js';
 

@@ -1,28 +1,5 @@
 import { resolveApiUrl } from '../domain/runtime-paths.js';
-
-function createRequestHeaders(requestId, headers = {}) {
-  const nextHeaders = { ...headers };
-  if (requestId) {
-    nextHeaders['X-CollabMD-Request-Id'] = String(requestId);
-  }
-
-  return nextHeaders;
-}
-
-async function parseJsonResponse(response, fallbackError) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    const error = new Error(data.error || fallbackError);
-    error.status = response.status;
-    error.body = data;
-    if (typeof data?.code === 'string') {
-      error.code = data.code;
-    }
-    throw error;
-  }
-
-  return data;
-}
+import { createRequestHeaders, parseApiResponse } from './api-client-utils.js';
 
 function createSearchParams(values = {}) {
   const params = new URLSearchParams();
@@ -39,24 +16,24 @@ function createSearchParams(values = {}) {
 export class GitApiClient {
   async readStatus({ force = false } = {}) {
     const response = await fetch(resolveApiUrl(`/git/status${force ? '?force=true' : ''}`));
-    return parseJsonResponse(response, 'Failed to load git status');
+    return parseApiResponse(response, 'Failed to load git status');
   }
 
   async readPullBackups() {
     const response = await fetch(resolveApiUrl('/git/pull-backups'));
-    return parseJsonResponse(response, 'Failed to load pull backups');
+    return parseApiResponse(response, 'Failed to load pull backups');
   }
 
   async readHistory({ limit, offset } = {}) {
     const params = createSearchParams({ limit, offset });
     const response = await fetch(resolveApiUrl(`/git/history?${params.toString()}`));
-    return parseJsonResponse(response, 'Failed to load git history');
+    return parseApiResponse(response, 'Failed to load git history');
   }
 
   async readFileHistory({ path, limit, offset } = {}) {
     const params = createSearchParams({ limit, offset, path });
     const response = await fetch(resolveApiUrl(`/git/file-history?${params.toString()}`));
-    return parseJsonResponse(response, 'Failed to load file history');
+    return parseApiResponse(response, 'Failed to load file history');
   }
 
   async readDiff({
@@ -72,7 +49,7 @@ export class GitApiClient {
       scope,
     });
     const response = await fetch(resolveApiUrl(`/git/diff?${params.toString()}`));
-    return parseJsonResponse(response, 'Failed to load git diff');
+    return parseApiResponse(response, 'Failed to load git diff');
   }
 
   async readCommit({
@@ -88,13 +65,13 @@ export class GitApiClient {
       path,
     });
     const response = await fetch(resolveApiUrl(`/git/commit?${params.toString()}`));
-    return parseJsonResponse(response, 'Failed to load git commit');
+    return parseApiResponse(response, 'Failed to load git commit');
   }
 
   async readFileSnapshot({ hash, path } = {}) {
     const params = createSearchParams({ hash, path });
     const response = await fetch(resolveApiUrl(`/git/file-snapshot?${params.toString()}`));
-    return parseJsonResponse(response, 'Failed to load historical file preview');
+    return parseApiResponse(response, 'Failed to load historical file preview');
   }
 
   async stageFile({ path, requestId = null } = {}) {
@@ -127,7 +104,7 @@ export class GitApiClient {
       headers: createRequestHeaders(requestId, { 'Content-Type': 'application/json' }),
       method: 'POST',
     });
-    return parseJsonResponse(response, fallbackError);
+    return parseApiResponse(response, fallbackError);
   }
 }
 

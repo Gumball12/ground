@@ -1,30 +1,22 @@
 import { basename } from 'node:path';
 import { createRequestError, getRequestErrorStatusCode } from './http-errors.js';
-import { jsonResponse, sendResponse } from './http-response.js';
+import {
+  createSafeAsciiFilename,
+  encodeContentDispositionFilename,
+  jsonResponse,
+  sendResponse,
+} from './http-response.js';
 import { parseJsonBody, readBinaryRequestBody } from './request-body.js';
 
 const DOCX_EXPORT_REQUEST_LIMIT_BYTES = 33_554_432;
 const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
-function encodeContentDispositionFilename(fileName) {
-  return encodeURIComponent(String(fileName ?? ''))
-    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-
-function createSafeAsciiFilename(fileName) {
-  const fallback = String(fileName ?? '')
-    .replace(/[^\x20-\x7E]+/g, '_')
-    .replace(/["\\]/g, '_')
-    .trim();
-  return fallback || 'document';
-}
 
 function createDocxDownloadHeaders(filePath) {
   const fileName = basename(String(filePath ?? 'document')).replace(/\.[^.]+$/u, '') || 'document';
   const exportFileName = `${fileName}.docx`;
   return {
     'Cache-Control': 'no-store',
-    'Content-Disposition': `attachment; filename="${createSafeAsciiFilename(exportFileName)}"; filename*=UTF-8''${encodeContentDispositionFilename(exportFileName)}`,
+    'Content-Disposition': `attachment; filename="${createSafeAsciiFilename(exportFileName, 'document')}"; filename*=UTF-8''${encodeContentDispositionFilename(exportFileName)}`,
     'Content-Type': DOCX_MIME_TYPE,
     'X-Content-Type-Options': 'nosniff',
   };

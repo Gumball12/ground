@@ -1,15 +1,6 @@
 import { escapeHtml } from '../domain/vault-utils.js';
+import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
-
-function getPathLeaf(pathValue) {
-  return String(pathValue ?? '').split('/').pop() || '';
-}
-
-function getPathDir(pathValue) {
-  const parts = String(pathValue ?? '').split('/');
-  parts.pop();
-  return parts.join('/');
-}
 
 function createSectionId(pathValue) {
   return `diff-section-${encodeURIComponent(String(pathValue ?? '')).replace(/%/g, '_')}`;
@@ -687,7 +678,7 @@ export class GitDiffViewController {
     const files = this.data?.files ?? [];
     const items = files.map((file, index) => {
       const isActive = this.activeFilePath === file.path;
-      const dirPath = getPathDir(file.path);
+      const dirPath = getVaultPathParent(file.path);
       return `
         <button
           class="ui-record-surface diff-index-item${isActive ? ' active' : ''}"
@@ -696,7 +687,7 @@ export class GitDiffViewController {
           aria-current="${isActive ? 'true' : 'false'}"
         >
           <span class="ui-record-header diff-index-item-top">
-            <span class="ui-record-title diff-index-item-name">${escapeHtml(getPathLeaf(file.path))}</span>
+            <span class="ui-record-title diff-index-item-name">${escapeHtml(getVaultPathLeaf(file.path))}</span>
             <span class="ui-status-badge ${badgeClass(file.status)}">${escapeHtml(file.status)}</span>
           </span>
           ${dirPath ? `<span class="ui-record-subtitle diff-index-item-path">${escapeHtml(dirPath)}</span>` : ''}
@@ -748,8 +739,8 @@ export class GitDiffViewController {
           <span class="diff-commit-section-main">
             ${chevronSvg(isCollapsed)}
             <span class="diff-commit-section-copy">
-              <span class="diff-commit-section-name">${escapeHtml(getPathLeaf(file.path))}</span>
-              ${getPathDir(file.path) ? `<span class="diff-commit-section-path">${escapeHtml(getPathDir(file.path))}</span>` : ''}
+              <span class="diff-commit-section-name">${escapeHtml(getVaultPathLeaf(file.path))}</span>
+              ${getVaultPathParent(file.path) ? `<span class="diff-commit-section-path">${escapeHtml(getVaultPathParent(file.path))}</span>` : ''}
             </span>
           </span>
           <span class="diff-commit-section-meta">
@@ -1237,10 +1228,10 @@ export class GitDiffViewController {
       }
 
       if (path) {
-        return getPathLeaf(path);
+        return getVaultPathLeaf(path);
       }
       if (this.activeFilePath) {
-        return getPathLeaf(this.activeFilePath);
+        return getVaultPathLeaf(this.activeFilePath);
       }
       if (this.commitMeta?.shortHash) {
         return `Commit ${this.commitMeta.shortHash}`;
@@ -1252,7 +1243,7 @@ export class GitDiffViewController {
     }
 
     if (filePath) {
-      return getPathLeaf(filePath);
+      return getVaultPathLeaf(filePath);
     }
 
     if (scope === 'staged') {
