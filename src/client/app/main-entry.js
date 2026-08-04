@@ -6,7 +6,6 @@ import '../styles/base.css';
 import '../styles/style.css';
 
 import { ensureRuntimeConfigLoaded } from '../infrastructure/runtime-config-loader.js';
-import { ensureUiComponentStyles } from '../presentation/components/ui/ensure-ui-component-styles.js';
 
 function ensureHighlightThemeStylesheet() {
   let themeStylesheet = document.getElementById('hljs-theme');
@@ -24,5 +23,4 @@ function ensureHighlightThemeStylesheet() {
 
 await ensureRuntimeConfigLoaded();
 ensureHighlightThemeStylesheet();
-await ensureUiComponentStyles();
 await import('../main.js');

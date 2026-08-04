@@ -1,6 +1,6 @@
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 
-export class PlantUmlApiClient {
+export const plantUmlApiClient = {
   async renderSvg(source) {
     const response = await fetch(resolveApiUrl('/plantuml/render'), {
       body: JSON.stringify({ source }),
@@ -15,7 +15,5 @@ export class PlantUmlApiClient {
     }
 
     return data.svg;
-  }
-}
-
-export const plantUmlApiClient = new PlantUmlApiClient();
+  },
+};

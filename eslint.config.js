@@ -37,4 +37,82 @@ export default [
       }],
     },
   },
+  {
+    files: ['src/domain/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: ['../client/**', '../server/**'],
+      }],
+    },
+  },
+  {
+    files: ['src/client/presentation/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '../application/**', '../../application/**', '../../../application/**',
+          '../infrastructure/**', '../../infrastructure/**', '../../../infrastructure/**',
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        message: 'Inject HTTP clients instead of calling fetch from presentation code.',
+        selector: "CallExpression[callee.name='fetch']",
+      }],
+    },
+  },
+  {
+    files: ['src/client/application/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '../presentation/**', '../../presentation/**',
+          '../infrastructure/**', '../../infrastructure/**',
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        message: 'Inject HTTP clients instead of calling fetch from application code.',
+        selector: "CallExpression[callee.name='fetch']",
+      }],
+    },
+  },
+  {
+    files: ['src/client/infrastructure/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '../application/**', '../../application/**',
+          '../presentation/**', '../../presentation/**',
+        ],
+      }],
+    },
+  },
+  {
+    files: ['src/server/application/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '../auth/**', '../config/**', '../infrastructure/**',
+          '../../client/**',
+        ],
+      }],
+    },
+  },
+  {
+    files: ['src/server/domain/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          '../infrastructure/**', '../../infrastructure/**', '../../../infrastructure/**',
+        ],
+      }],
+    },
+  },
+  {
+    files: ['src/server/auth/**/*.{js,mjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: ['../infrastructure/**'],
+      }],
+    },
+  },
 ];

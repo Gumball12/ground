@@ -1,7 +1,6 @@
 import { createDrawioLeaseRoomName } from '../../domain/drawio-room.js';
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveAppUrl } from '../domain/runtime-paths.js';
-import { vaultApiClient } from '../domain/vault-api-client.js';
 
 const HYDRATE_VIEWPORT_MARGIN_PX = 360;
 const DRAWIO_VIEWER_SCRIPT_URL = 'https://viewer.diagrams.net/js/viewer-static.min.js';
@@ -102,6 +101,7 @@ export class DrawioEmbedController {
     previewContainer,
     previewElement,
     toastController,
+    vaultApiClient,
   }) {
     this.getLocalUser = getLocalUser;
     this.getTheme = getTheme;
@@ -111,6 +111,7 @@ export class DrawioEmbedController {
     this.previewContainer = previewContainer;
     this.previewElement = previewElement;
     this.toastController = toastController;
+    this.vaultApiClient = vaultApiClient;
     this.embedEntries = new Map();
     this.hydrationQueue = [];
     this.hydrationIdleId = null;
@@ -376,7 +377,7 @@ export class DrawioEmbedController {
 
   async renderViewerEntry(entry) {
     const [{ content }, viewer] = await Promise.all([
-      vaultApiClient.readFile(entry.filePath),
+      this.vaultApiClient.readFile(entry.filePath),
       ensureDrawioViewerLoaded(),
     ]);
 

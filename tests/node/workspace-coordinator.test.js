@@ -5,26 +5,12 @@ import { EditorSession } from '../../src/client/infrastructure/editor-session.js
 import { WorkspaceCoordinator } from '../../src/client/application/workspace-coordinator.js';
 
 function createStateStore() {
-  const state = new Map([
-    ['connectionState', null],
-    ['connectionHelpShown', false],
-    ['currentDrawioMode', null],
-    ['currentFilePath', null],
-    ['sessionLoadToken', 0],
-  ]);
-
   return {
-    get(key) {
-      return state.get(key);
-    },
-    nextSessionLoadToken() {
-      const nextToken = (state.get('sessionLoadToken') ?? 0) + 1;
-      state.set('sessionLoadToken', nextToken);
-      return nextToken;
-    },
-    set(key, value) {
-      state.set(key, value);
-    },
+    connectionState: null,
+    connectionHelpShown: false,
+    currentDrawioMode: null,
+    currentFilePath: null,
+    sessionLoadToken: 0,
   };
 }
 
@@ -295,8 +281,8 @@ test('WorkspaceCoordinator reopens draw.io files when switching from text mode b
     shouldUseDrawioPreview: () => true,
   });
   coordinator.session = existingSession;
-  stateStore.set('currentFilePath', 'vault/architecture.drawio');
-  stateStore.set('currentDrawioMode', 'text');
+  stateStore.currentFilePath = 'vault/architecture.drawio';
+  stateStore.currentDrawioMode = 'text';
 
   await coordinator.openFile('vault/architecture.drawio');
 

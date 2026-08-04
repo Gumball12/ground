@@ -1,5 +1,4 @@
 import { isImageAttachmentFilePath } from '../../domain/file-kind.js';
-import { vaultApiClient } from '../domain/vault-api-client.js';
 import { FileActionController } from './file-action-controller.js';
 import { FileTreeState } from './file-tree-state.js';
 import { FileExplorerView } from './file-explorer-view.js';
@@ -11,7 +10,7 @@ export class FileExplorerController {
     onFileDelete,
     pendingWorkspaceRequestIds = null,
     toastController,
-    vaultClient = vaultApiClient,
+    vaultClient,
   }) {
     this.onFileSelect = onFileSelect;
     this.onFileDelete = onFileDelete;

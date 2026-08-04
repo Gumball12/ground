@@ -20,8 +20,6 @@ const integrationTests = new Set([
 ]);
 
 const guardrailTests = new Set([
-  'architecture-boundaries.test.js',
-  'facade-structure.test.js',
   'style-system-guardrails.test.js',
 ]);
 

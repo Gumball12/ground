@@ -4,16 +4,23 @@ import { WorkspaceRouteController } from '../application/workspace-route-control
 import { WikiLinkFileController } from '../application/wiki-link-file-controller.js';
 import { WorkspacePreviewController } from '../application/workspace-preview-controller.js';
 import { WorkspaceCoordinator } from '../application/workspace-coordinator.js';
-import { WorkspaceStateStore } from '../application/workspace-state-store.js';
 import { bindAppShellElements } from '../application/app-shell-elements.js';
 import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/lobby-presence.js';
-import { BrowserNavigationPort } from '../infrastructure/browser-navigation-port.js';
 import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { BrowserPreferencesPort } from '../infrastructure/browser-preferences-port.js';
 import { AppVersionMonitor } from '../infrastructure/app-version-monitor.js';
 import { backlinksApiClient } from '../infrastructure/backlinks-api-client.js';
 import { gitApiClient } from '../infrastructure/git-api-client.js';
-import { getRuntimeConfig } from '../infrastructure/runtime-config.js';
+import {
+  getHashRoute,
+  getRuntimeConfig,
+  navigateToFile,
+  navigateToGitCommit,
+  navigateToGitDiff,
+  navigateToGitFileHistory,
+  navigateToGitFilePreview,
+  navigateToGitHistory,
+} from '../infrastructure/runtime-config.js';
 import { plantUmlApiClient } from '../infrastructure/plantuml-api-client.js';
 import { TabActivityLock } from '../infrastructure/tab-activity-lock.js';
 import { vaultApiClient } from '../infrastructure/vault-api-client.js';
@@ -29,24 +36,40 @@ import { ThemeController } from '../presentation/theme-controller.js';
 import { ToastController } from '../presentation/toast-controller.js';
 import { VideoEmbedController } from '../presentation/video-embed-controller.js';
 import { ImageLightboxController } from '../presentation/image-lightbox-controller.js';
-import { renderAppShell } from '../presentation/app-shell-renderer.js';
 import { createAppShellFeatureSurface } from './app-shell-feature-surface.js';
 
 export class CollabMdAppShell {
-  initialize(...args) { return this.features.initialize(...args); }
-  handleHashChange(...args) { return this.features.handleHashChange(...args); }
-  handleDocumentKeydown(...args) { return this.features.handleDocumentKeydown(...args); }
-  handleDocumentPointerDown(...args) { return this.features.handleDocumentPointerDown(...args); }
-  handleFileSelection(...args) { return this.features.handleFileSelection(...args); }
-  navigatePreviewHeading(...args) { return this.features.navigatePreviewHeading(...args); }
-
   constructor() {
-    renderAppShell(document);
     this.elements = bindAppShellElements(document);
     this.features = createAppShellFeatureSurface(this);
     this.runtimeConfig = getRuntimeConfig();
-    this.stateStore = new WorkspaceStateStore();
-    this.navigation = new BrowserNavigationPort();
+    this.activeSidebarTab = 'files';
+    this.chatInitialSyncComplete = false;
+    this.chatIsOpen = false;
+    this.chatMessageIds = new Set();
+    this.chatMessages = [];
+    this.chatUnreadCount = 0;
+    this.connectionHelpShown = false;
+    this.connectionState = { status: 'disconnected', unreachable: false };
+    this.currentDrawioMode = null;
+    this.currentFilePath = null;
+    this.fileExplorerReady = false;
+    this.followedCursorSignature = '';
+    this.followedUserClientId = null;
+    this.gitRepoAvailable = false;
+    this.globalUsers = [];
+    this.isTabActive = false;
+    this.presencePanelOpen = false;
+    this.sessionLoadToken = 0;
+    this.navigation = {
+      getHashRoute,
+      navigateToFile,
+      navigateToGitCommit,
+      navigateToGitDiff,
+      navigateToGitFileHistory,
+      navigateToGitFilePreview,
+      navigateToGitHistory,
+    };
     this.preferences = new BrowserPreferencesPort({
       chatNotificationsKey: 'collabmd-chat-notifications-enabled',
       lineWrappingKey: 'collabmd-editor-line-wrap',
@@ -113,6 +136,7 @@ export class CollabMdAppShell {
       onFileSelect: (filePath) => this.features.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
       pendingWorkspaceRequestIds: this.pendingWorkspaceRequestIds,
       toastController: this.toastController,
+      vaultClient: this.vaultApiClient,
     });
     this.commentsOverview = new CommentOverviewController({
       onOverviewChange: (_overview, { threadCounts }) => {
@@ -392,7 +416,7 @@ export class CollabMdAppShell {
       scrollContainerForSession: (session) => session.getScrollContainer(),
       shouldUseDrawioPreview: () => Boolean(this.runtimeConfig.drawioBaseUrl),
       showEditorLoading: () => this.features.showEditorLoading(),
-      stateStore: this.stateStore,
+      stateStore: this,
     });
     this.workspaceRouteController = new WorkspaceRouteController({
       backlinksPanel: this.backlinksPanel,
@@ -452,42 +476,6 @@ export class CollabMdAppShell {
 
   get session() { return this._session; }
   set session(value) { this._session = value; }
-  get currentFilePath() { return this.stateStore.get('currentFilePath'); }
-  set currentFilePath(value) { this.stateStore.set('currentFilePath', value); }
-  get currentDrawioMode() { return this.stateStore.get('currentDrawioMode'); }
-  set currentDrawioMode(value) { this.stateStore.set('currentDrawioMode', value ?? null); }
-  get globalUsers() { return this.stateStore.get('globalUsers'); }
-  set globalUsers(value) { this.stateStore.set('globalUsers', value); }
-  get connectionState() { return this.stateStore.get('connectionState'); }
-  set connectionState(value) { this.stateStore.set('connectionState', value); }
-  get sessionLoadToken() { return this.stateStore.get('sessionLoadToken'); }
-  set sessionLoadToken(value) { this.stateStore.set('sessionLoadToken', value); }
-  get connectionHelpShown() { return this.stateStore.get('connectionHelpShown'); }
-  set connectionHelpShown(value) { this.stateStore.set('connectionHelpShown', value); }
-  get chatMessages() { return this.stateStore.get('chatMessages'); }
-  set chatMessages(value) { this.stateStore.set('chatMessages', value); }
-  get chatMessageIds() { return this.stateStore.get('chatMessageIds'); }
-  set chatMessageIds(value) { this.stateStore.set('chatMessageIds', value); }
-  get chatUnreadCount() { return this.stateStore.get('chatUnreadCount'); }
-  set chatUnreadCount(value) { this.stateStore.set('chatUnreadCount', value); }
-  get chatIsOpen() { return this.stateStore.get('chatIsOpen'); }
-  set chatIsOpen(value) { this.stateStore.set('chatIsOpen', value); }
-  get chatInitialSyncComplete() { return this.stateStore.get('chatInitialSyncComplete'); }
-  set chatInitialSyncComplete(value) { this.stateStore.set('chatInitialSyncComplete', value); }
-  get isTabActive() { return this.stateStore.get('isTabActive'); }
-  set isTabActive(value) { this.stateStore.set('isTabActive', value); }
-  get fileExplorerReady() { return this.stateStore.get('fileExplorerReady'); }
-  set fileExplorerReady(value) { this.stateStore.set('fileExplorerReady', value); }
-  get gitRepoAvailable() { return this.stateStore.get('gitRepoAvailable'); }
-  set gitRepoAvailable(value) { this.stateStore.set('gitRepoAvailable', value); }
-  get activeSidebarTab() { return this.stateStore.get('activeSidebarTab'); }
-  set activeSidebarTab(value) { this.stateStore.set('activeSidebarTab', value); }
-  get presencePanelOpen() { return this.stateStore.get('presencePanelOpen'); }
-  set presencePanelOpen(value) { this.stateStore.set('presencePanelOpen', value); }
-  get followedUserClientId() { return this.stateStore.get('followedUserClientId'); }
-  set followedUserClientId(value) { this.stateStore.set('followedUserClientId', value); }
-  get followedCursorSignature() { return this.stateStore.get('followedCursorSignature'); }
-  set followedCursorSignature(value) { this.stateStore.set('followedCursorSignature', value); }
 
   publishFileOpenPerf() {
     if (typeof window === 'undefined') {

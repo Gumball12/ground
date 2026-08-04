@@ -19,49 +19,10 @@ export const appShellFeatures = Object.freeze({
 });
 
 export function createAppShellFeatureSurface(appShell, features = appShellFeatures) {
-  const methodEntries = [];
-  const methodOwners = new Map();
-
-  for (const [featureName, feature] of Object.entries(features)) {
-    for (const [methodName, method] of Object.entries(feature)) {
-      if (typeof method !== 'function') {
-        continue;
-      }
-      if (methodOwners.has(methodName)) {
-        throw new Error(`Duplicate App Shell feature method "${methodName}" from ${methodOwners.get(methodName)} and ${featureName}`);
-      }
-      methodOwners.set(methodName, featureName);
-      methodEntries.push([methodName, method]);
+  for (const feature of Object.values(features)) {
+    for (const [name, method] of Object.entries(feature)) {
+      if (!(name in appShell)) appShell[name] = method;
     }
   }
-
-  const target = {};
-  const surface = new Proxy(target, {
-    get(surfaceTarget, property, receiver) {
-      if (Reflect.has(surfaceTarget, property)) {
-        return Reflect.get(surfaceTarget, property, receiver);
-      }
-      return appShell[property];
-    },
-    has(surfaceTarget, property) {
-      return Reflect.has(surfaceTarget, property) || property in appShell;
-    },
-    set(surfaceTarget, property, value) {
-      if (Reflect.has(surfaceTarget, property)) {
-        return Reflect.set(surfaceTarget, property, value);
-      }
-      appShell[property] = value;
-      return true;
-    },
-  });
-
-  for (const [methodName, method] of methodEntries) {
-    Object.defineProperty(target, methodName, {
-      configurable: false,
-      enumerable: true,
-      value: (...args) => method.apply(surface, args),
-    });
-  }
-
-  return surface;
+  return appShell;
 }

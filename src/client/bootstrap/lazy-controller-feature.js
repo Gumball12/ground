@@ -162,6 +162,7 @@ export const lazyControllerFeature = {
         previewContainer: this.elements.previewContainer,
         previewElement: this.elements.previewContent,
         toastController: this.toastController,
+        vaultApiClient: this.vaultApiClient,
       }),
       fallback: {
         destroy: () => { },
