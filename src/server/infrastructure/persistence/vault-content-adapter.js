@@ -1,45 +1,17 @@
-import {
-  isBaseFilePath,
-  isDrawioFilePath,
-  isExcalidrawFilePath,
-  isMarkdownFilePath,
-  isMermaidFilePath,
-  isPlantUmlFilePath,
-} from '../../../domain/file-kind.js';
+import { getVaultFileKind } from '../../../domain/file-kind.js';
 
-const adapters = [
-  {
-    invalidPathError: 'Invalid file path',
-    kind: 'markdown',
-    matches: isMarkdownFilePath,
-  },
-  {
-    invalidPathError: 'Invalid file path — must end in .base',
-    kind: 'base',
-    matches: isBaseFilePath,
-  },
-  {
-    invalidPathError: 'Invalid file path — must end in .excalidraw',
-    kind: 'excalidraw',
-    matches: isExcalidrawFilePath,
-  },
-  {
-    invalidPathError: 'Invalid file path — must end in .drawio',
-    kind: 'drawio',
-    matches: isDrawioFilePath,
-  },
-  {
-    invalidPathError: 'Invalid file path — must end in .mmd or .mermaid',
-    kind: 'mermaid',
-    matches: isMermaidFilePath,
-  },
-  {
-    invalidPathError: 'Invalid file path — must end in .puml or .plantuml',
-    kind: 'plantuml',
-    matches: isPlantUmlFilePath,
-  },
-];
+const INVALID_PATH_ERRORS = {
+  base: 'Invalid file path — must end in .base',
+  drawio: 'Invalid file path — must end in .drawio',
+  excalidraw: 'Invalid file path — must end in .excalidraw',
+  markdown: 'Invalid file path',
+  mermaid: 'Invalid file path — must end in .mmd or .mermaid',
+  plantuml: 'Invalid file path — must end in .puml or .plantuml',
+};
 
 export function getEditableVaultContentKind(filePath) {
-  return adapters.find((adapter) => adapter.matches(filePath)) ?? null;
+  const kind = getVaultFileKind(filePath);
+  return INVALID_PATH_ERRORS[kind]
+    ? { invalidPathError: INVALID_PATH_ERRORS[kind], kind }
+    : null;
 }

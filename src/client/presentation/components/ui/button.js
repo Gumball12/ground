@@ -51,28 +51,3 @@ export function buttonClassNames(options = {}) {
     extra,
   );
 }
-
-/**
- * @param {{ toolbar?: boolean, action?: boolean, surface?: boolean, hidden?: boolean, extra?: string|string[] }} [options]
- * @returns {string}
- */
-export function iconButtonClassNames(options = {}) {
-  const {
-    toolbar = false,
-    action = false,
-    surface = false,
-    hidden = false,
-    extra = [],
-  } = options;
-
-  return classNames(
-    'ui-icon-button',
-    {
-      'ui-icon-button--toolbar': toolbar,
-      'ui-icon-button--action': action,
-      'ui-icon-button--surface': surface,
-      hidden,
-    },
-    extra,
-  );
-}

@@ -6,7 +6,7 @@ import { uiFeatureShellMethods } from '../../src/client/application/app-shell/ui
 import { uiFeatureSidebarMethods } from '../../src/client/application/app-shell/ui-feature-sidebar.js';
 import { uiFeatureToolbarMethods } from '../../src/client/application/app-shell/ui-feature-toolbar.js';
 import { ensureQuickSwitcherInstance } from '../../src/client/application/quick-switcher-loader.js';
-import { createAppShellFeatureSurface } from '../../src/client/bootstrap/app-shell-feature-surface.js';
+import { lazyControllerFeature } from '../../src/client/bootstrap/lazy-controller-feature.js';
 
 function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
   document.body.innerHTML = `
@@ -95,12 +95,12 @@ describe('uiFeature browser helpers', () => {
       gitPanel: {
         ensure: vi.fn(async () => ({ refresh })),
       },
-      reportLazyControllerError: vi.fn(),
       runtimeConfig: { gitEnabled: true },
     };
-    const featureSurface = createAppShellFeatureSurface(context);
+    Object.assign(context, lazyControllerFeature);
+    context.reportLazyControllerError = vi.fn();
 
-    featureSurface.scheduleGitControllerPrewarm({ timeout: 123 });
+    context.scheduleGitControllerPrewarm({ timeout: 123 });
     idleCallback();
     await Promise.resolve();
 

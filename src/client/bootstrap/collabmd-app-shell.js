@@ -5,6 +5,13 @@ import { WikiLinkFileController } from '../application/wiki-link-file-controller
 import { WorkspacePreviewController } from '../application/workspace-preview-controller.js';
 import { WorkspaceCoordinator } from '../application/workspace-coordinator.js';
 import { bindAppShellElements } from '../application/app-shell-elements.js';
+import { chatFeature } from '../application/app-shell/chat-feature.js';
+import { commentsFeature } from '../application/app-shell/comments-feature.js';
+import { exportFeature } from '../application/app-shell/export-feature.js';
+import { gitFeature } from '../application/app-shell/git-feature.js';
+import { presenceFeature } from '../application/app-shell/presence-feature.js';
+import { uiFeature } from '../application/app-shell/ui-feature.js';
+import { workspaceFeature } from '../application/app-shell/workspace-feature.js';
 import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/lobby-presence.js';
 import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { BrowserPreferencesPort } from '../infrastructure/browser-preferences-port.js';
@@ -36,12 +43,27 @@ import { ThemeController } from '../presentation/theme-controller.js';
 import { ToastController } from '../presentation/toast-controller.js';
 import { VideoEmbedController } from '../presentation/video-embed-controller.js';
 import { ImageLightboxController } from '../presentation/image-lightbox-controller.js';
-import { createAppShellFeatureSurface } from './app-shell-feature-surface.js';
+import { lazyControllerFeature } from './lazy-controller-feature.js';
+
+const APP_SHELL_FEATURES = [
+  chatFeature,
+  commentsFeature,
+  exportFeature,
+  gitFeature,
+  lazyControllerFeature,
+  presenceFeature,
+  uiFeature,
+  workspaceFeature,
+];
 
 export class CollabMdAppShell {
   constructor() {
+    for (const feature of APP_SHELL_FEATURES) {
+      for (const [name, method] of Object.entries(feature)) {
+        if (!(name in this)) this[name] = method;
+      }
+    }
     this.elements = bindAppShellElements(document);
-    this.features = createAppShellFeatureSurface(this);
     this.runtimeConfig = getRuntimeConfig();
     this.activeSidebarTab = 'files';
     this.chatInitialSyncComplete = false;
@@ -104,27 +126,27 @@ export class CollabMdAppShell {
     this._fileOpenPerf = null;
     this.versionMonitor = new AppVersionMonitor({
       currentBuildId: this.runtimeConfig.build?.id,
-      onUpdateAvailable: (payload) => this.features.promptForVersionReload(payload),
+      onUpdateAvailable: (payload) => this.promptForVersionReload(payload),
       runtimeConfig: this.runtimeConfig,
     });
 
     this.lobby = new LobbyPresence({
-      preferredUserName: this.features.getStoredUserName(),
-      onChange: (users) => this.features.updateGlobalUsers(users),
-      onChatChange: (messages, meta) => this.features.updateChatMessages(messages, meta),
+      preferredUserName: this.getStoredUserName(),
+      onChange: (users) => this.updateGlobalUsers(users),
+      onChatChange: (messages, meta) => this.updateChatMessages(messages, meta),
     });
     this.workspaceSync = new WorkspaceSyncClient({
       onTreeChange: (tree, metadata = {}) => {
         const wasReady = this.fileExplorerReady;
         this.fileExplorer.setTree(tree, metadata);
-        this.features.handleCommentOverviewWorkspaceTreeChange?.();
+        this.handleCommentOverviewWorkspaceTreeChange?.();
         this.fileExplorerReady = true;
         if (!wasReady && this.isTabActive) {
-          void this.features.handleHashChange();
+          void this.handleHashChange();
         }
       },
       onWorkspaceEvent: (event) => {
-        void this.features.handleIncomingWorkspaceEvent(event);
+        void this.handleIncomingWorkspaceEvent(event);
       },
     });
 
@@ -133,7 +155,7 @@ export class CollabMdAppShell {
     this.fileExplorer = new FileExplorerController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onFileDelete: () => this.navigation.navigateToFile(null),
-      onFileSelect: (filePath) => this.features.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
+      onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
       pendingWorkspaceRequestIds: this.pendingWorkspaceRequestIds,
       toastController: this.toastController,
       vaultClient: this.vaultApiClient,
@@ -142,12 +164,12 @@ export class CollabMdAppShell {
       onOverviewChange: (_overview, { threadCounts }) => {
         this.fileExplorer.setThreadCounts(threadCounts);
       },
-      onThreadSelect: (payload) => this.features.openCommentOverviewThread(payload),
+      onThreadSelect: (payload) => this.openCommentOverviewThread(payload),
       panelElement: this.elements.commentOverviewPanel,
       toastController: this.toastController,
       vaultApiClient: this.vaultApiClient,
     });
-    this.gitPanel = this.features.createLazyGitPanelController();
+    this.gitPanel = this.createLazyGitPanelController();
     this.outlineController = new OutlineController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onNavigateToHeading: ({ sourceLine }) => {
@@ -160,12 +182,12 @@ export class CollabMdAppShell {
     this.videoEmbed = new VideoEmbedController({
       previewElement: this.elements.previewContent,
     });
-    this.basesPreview = this.features.createLazyBasesPreviewController();
+    this.basesPreview = this.createLazyBasesPreviewController();
     this.imageLightbox = new ImageLightboxController({
       previewElement: this.elements.previewContent,
     });
     this.previewRenderer = new PreviewRenderer({
-      getContent: () => this.features.getPreviewSource(),
+      getContent: () => this.getPreviewSource(),
       getFileList: () => this.fileExplorer.flatDocumentFiles,
       getWikiLinkAutoCreate: () => this.runtimeConfig.wikiLinkAutoCreate !== false,
       loadFileSource: async (filePath) => {
@@ -186,10 +208,10 @@ export class CollabMdAppShell {
         this.excalidrawEmbed.reconcileEmbeds(this.elements.previewContent, { isLargeDocument: stats.isLargeDocument });
         this.excalidrawEmbed.syncLayout();
         this.scrollSyncController.setLargeDocumentMode(stats.isLargeDocument);
-        this.features.syncPreviewHeadingLinkButtons();
-        this.features.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true });
-        this.features.schedulePreviewLayoutSync({ delayMs: 0 });
-        this.features.refreshCommentUiLayout();
+        this.syncPreviewHeadingLinkButtons();
+        this.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true });
+        this.schedulePreviewLayoutSync({ delayMs: 0 });
+        this.refreshCommentUiLayout();
       },
       onBeforeRenderCommit: () => {
         this.videoEmbed.detachForCommit();
@@ -198,17 +220,17 @@ export class CollabMdAppShell {
       },
       onPreviewLayoutChange: () => {
         this.scrollSyncController.invalidatePreviewBlocks();
-        this.features.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: false });
-        this.features.schedulePreviewLayoutSync({ delayMs: 0 });
-        this.features.refreshCommentUiLayout();
+        this.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: false });
+        this.schedulePreviewLayoutSync({ delayMs: 0 });
+        this.refreshCommentUiLayout();
       },
       onRenderComplete: () => {
         this.videoEmbed.syncLayout();
         this.drawioEmbed.syncLayout();
         this.excalidrawEmbed.syncLayout();
-        this.features.applyPendingPreviewRouteAnchor({ allowExpired: true, behavior: 'auto', clearMissing: true });
-        this.features.schedulePreviewLayoutSync({ delayMs: 0 });
-        this.features.refreshCommentUiLayout();
+        this.applyPendingPreviewRouteAnchor({ allowExpired: true, behavior: 'auto', clearMissing: true });
+        this.schedulePreviewLayoutSync({ delayMs: 0 });
+        this.refreshCommentUiLayout();
       },
       outlineController: this.outlineController,
       plantUmlRenderClient: this.plantUmlApiClient,
@@ -216,15 +238,15 @@ export class CollabMdAppShell {
       previewElement: this.elements.previewContent,
       toastController: this.toastController,
     });
-    this.themeController = new ThemeController({ onChange: (theme) => this.features.handleThemeChange(theme) });
+    this.themeController = new ThemeController({ onChange: (theme) => this.handleThemeChange(theme) });
     this.layoutController = new LayoutController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onMeasureEditor: () => this.session?.requestMeasure(),
-      onViewRequest: (view) => this.features.handleLayoutViewRequest(view),
+      onViewRequest: (view) => this.handleLayoutViewRequest(view),
     });
     this.scrollSyncController = new ScrollSyncController({
       getEditorLineNumber: () => this.session?.getTopVisibleLineNumber(0.35) ?? 1,
-      onEditorScrollActivityChange: (isActive) => this.features.handleEditorScrollActivityChange(isActive),
+      onEditorScrollActivityChange: (isActive) => this.handleEditorScrollActivityChange(isActive),
       previewContainer: this.elements.previewContainer,
       previewElement: this.elements.previewContent,
       scrollEditorToLine: (lineNumber, viewportRatio) => this.session?.scrollToLine(lineNumber, viewportRatio),
@@ -233,11 +255,11 @@ export class CollabMdAppShell {
       headerPanelElement: this.elements.backlinksHeaderPanel,
       inlinePanelElement: this.elements.backlinksInlinePanel,
       loadBacklinks: (filePath, options = {}) => this.backlinksApiClient.readBacklinks(filePath, options),
-      onFileSelect: (filePath) => this.features.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
+      onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
       panelElement: this.elements.backlinksPanel,
     });
-    this.excalidrawEmbed = this.features.createLazyExcalidrawEmbedController();
-    this.drawioEmbed = this.features.createLazyDrawioEmbedController();
+    this.excalidrawEmbed = this.createLazyExcalidrawEmbedController();
+    this.drawioEmbed = this.createLazyDrawioEmbedController();
     this.commentUi = new CommentUiController({
       commentSelectionButton: this.elements.commentSelectionButton,
       commentsDrawer: this.elements.commentsDrawer,
@@ -248,7 +270,7 @@ export class CollabMdAppShell {
       onWillOpenDrawer: () => this.outlineController.close(),
       previewContainer: this.elements.previewContainer,
       previewElement: this.elements.previewContent,
-      onCreateThread: ({ anchor, body }) => this.features.createCommentThread({ anchor, body }),
+      onCreateThread: ({ anchor, body }) => this.createCommentThread({ anchor, body }),
       onNavigateToLine: (lineNumber) => {
         const session = this.session;
         this.scrollSyncController.suspendSync(250);
@@ -264,9 +286,9 @@ export class CollabMdAppShell {
           });
         }
       },
-      onReplyToThread: (threadId, body) => this.features.replyToCommentThread(threadId, body),
+      onReplyToThread: (threadId, body) => this.replyToCommentThread(threadId, body),
       onToggleReaction: (threadId, messageId, emoji) => this.session?.toggleCommentReaction(threadId, messageId, emoji),
-      onResolveThread: (threadId) => this.features.resolveCommentThread(threadId),
+      onResolveThread: (threadId) => this.resolveCommentThread(threadId),
     });
     this.workspacePreviewController = new WorkspacePreviewController({
       backlinksPanel: this.backlinksPanel,
@@ -274,18 +296,18 @@ export class CollabMdAppShell {
       drawioEmbed: this.drawioEmbed,
       elements: this.elements,
       excalidrawEmbed: this.excalidrawEmbed,
-      getDisplayName: (filePath) => this.features.getDisplayName(filePath),
+      getDisplayName: (filePath) => this.getDisplayName(filePath),
       getSession: () => this.session,
-      isBaseFile: (filePath) => this.features.isBaseFile(filePath),
-      isDrawioFile: (filePath) => this.features.isDrawioFile(filePath),
-      isExcalidrawFile: (filePath) => this.features.isExcalidrawFile(filePath),
-      isImageFile: (filePath) => this.features.isImageFile(filePath),
-      isMermaidFile: (filePath) => this.features.isMermaidFile(filePath),
-      isPlantUmlFile: (filePath) => this.features.isPlantUmlFile(filePath),
+      isBaseFile: (filePath) => this.isBaseFile(filePath),
+      isDrawioFile: (filePath) => this.isDrawioFile(filePath),
+      isExcalidrawFile: (filePath) => this.isExcalidrawFile(filePath),
+      isImageFile: (filePath) => this.isImageFile(filePath),
+      isMermaidFile: (filePath) => this.isMermaidFile(filePath),
+      isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
       layoutController: this.layoutController,
       outlineController: this.outlineController,
       previewRenderer: this.previewRenderer,
-      schedulePreviewLayoutSync: (options) => this.features.schedulePreviewLayoutSync(options),
+      schedulePreviewLayoutSync: (options) => this.schedulePreviewLayoutSync(options),
       scrollSyncController: this.scrollSyncController,
       videoEmbed: this.videoEmbed,
     });
@@ -297,12 +319,12 @@ export class CollabMdAppShell {
       vaultApiClient: this.vaultApiClient,
       wikiLinkAutoCreate: this.runtimeConfig.wikiLinkAutoCreate !== false,
     });
-    this.gitDiffView = this.features.createLazyGitDiffViewController();
-    this.fileHistoryView = this.features.createLazyFileHistoryViewController();
+    this.gitDiffView = this.createLazyGitDiffViewController();
+    this.fileHistoryView = this.createLazyFileHistoryViewController();
     this.tabActivityLock = new TabActivityLock({
-      onActivated: ({ takeover }) => this.features.handleTabActivated({ takeover }),
-      onBlocked: () => this.features.handleTabBlocked({ reason: 'active-elsewhere' }),
-      onStolen: () => this.features.handleTabBlocked({ reason: 'taken-over' }),
+      onActivated: ({ takeover }) => this.handleTabActivated({ takeover }),
+      onBlocked: () => this.handleTabBlocked({ reason: 'active-elsewhere' }),
+      onStolen: () => this.handleTabBlocked({ reason: 'taken-over' }),
     });
     this.workspaceCoordinator = new WorkspaceCoordinator({
       attachEditorScroller: (scroller) => this.scrollSyncController.attachEditorScroller(scroller),
@@ -329,18 +351,18 @@ export class CollabMdAppShell {
         onSelectionChange: options.onSelectionChange,
         preferredUserName: options.preferredUserName,
       }),
-      getDisplayName: (filePath) => this.features.getDisplayName(filePath),
+      getDisplayName: (filePath) => this.getDisplayName(filePath),
       getFileList: () => this.fileExplorer.flatDocumentFiles,
-      getLineWrappingEnabled: () => this.features.getStoredLineWrapping(),
+      getLineWrappingEnabled: () => this.getStoredLineWrapping(),
       getLocalUser: () => this.lobby.getLocalUser(),
-      getStoredUserName: () => this.features.getStoredUserName(),
+      getStoredUserName: () => this.getStoredUserName(),
       getTheme: () => this.themeController.getTheme(),
-      isBaseFile: (filePath) => this.features.isBaseFile(filePath),
-      isDrawioFile: (filePath) => this.features.isDrawioFile(filePath),
-      isExcalidrawFile: (filePath) => this.features.isExcalidrawFile(filePath),
-      isImageFile: (filePath) => this.features.isImageFile(filePath),
-      isMermaidFile: (filePath) => this.features.isMermaidFile(filePath),
-      isPlantUmlFile: (filePath) => this.features.isPlantUmlFile(filePath),
+      isBaseFile: (filePath) => this.isBaseFile(filePath),
+      isDrawioFile: (filePath) => this.isDrawioFile(filePath),
+      isExcalidrawFile: (filePath) => this.isExcalidrawFile(filePath),
+      isImageFile: (filePath) => this.isImageFile(filePath),
+      isMermaidFile: (filePath) => this.isMermaidFile(filePath),
+      isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
       isTabActive: () => this.isTabActive,
       loadBootstrapContent: async (filePath) => {
         const response = await this.vaultApiClient.readFile(filePath);
@@ -352,17 +374,17 @@ export class CollabMdAppShell {
         this.session = null;
         this.commentUi.attachSession(null);
         this.layoutController.reset();
-        this.features.resetPreviewMode();
+        this.resetPreviewMode();
         this.elements.emptyState?.classList.add('hidden');
         this.elements.editorPage?.classList.remove('hidden');
         this.elements.diffPage?.classList.add('hidden');
-        this.features.clearInitialFileBootstrap();
+        this.clearInitialFileBootstrap();
       },
-      onConnectionChange: (state) => this.features.handleConnectionChange(state),
+      onConnectionChange: (state) => this.handleConnectionChange(state),
       onContentChange: ({ isBase, isMermaid, isPlantUml }) => {
-        this.features.handleCommentEditorContentChange();
+        this.handleCommentEditorContentChange();
         if (isBase) {
-          void this.features.renderBaseFilePreview(this.currentFilePath, {
+          void this.renderBaseFilePreview(this.currentFilePath, {
             source: this.session?.getText?.() ?? '',
           });
           return;
@@ -370,59 +392,59 @@ export class CollabMdAppShell {
 
         this.previewRenderer.queueRender();
         if (!isMermaid && !isPlantUml) {
-          this.features.scheduleBacklinkRefresh();
+          this.scheduleBacklinkRefresh();
         }
       },
-      onCommentsChange: (threads) => this.features.handleCommentThreadsChange(threads),
-      onFileAwarenessChange: (users) => this.features.updateFileAwareness(users),
+      onCommentsChange: (threads) => this.handleCommentThreadsChange(threads),
+      onFileAwarenessChange: (users) => this.updateFileAwareness(users),
       onFileOpenError: () => {
-        this.features.showEditorLoadError();
-        this.features.syncWrapToggle();
+        this.showEditorLoadError();
+        this.syncWrapToggle();
         this.toastController.show('Failed to initialize editor');
       },
       onFileOpenReady: () => {
-        this.features.hideEditorLoading();
+        this.hideEditorLoading();
       },
-      onSelectionChange: (anchor) => this.features.handleCommentSelectionChange(anchor),
-      onImagePaste: (file) => this.features.handleEditorImageInsert(file),
+      onSelectionChange: (anchor) => this.handleCommentSelectionChange(anchor),
+      onImagePaste: (file) => this.handleEditorImageInsert(file),
       onFileOpenMetric: (name, payload) => this.recordFileOpenMetric(name, payload),
       onSessionAssigned: (session) => {
         this.session = session;
         this.commentUi.attachSession(session);
       },
-      onRenderDrawioPreview: (filePath) => this.features.renderDrawioFilePreview(filePath),
-      onRenderBasePreview: (filePath) => this.features.renderBaseFilePreview(filePath),
-      onRenderExcalidrawPreview: (filePath) => this.features.renderExcalidrawFilePreview(filePath),
-      onRenderImagePreview: (filePath) => this.features.renderImageFilePreview(filePath),
-      onSyncWrapToggle: () => this.features.syncWrapToggle(),
+      onRenderDrawioPreview: (filePath) => this.renderDrawioFilePreview(filePath),
+      onRenderBasePreview: (filePath) => this.renderBaseFilePreview(filePath),
+      onRenderExcalidrawPreview: (filePath) => this.renderExcalidrawFilePreview(filePath),
+      onRenderImagePreview: (filePath) => this.renderImageFilePreview(filePath),
+      onSyncWrapToggle: () => this.syncWrapToggle(),
       onUpdateActiveFile: (filePath) => this.fileExplorer.setActiveFile(filePath),
       onUpdateCurrentFile: (filePath) => {
         this.currentFilePath = filePath;
       },
       onUpdateLobbyCurrentFile: (filePath) => this.lobby.setCurrentFile(filePath),
       onUpdateVisibleChrome: (filePath, { displayName }) => {
-        this.features.syncFileChrome(filePath, {
+        this.syncFileChrome(filePath, {
           drawioMode: this.currentDrawioMode,
-          preferPreviewForBase: this.features.isBaseFile(filePath),
+          preferPreviewForBase: this.isBaseFile(filePath),
         });
-        this.features.syncCommentChrome(filePath);
-        this.features.syncFileHistoryButton({ filePath, mode: 'editor' });
+        this.syncCommentChrome(filePath);
+        this.syncFileHistoryButton({ filePath, mode: 'editor' });
         if (this.elements.activeFileName) {
           this.elements.activeFileName.textContent = displayName;
         }
       },
-      onViewModeReset: () => this.features.resetPreviewMode(),
-      renderPresence: () => this.features.renderPresence(),
+      onViewModeReset: () => this.resetPreviewMode(),
+      renderPresence: () => this.renderPresence(),
       scrollContainerForSession: (session) => session.getScrollContainer(),
       shouldUseDrawioPreview: () => Boolean(this.runtimeConfig.drawioBaseUrl),
-      showEditorLoading: () => this.features.showEditorLoading(),
+      showEditorLoading: () => this.showEditorLoading(),
       stateStore: this,
     });
     this.workspaceRouteController = new WorkspaceRouteController({
       backlinksPanel: this.backlinksPanel,
-      clearInitialFileBootstrap: () => this.features.clearInitialFileBootstrap(),
-      clearStaticPreviewDocument: () => this.features.clearStaticPreviewDocument(),
-      closeSidebarOnMobile: () => this.features.closeSidebarOnMobile(),
+      clearInitialFileBootstrap: () => this.clearInitialFileBootstrap(),
+      clearStaticPreviewDocument: () => this.clearStaticPreviewDocument(),
+      closeSidebarOnMobile: () => this.closeSidebarOnMobile(),
       drawioEmbed: this.drawioEmbed,
       elements: this.elements,
       excalidrawEmbed: this.excalidrawEmbed,
@@ -437,17 +459,17 @@ export class CollabMdAppShell {
       lobby: this.lobby,
       navigation: this.navigation,
       previewRenderer: this.previewRenderer,
-      requestPreviewRouteAnchor: (anchorId, filePath) => this.features.requestPreviewRouteAnchor(anchorId, filePath),
-      renderAvatars: () => this.features.renderAvatars(),
-      renderPresence: () => this.features.renderPresence(),
-      resetPreviewMode: () => this.features.resetPreviewMode(),
+      requestPreviewRouteAnchor: (anchorId, filePath) => this.requestPreviewRouteAnchor(anchorId, filePath),
+      renderAvatars: () => this.renderAvatars(),
+      renderPresence: () => this.renderPresence(),
+      resetPreviewMode: () => this.resetPreviewMode(),
       scrollSyncController: this.scrollSyncController,
       setCurrentFilePath: (value) => {
         this.currentFilePath = value;
         if (!value) {
           this.commentUi.setCurrentFile(null, { supported: false });
-          this.features.handleCommentThreadsChange([]);
-          this.features.handleCommentSelectionChange(null);
+          this.handleCommentThreadsChange([]);
+          this.handleCommentSelectionChange(null);
         }
       },
       setSession: (value) => {
@@ -457,14 +479,14 @@ export class CollabMdAppShell {
       setSessionLoadToken: (value) => {
         this.sessionLoadToken = value;
       },
-      setSidebarTab: (value) => this.features.setSidebarTab(value),
-      setSidebarVisibility: (showSidebar) => this.features.setSidebarVisibility(showSidebar),
-      showGitCommit: (route) => this.features.showGitCommit(route),
-      showGitDiff: (route) => this.features.showGitDiff(route),
-      showGitFileHistory: (route) => this.features.showGitFileHistory(route),
-      showGitFilePreview: (route) => this.features.showGitFilePreview(route),
-      showGitHistory: () => this.features.showGitHistory(),
-      syncMainChrome: (payload) => this.features.syncMainChrome(payload),
+      setSidebarTab: (value) => this.setSidebarTab(value),
+      setSidebarVisibility: (showSidebar) => this.setSidebarVisibility(showSidebar),
+      showGitCommit: (route) => this.showGitCommit(route),
+      showGitDiff: (route) => this.showGitDiff(route),
+      showGitFileHistory: (route) => this.showGitFileHistory(route),
+      showGitFilePreview: (route) => this.showGitFilePreview(route),
+      showGitHistory: () => this.showGitHistory(),
+      syncMainChrome: (payload) => this.syncMainChrome(payload),
       videoEmbed: this.videoEmbed,
       workspaceCoordinator: this.workspaceCoordinator,
     });

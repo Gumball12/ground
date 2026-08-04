@@ -51,12 +51,12 @@ test('CollaborationRoom hydrates once for concurrent joins', async () => {
     name: 'hydration-room',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         readCount += 1;
         await new Promise((resolve) => setTimeout(resolve, 25));
         return '# persisted';
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -73,7 +73,7 @@ test('CollaborationRoom retries hydration after a transient read failure', async
     name: 'retry-hydration-room',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         readCount += 1;
         if (readCount === 1) {
           throw new Error('temporary read failure');
@@ -81,7 +81,7 @@ test('CollaborationRoom retries hydration after a transient read failure', async
 
         return '# recovered';
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -101,11 +101,11 @@ test('CollaborationRoom normalizes CRLF in memory without rewriting open-only co
     name: 'crlf.md',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Title\r\n\r\nBody\r\n';
       },
-      async writeMarkdownFile(path, content, options) {
-        writes.push({ content, options, path });
+      async persistCollaborationState(path, { content, ...options }) {
+        if (options.includeContent) writes.push({ content, options, path });
         return { ok: true };
       },
     },
@@ -126,11 +126,11 @@ test('CollaborationRoom writes LF content after an intentional text edit', async
     name: 'edited-crlf.md',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Title\r\n\r\nBody\r\n';
       },
-      async writeMarkdownFile(path, content, options) {
-        writes.push({ content, options, path });
+      async persistCollaborationState(path, { content, ...options }) {
+        if (options.includeContent) writes.push({ content, options, path });
         return { ok: true };
       },
     },
@@ -142,7 +142,7 @@ test('CollaborationRoom writes LF content after an intentional text edit', async
 
   assert.equal(writes.length, 1);
   assert.equal(writes[0].content, '# Title\n\nBody\n\nEdited\n');
-  assert.equal(writes[0].options?.invalidateCollaborationSnapshot, false);
+  assert.equal(writes[0].options?.includeContent, true);
 });
 
 test('CollaborationRoom skips content write when text returns to the in-memory baseline before persist', async () => {
@@ -152,11 +152,11 @@ test('CollaborationRoom skips content write when text returns to the in-memory b
     name: 'undo-before-persist.md',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Title\r\n';
       },
-      async writeMarkdownFile(path, content, options) {
-        writes.push({ content, options, path });
+      async persistCollaborationState(path, { content, ...options }) {
+        if (options.includeContent) writes.push({ content, options, path });
         return { ok: true };
       },
     },
@@ -206,10 +206,10 @@ test('CollaborationRoom allows a single oversized initial sync frame from an emp
     name: 'initial-sync-room',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return 'x'.repeat(2048);
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -271,14 +271,14 @@ test('CollaborationRoom primes a collaboration snapshot after content hydration 
       async readCommentThreads() {
         return [];
       },
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Primed\n';
       },
       async writeCollaborationSnapshot(path, snapshot) {
         snapshotWrites.push({ path, snapshot });
         return { ok: true };
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -309,14 +309,14 @@ test('CollaborationRoom replaces an invalid snapshot only after rebuilding persi
       async readCommentThreads() {
         return [];
       },
-      async readExcalidrawFile() {
+      async readEditableVaultContent() {
         return '{"type":"excalidraw","version":2,"source":"collabmd","elements":[],"appState":{"gridSize":20,"viewBackgroundColor":"#ffffff"},"files":{}}';
       },
       async writeCollaborationSnapshot(path, snapshot) {
         snapshotWrites.push({ path, snapshot });
         return { ok: true };
       },
-      async writeExcalidrawFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -360,7 +360,7 @@ test('CollaborationRoom rejects an incompatible Excalidraw snapshot schema and r
       async readCommentThreads() {
         return [];
       },
-      async readExcalidrawFile() {
+      async readEditableVaultContent() {
         return JSON.stringify({
           appState: {},
           elements: [{ id: 'durable-shape', type: 'rectangle', version: 2, versionNonce: 2 }],
@@ -374,7 +374,7 @@ test('CollaborationRoom rejects an incompatible Excalidraw snapshot schema and r
         snapshotWrites.push({ path, snapshot });
         return { ok: true };
       },
-      async writeExcalidrawFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -401,11 +401,11 @@ test('CollaborationRoom reloads live room content from disk without scheduling a
       async readCommentThreads() {
         return [];
       },
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         readCount += 1;
         return readCount === 1 ? '# Before\n' : '# After\n';
       },
-      async writeMarkdownFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ content, path });
       },
     },
@@ -426,10 +426,10 @@ test('CollaborationRoom reuses cached initial sync payload until the document ch
     name: 'cached-sync-room',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Cached\n';
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -474,13 +474,13 @@ test('CollaborationRoom emits perf logs for hydrate and initial sync when enable
       async readCommentThreads() {
         return [];
       },
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Perf\n';
       },
       async writeCollaborationSnapshot() {
         return { ok: true };
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -508,10 +508,10 @@ test('CollaborationRoom logs oversized initial sync payloads', async (t) => {
     name: 'large-sync-room.md',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return 'large '.repeat(128);
       },
-      async writeMarkdownFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -567,19 +567,16 @@ test('CollaborationRoom persists markdown comment threads without rewriting unch
     name: 'notes.md',
     onEmpty: () => {},
     vaultFileStore: {
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# Notes\n\nHello from room.\n';
       },
       async readCommentThreads(path) {
         assert.equal(path, 'notes.md');
         return persistedThreads;
       },
-      async writeCommentThreads(path, threads) {
-        commentWrites.push({ path, threads });
-        return { ok: true };
-      },
-      async writeMarkdownFile(path, content, options) {
-        writes.push({ content, options, path });
+      async persistCollaborationState(path, { commentThreads, content, includeContent, ...options }) {
+        commentWrites.push({ path, threads: commentThreads });
+        if (includeContent) writes.push({ content, options, path });
         return { ok: true };
       },
     },
@@ -675,20 +672,14 @@ test('CollaborationRoom hydrates and persists excalidraw rooms via excalidraw fi
       },
     },
     vaultFileStore: {
-      async readExcalidrawFile(path) {
+      async readEditableVaultContent(path) {
         readExcalidrawCount += 1;
         assert.equal(path, 'diagram.excalidraw');
         return initialScene;
       },
-      async readMarkdownFile() {
-        throw new Error('readMarkdownFile should not be called for .excalidraw rooms');
-      },
-      async writeExcalidrawFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ content, path });
         return { ok: true };
-      },
-      async writeMarkdownFile() {
-        throw new Error('writeMarkdownFile should not be called for .excalidraw rooms');
       },
     },
   });
@@ -741,11 +732,11 @@ test('CollaborationRoom keeps the latest excalidraw state available while final 
       name,
       onEmpty,
       vaultFileStore: {
-        async readExcalidrawFile(path) {
+        async readEditableVaultContent(path) {
           assert.equal(path, 'diagram.excalidraw');
           return persistedScene;
         },
-        async writeExcalidrawFile(path, content) {
+        async persistCollaborationState(path, { content }) {
           assert.equal(path, 'diagram.excalidraw');
           writes += 1;
 
@@ -825,7 +816,7 @@ test('CollaborationRoom serializes overlapping persists for the same room', asyn
         concurrentPersists -= 1;
         return { ok: true };
       },
-      async readMarkdownFile() {
+      async readEditableVaultContent() {
         return '# persisted\n';
       },
     },
@@ -854,10 +845,10 @@ test('CollaborationRoom still releases the room after duplicate client removal',
       name,
       onEmpty,
       vaultFileStore: {
-        async readMarkdownFile() {
+        async readEditableVaultContent() {
           return '# persisted\n';
         },
-        async writeMarkdownFile() {
+        async persistCollaborationState() {
           return { ok: true };
         },
       },
@@ -884,7 +875,7 @@ test('CollaborationRoom does not persist malformed legacy excalidraw room text o
     name: 'broken-room.excalidraw',
     onEmpty: () => {},
     vaultFileStore: {
-      async readExcalidrawFile() {
+      async readEditableVaultContent() {
         return JSON.stringify({
           appState: { gridSize: null, viewBackgroundColor: '#ffffff' },
           elements: [{ id: 'shape-live', type: 'ellipse' }],
@@ -894,7 +885,7 @@ test('CollaborationRoom does not persist malformed legacy excalidraw room text o
           version: 2,
         });
       },
-      async writeExcalidrawFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ path, content });
       },
     },
@@ -922,10 +913,10 @@ test('CollaborationRoom clears ephemeral Excalidraw history after the last clien
     name: 'diagram.excalidraw',
     onEmpty: () => {},
     vaultFileStore: {
-      async readExcalidrawFile() {
+      async readEditableVaultContent() {
         return scene;
       },
-      async writeExcalidrawFile() {},
+      async persistCollaborationState() {},
     },
   });
 
@@ -960,20 +951,14 @@ test('CollaborationRoom hydrates and persists PlantUML rooms via PlantUML file A
       },
     },
     vaultFileStore: {
-      async readPlantUmlFile(path) {
+      async readEditableVaultContent(path) {
         readPlantUmlCount += 1;
         assert.equal(path, 'diagram.puml');
         return initialDiagram;
       },
-      async readMarkdownFile() {
-        throw new Error('readMarkdownFile should not be called for .puml rooms');
-      },
-      async writePlantUmlFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ content, path });
         return { ok: true };
-      },
-      async writeMarkdownFile() {
-        throw new Error('writeMarkdownFile should not be called for .puml rooms');
       },
     },
   });
@@ -1011,20 +996,14 @@ test('CollaborationRoom hydrates and persists Mermaid rooms via Mermaid file API
       },
     },
     vaultFileStore: {
-      async readMermaidFile(path) {
+      async readEditableVaultContent(path) {
         readMermaidCount += 1;
         assert.equal(path, 'diagram.mmd');
         return initialDiagram;
       },
-      async readMarkdownFile() {
-        throw new Error('readMarkdownFile should not be called for .mmd rooms');
-      },
-      async writeMermaidFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ content, path });
         return { ok: true };
-      },
-      async writeMarkdownFile() {
-        throw new Error('writeMarkdownFile should not be called for .mmd rooms');
       },
     },
   });
@@ -1061,20 +1040,14 @@ test('CollaborationRoom hydrates and persists .plantuml rooms via PlantUML file 
       },
     },
     vaultFileStore: {
-      async readPlantUmlFile(path) {
+      async readEditableVaultContent(path) {
         readPlantUmlCount += 1;
         assert.equal(path, 'diagram.plantuml');
         return initialDiagram;
       },
-      async readMarkdownFile() {
-        throw new Error('readMarkdownFile should not be called for .plantuml rooms');
-      },
-      async writePlantUmlFile(path, content) {
+      async persistCollaborationState(path, { content }) {
         writes.push({ content, path });
         return { ok: true };
-      },
-      async writeMarkdownFile() {
-        throw new Error('writeMarkdownFile should not be called for .plantuml rooms');
       },
     },
   });

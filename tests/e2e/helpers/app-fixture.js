@@ -25,7 +25,7 @@ let runtimeVaultDir = getRuntimeVaultDir();
 
 export const test = base.extend({
   e2eServer: [async ({ browserName }, use, workerInfo) => {
-    const workerId = `${workerInfo.project.name}-${browserName}-${workerInfo.parallelIndex}`;
+    const workerId = `${process.pid}-${workerInfo.project.name}-${browserName}-${workerInfo.parallelIndex}`;
     const vaultDir = getRuntimeVaultDir(workerId);
     const port = await getAvailablePort();
     const baseURL = `http://127.0.0.1:${port}`;
@@ -65,6 +65,7 @@ export const test = base.extend({
       await use({ baseURL, vaultDir });
     } finally {
       await stopServerProcess(serverProcess);
+      await rm(vaultDir, { force: true, recursive: true });
     }
   }, { scope: 'worker' }],
   baseURL: async ({ e2eServer }, use) => {

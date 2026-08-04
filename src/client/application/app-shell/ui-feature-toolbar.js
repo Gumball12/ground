@@ -7,17 +7,10 @@ import {
   isMarkdownBlockAction,
   markdownToolbarLayout,
 } from '../../domain/markdown-toolbar-actions.js';
+import { escapeHtml } from '../../domain/vault-utils.js';
 
 const IMAGE_FILE_PICKER_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 const DEFAULT_BLOCK_ACTION = 'paragraph';
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
 
 function normalizeToolbarAction(action) {
   if (action === 'heading') {

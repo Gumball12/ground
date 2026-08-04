@@ -361,13 +361,13 @@ test('VaultFileStore reads and writes PlantUML files', async (t) => {
   const createResult = await store.createFile('diagram.puml', '@startuml\nAlice -> Bob: Hi\n@enduml\n');
   assert.equal(createResult.ok, true);
 
-  const content = await store.readPlantUmlFile('diagram.puml');
+  const content = await store.readEditableVaultContent('diagram.puml');
   assert.equal(content, '@startuml\nAlice -> Bob: Hi\n@enduml\n');
 
-  const writeResult = await store.writePlantUmlFile('diagram.puml', '@startuml\nBob -> Alice: Ack\n@enduml\n');
+  const writeResult = await store.writeEditableVaultContent('diagram.puml', '@startuml\nBob -> Alice: Ack\n@enduml\n');
   assert.equal(writeResult.ok, true);
 
-  const updated = await store.readPlantUmlFile('diagram.puml');
+  const updated = await store.readEditableVaultContent('diagram.puml');
   assert.equal(updated, '@startuml\nBob -> Alice: Ack\n@enduml\n');
 });
 
@@ -378,13 +378,13 @@ test('VaultFileStore reads and writes Mermaid files', async (t) => {
   const createResult = await store.createFile('diagram.mmd', 'flowchart TD\n  A --> B\n');
   assert.equal(createResult.ok, true);
 
-  const content = await store.readMermaidFile('diagram.mmd');
+  const content = await store.readEditableVaultContent('diagram.mmd');
   assert.equal(content, 'flowchart TD\n  A --> B\n');
 
-  const writeResult = await store.writeMermaidFile('diagram.mmd', 'flowchart TD\n  B --> C\n');
+  const writeResult = await store.writeEditableVaultContent('diagram.mmd', 'flowchart TD\n  B --> C\n');
   assert.equal(writeResult.ok, true);
 
-  const updated = await store.readMermaidFile('diagram.mmd');
+  const updated = await store.readEditableVaultContent('diagram.mmd');
   assert.equal(updated, 'flowchart TD\n  B --> C\n');
 });
 
@@ -411,7 +411,7 @@ test('VaultFileStore reads and writes editable vault content by path kind', asyn
 
   const writeResult = await store.writeEditableVaultContent('diagrams/flow.mmd', 'flowchart TD\n  B --> C\n');
   assert.equal(writeResult.ok, true);
-  assert.equal(await store.readMermaidFile('diagrams/flow.mmd'), 'flowchart TD\n  B --> C\n');
+  assert.equal(await store.readEditableVaultContent('diagrams/flow.mmd'), 'flowchart TD\n  B --> C\n');
 });
 
 test('VaultFileStore editable vault content preserves read and write validation behavior', async (t) => {
@@ -438,13 +438,13 @@ test('VaultFileStore reads and writes .plantuml files', async (t) => {
   const createResult = await store.createFile('architecture.plantuml', '@startuml\nAlice -> Bob: Hi\n@enduml\n');
   assert.equal(createResult.ok, true);
 
-  const content = await store.readPlantUmlFile('architecture.plantuml');
+  const content = await store.readEditableVaultContent('architecture.plantuml');
   assert.equal(content, '@startuml\nAlice -> Bob: Hi\n@enduml\n');
 
-  const writeResult = await store.writePlantUmlFile('architecture.plantuml', '@startuml\nBob -> Alice: Ack\n@enduml\n');
+  const writeResult = await store.writeEditableVaultContent('architecture.plantuml', '@startuml\nBob -> Alice: Ack\n@enduml\n');
   assert.equal(writeResult.ok, true);
 
-  const updated = await store.readPlantUmlFile('architecture.plantuml');
+  const updated = await store.readEditableVaultContent('architecture.plantuml');
   assert.equal(updated, '@startuml\nBob -> Alice: Ack\n@enduml\n');
 });
 

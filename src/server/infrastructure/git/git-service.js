@@ -4,7 +4,7 @@ import { GitCommandRunner } from './command-runner.js';
 import { GitDiffService } from './diff-service.js';
 import { GitHistoryService } from './history-service.js';
 import { parseNameStatusOutput } from './parsers.js';
-import { createEmptyWorkspaceChange, createWorkspaceChange } from './responses.js';
+import { createEmptyWorkspaceChange, createWorkspaceChange } from '../../../domain/workspace-change.js';
 import { GitStatusService } from './status-service.js';
 import { GitUntrackedFileService } from './untracked-files.js';
 import { PullBackupStore } from '../persistence/pull-backup-store.js';

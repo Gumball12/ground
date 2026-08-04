@@ -1,8 +1,3 @@
-import {
-  createEmptyWorkspaceChange as createSharedEmptyWorkspaceChange,
-  createWorkspaceChange as createSharedWorkspaceChange,
-} from '../../../domain/workspace-change.js';
-
 const STATUS_MAP = {
   A: { code: 'A', label: 'added', status: 'added' },
   C: { code: 'C', label: 'copied', status: 'copied' },
@@ -45,10 +40,6 @@ export function createEmptyBranchStatus() {
     name: null,
     upstream: null,
   };
-}
-
-export function createEmptyWorkspaceChange() {
-  return createSharedEmptyWorkspaceChange();
 }
 
 export function createEmptyStatusResponse() {
@@ -157,18 +148,4 @@ export function createFileSnapshotResponse({
     isGitRepo,
     path,
   };
-}
-
-export function createWorkspaceChange({
-  changedPaths = [],
-  deletedPaths = [],
-  refreshExplorer = true,
-  renamedPaths = [],
-} = {}) {
-  return createSharedWorkspaceChange({
-    changedPaths,
-    deletedPaths,
-    refreshExplorer,
-    renamedPaths,
-  });
 }
