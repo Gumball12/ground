@@ -48,6 +48,173 @@ test('renders PlantUML fenced blocks through the preview pipeline', async ({ pag
   await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-fence');
 });
 
+test('debounces PlantUML WIP renders and keeps the last valid output on errors', async ({ page }) => {
+  let renderRequests = 0;
+  await page.route('**/api/plantuml/render', async (route) => {
+    renderRequests += 1;
+    const source = route.request().postDataJSON()?.source || '';
+    if (source.includes('INVALID')) {
+      await route.fulfill({
+        body: JSON.stringify({ ok: false, error: 'Syntax error on line 4, column 8' }),
+        contentType: 'application/json',
+        status: 400,
+      });
+      return;
+    }
+
+    const label = source.includes('Fixed') ? 'plantuml-fixed' : 'plantuml-valid';
+    await route.fulfill({
+      body: JSON.stringify({
+        ok: true,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48"><text x="8" y="28">${label}</text></svg>`,
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await openFile(page, 'README.md');
+  await replaceEditorContent(page, [
+    '# PlantUML WIP',
+    '',
+    '```plantuml',
+    '@startuml',
+    'Alice -> Bob: Hello',
+    '@enduml',
+    '```',
+  ].join('\n'));
+
+  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-valid');
+  const initialRequestCount = renderRequests;
+
+  await replaceEditorContent(page, [
+    '# PlantUML WIP',
+    '',
+    '```plantuml',
+    '@startuml',
+    'INVALID',
+    '@enduml',
+    '```',
+  ].join('\n'));
+
+  await expect(page.locator('#previewContent .diagram-preview-status--error')).toContainText('could not render');
+  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-valid');
+  await expect(page.locator('#previewContent .diagram-preview-status--error details')).toContainText('line 4');
+  expect(renderRequests).toBe(initialRequestCount + 1);
+
+  await replaceEditorContent(page, [
+    '# PlantUML WIP',
+    '',
+    '```plantuml',
+    '@startuml',
+    'Fixed',
+    '@enduml',
+    '```',
+  ].join('\n'));
+
+  await expect(page.locator('#previewContent .diagram-preview-status--error')).toHaveCount(0);
+  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-fixed');
+});
+
+test('preserves PlantUML zoom and pan location across source edits', async ({ page }) => {
+  await page.route('**/api/plantuml/render', async (route) => {
+    const source = route.request().postDataJSON()?.source || '';
+    const label = source.includes('Updated') ? 'plantuml-updated' : 'plantuml-original';
+    await route.fulfill({
+      body: JSON.stringify({
+        ok: true,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 4000"><text x="40" y="220">${label}</text></svg>`,
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await openFile(page, 'README.md');
+  await replaceEditorContent(page, [
+    '# PlantUML View State',
+    '',
+    '```plantuml',
+    '@startuml',
+    'Alice -> Bob: Original',
+    '@enduml',
+    '```',
+  ].join('\n'));
+
+  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-original');
+  const initialZoom = await page.locator('#previewContent .plantuml-zoom-label').textContent();
+  await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
+  await expect(page.locator('#previewContent .plantuml-zoom-label')).not.toHaveText(initialZoom || '');
+  await page.waitForTimeout(250);
+
+  const previousViewState = await page.evaluate(() => {
+    const frame = document.querySelector('#previewContent .plantuml-frame');
+    if (!(frame instanceof HTMLElement)) {
+      return null;
+    }
+
+    frame.scrollLeft = 420;
+    frame.scrollTop = 220;
+    return {
+      scrollLeft: frame.scrollLeft,
+      scrollTop: frame.scrollTop,
+      zoom: document.querySelector('#previewContent .plantuml-zoom-label')?.textContent || '',
+    };
+  });
+  expect(previousViewState).not.toBeNull();
+  expect(previousViewState.scrollLeft).toBeGreaterThan(0);
+  expect(previousViewState.scrollTop).toBeGreaterThan(0);
+
+  await page.evaluate((expectedViewState) => {
+    window.__diagramPanMismatch = null;
+    window.__stopDiagramPanProbe = false;
+    const sampleAfterPaint = () => {
+      setTimeout(() => {
+        const frame = document.querySelector('#previewContent .plantuml-frame');
+        if (
+          !window.__diagramPanMismatch
+          && frame
+          && (frame.scrollLeft !== expectedViewState.scrollLeft || frame.scrollTop !== expectedViewState.scrollTop)
+        ) {
+          window.__diagramPanMismatch = {
+            scrollLeft: frame.scrollLeft,
+            scrollTop: frame.scrollTop,
+          };
+        }
+        if (!window.__stopDiagramPanProbe) {
+          requestAnimationFrame(sampleAfterPaint);
+        }
+      }, 0);
+    };
+    requestAnimationFrame(sampleAfterPaint);
+  }, previousViewState);
+
+  await replaceEditorContent(page, [
+    '# PlantUML View State',
+    '',
+    '```plantuml',
+    '@startuml',
+    'Alice -> Bob: Updated',
+    '@enduml',
+    '```',
+  ].join('\n'));
+
+  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-updated');
+  const panMismatch = await page.evaluate(() => {
+    window.__stopDiagramPanProbe = true;
+    return window.__diagramPanMismatch;
+  });
+  expect(panMismatch).toBeNull();
+  await expect.poll(async () => page.evaluate(() => {
+    const frame = document.querySelector('#previewContent .plantuml-frame');
+    return {
+      scrollLeft: frame?.scrollLeft ?? 0,
+      scrollTop: frame?.scrollTop ?? 0,
+      zoom: document.querySelector('#previewContent .plantuml-zoom-label')?.textContent || '',
+    };
+  })).toEqual(previousViewState);
+});
+
 test('renders embedded PlantUML files through the preview pipeline', async ({ page }) => {
   await page.route('**/api/plantuml/render', async (route) => {
     await route.fulfill({

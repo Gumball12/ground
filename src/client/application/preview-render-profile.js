@@ -3,6 +3,7 @@ export const LARGE_DOCUMENT_MERMAID_THRESHOLD = 20;
 export const LARGE_DOCUMENT_EXCALIDRAW_THRESHOLD = 8;
 export const LARGE_DOCUMENT_DRAWIO_THRESHOLD = 8;
 export const LARGE_DOCUMENT_PLANTUML_THRESHOLD = 12;
+export const DIAGRAM_RENDER_DEBOUNCE_MS = 300;
 
 function countMatches(source, pattern) {
   return source.match(pattern)?.length ?? 0;
@@ -53,7 +54,14 @@ export function getRenderProfile(markdownText = '') {
     };
   }
 
-  if (hasMermaid || hasDrawioEmbed || hasExcalidrawEmbed || hasPlantUml) {
+  if (hasMermaid || hasPlantUml) {
+    return {
+      debounceMs: DIAGRAM_RENDER_DEBOUNCE_MS,
+      deferUntilIdle: false,
+    };
+  }
+
+  if (hasDrawioEmbed || hasExcalidrawEmbed) {
     return {
       debounceMs: 0,
       deferUntilIdle: false,

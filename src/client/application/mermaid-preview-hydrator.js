@@ -5,7 +5,9 @@ import {
 import { DiagramPreviewHydrator } from './diagram-preview-hydrator.js';
 import {
   createMermaidPlaceholderCardWithMessage,
+  createDiagramErrorPlaceholderCard,
   MERMAID_BATCH_SIZE,
+  normalizeDiagramError,
   normalizeMermaidSvg,
 } from './preview-diagram-utils.js';
 
@@ -39,12 +41,14 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
 
   destroy() {
     this.cancelHydration();
-    this.preservedShells.clear();
+    this.clearPreservedShells();
   }
 
-  cancelHydration() {
+  cancelHydration({ preserveActiveShell = false } = {}) {
     super.cancelHydration();
-    this.diagramChrome?.cancelActiveShell?.('mermaid');
+    if (!preserveActiveShell) {
+      this.diagramChrome?.cancelActiveShell?.('mermaid');
+    }
   }
 
   applyTheme(theme) {
@@ -146,8 +150,12 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
     return renderHost;
   }
 
-  async hydrateShell(shell, mermaid) {
+  async hydrateShell(shell, mermaid, { hydrationToken, renderVersion } = {}) {
     if (!mermaid || !shell?.isConnected || this.isShellHydrated(shell)) {
+      return;
+    }
+
+    if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
       return;
     }
 
@@ -173,6 +181,11 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
         throw new Error(shell.dataset.mermaidTarget ? 'Mermaid file is empty' : 'Mermaid source is empty');
       }
 
+      if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
+        return;
+      }
+
+      const renderedSource = source;
       source = this.prepareSource(source);
 
       shell.querySelector('.mermaid-placeholder-card')?.remove();
@@ -194,24 +207,41 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       try {
         renderHost.appendChild(diagram);
         await mermaid.run({ nodes: [diagram] });
-        if (!diagram.isConnected || diagram.parentElement !== renderHost || !shell.isConnected) {
+        if (
+          !this.isHydrationCurrent(renderVersion, shell, hydrationToken)
+          || !diagram.isConnected
+          || diagram.parentElement !== renderHost
+        ) {
           return;
         }
 
-        this.enhanceDiagram(shell, diagram);
+        this.enhanceDiagram(shell, diagram, renderedSource);
         this.markShellHydrated(shell);
       } finally {
         renderHost.remove();
       }
     } catch (error) {
       console.warn('[preview] Mermaid render failed:', error);
+      if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
+        return;
+      }
+
+      if (this.markShellError(shell, error)) {
+        return;
+      }
+
+      this.diagramChrome?.destroyShell?.(shell);
       shell.querySelector(':scope > .mermaid-toolbar')?.remove();
       shell.querySelector(':scope > .mermaid-frame')?.remove();
       shell.querySelector(':scope > .mermaid-render-node')?.remove();
       if (!shell.querySelector('.mermaid-placeholder-card')) {
-        sourceNode?.after(createMermaidPlaceholderCardWithMessage(shell.dataset.mermaidKey || 'mermaid', {
+        const key = shell.dataset.mermaidKey || 'mermaid';
+        const message = normalizeDiagramError(error);
+        sourceNode?.after(createDiagramErrorPlaceholderCard({
+          key,
+          kind: 'mermaid',
           label: shell.dataset.mermaidLabel || 'Mermaid diagram',
-          message: error instanceof Error ? error.message : 'Render failed',
+          message,
         }));
       }
     }
@@ -280,7 +310,7 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
 
     hydratedShells.forEach((shell) => {
       this.diagramChrome?.destroyShell?.(shell);
-      shell.removeAttribute('data-mermaid-hydrated');
+      this.clearShellOutput(shell);
       shell.querySelector(':scope > .mermaid-toolbar')?.remove();
       shell.querySelector(':scope > .mermaid-frame')?.remove();
       shell.querySelector(':scope > .mermaid-render-node')?.remove();
@@ -294,14 +324,16 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
   async renderExportSvgMarkup(shell) {
     const mermaid = await this.ensureMermaid();
     try {
-      const source = shell.querySelector('.mermaid-source')?.textContent ?? '';
+      const source = shell._diagramRenderedSource
+        ?? shell.querySelector('.mermaid-source')?.textContent
+        ?? '';
       return await renderMermaidExportSvgMarkup(mermaid, source);
     } finally {
       this.configureMermaid(mermaid);
     }
   }
 
-  enhanceDiagram(shell, renderedDiagram) {
+  enhanceDiagram(shell, renderedDiagram, renderedSource = '') {
     const svg = renderedDiagram.querySelector('svg');
     if (!svg) {
       renderedDiagram.remove();
@@ -325,6 +357,8 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       kind: 'mermaid',
       sourceSelector: '.mermaid-source',
     });
+    shell._diagramRenderedSource = renderedSource;
+    this.markShellRendered(shell);
   }
 
   scheduleActiveRefit() {

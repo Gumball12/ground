@@ -49,6 +49,58 @@
   background: var(--color-surface-offset);
 }
 
+.diagram-preview-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+  font-size: var(--text-xs);
+}
+
+.diagram-preview-status--error {
+  background: var(--color-error-highlight);
+  color: var(--color-error);
+}
+
+.diagram-preview-status-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diagram-preview-status-copy span,
+.diagram-preview-status-copy code {
+  overflow-wrap: anywhere;
+}
+
+.diagram-preview-status-copy details {
+  color: var(--color-text-muted);
+}
+
+.diagram-preview-status-copy code {
+  display: block;
+  max-width: 100%;
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
+}
+
+.diagram-preview-retry {
+  flex-shrink: 0;
+}
+
+.diagram-preview-error-card .diagram-preview-placeholder-copy details {
+  color: var(--color-text-muted);
+}
+
+.diagram-preview-error-card .diagram-preview-placeholder-copy code {
+  display: block;
+  max-width: min(60ch, 100%);
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
+}
+
 .diagram-preview-toolbar {
   display: flex;
   align-items: center;

@@ -122,6 +122,69 @@ export function createPlantUmlPlaceholderCard(key, message = 'Renders server-sid
   return card;
 }
 
+export function getDiagramErrorLocation(message = '') {
+  const text = String(message ?? '');
+  const line = text.match(/\bline(?:\s+number)?\s*[:#]?\s*(\d+)\b/i)?.[1] ?? '';
+  const column = text.match(/\bcol(?:umn)?(?:\s+number)?\s*[:#]?\s*(\d+)\b/i)?.[1] ?? '';
+
+  return [
+    line ? `Line ${line}` : '',
+    column ? `column ${column}` : '',
+  ].filter(Boolean).join(', ');
+}
+
+export function normalizeDiagramError(error, fallback = 'Render failed') {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.trim() || fallback;
+}
+
+export function createDiagramErrorPlaceholderCard({
+  key,
+  kind,
+  label = 'Diagram',
+  message = 'Render failed',
+} = {}) {
+  const card = document.createElement('div');
+  card.className = `${kind}-placeholder-card diagram-preview-placeholder-card diagram-preview-error-card`;
+
+  const copy = document.createElement('div');
+  copy.className = 'diagram-preview-placeholder-copy';
+
+  const title = document.createElement('strong');
+  title.textContent = `${label} needs attention`;
+
+  const subtitle = document.createElement('span');
+  subtitle.textContent = 'The current source could not be rendered.';
+
+  const location = getDiagramErrorLocation(message);
+  let locationNode = null;
+  if (location) {
+    locationNode = document.createElement('span');
+    locationNode.textContent = location;
+  }
+
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = 'Details';
+  const detailMessage = document.createElement('code');
+  detailMessage.textContent = message;
+  details.append(summary, detailMessage);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `${kind}-placeholder-btn diagram-preview-placeholder-btn`;
+  button.dataset[`${kind}Key`] = key;
+  button.textContent = 'Retry';
+
+  copy.append(title, subtitle);
+  if (locationNode) {
+    copy.append(locationNode);
+  }
+  copy.append(details);
+  card.append(copy, button);
+  return card;
+}
+
 const SHOW_COMMENT_NODE = 128;
 
 function removeSvgComments(rootElement) {

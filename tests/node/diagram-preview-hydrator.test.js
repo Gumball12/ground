@@ -250,6 +250,39 @@ test('DiagramPreviewHydrator preserves matching hydrated shells across render co
   assert.deepEqual(hydrator.reconcileEvents, [{ restoredMaximizedShell: true }]);
 });
 
+test('DiagramPreviewHydrator keeps rendered output while a fenced source changes', () => {
+  const preservedShell = new FakeShell({
+    dataset: {
+      diagramHydrated: 'true',
+      diagramKey: 'diagram-old-source',
+      sourceLine: '3',
+    },
+    source: 'graph TD;\nA-->B',
+  });
+  const previewElement = new FakePreviewElement([preservedShell]);
+  const hydrator = new TestDiagramPreviewHydrator(createRenderer(previewElement));
+
+  hydrator.preserveHydratedShellsForCommit();
+
+  const nextShell = new FakeShell({
+    dataset: {
+      diagramKey: 'diagram-new-source',
+      sourceLine: '3',
+    },
+    source: 'graph TD;\nA-->',
+  });
+  previewElement.setShells([nextShell]);
+
+  hydrator.reconcileHydratedShells();
+
+  assert.equal(nextShell.replacedWith, preservedShell);
+  assert.equal(preservedShell.dataset.diagramHydrated, undefined);
+  assert.equal(preservedShell.dataset.diagramOutput, 'true');
+  assert.equal(preservedShell.dataset.diagramState, 'pending');
+  assert.equal(preservedShell.dataset.ariaBusy, 'true');
+  assert.equal(preservedShell.sourceNode.textContent, 'graph TD;\nA-->');
+});
+
 test('DiagramPreviewHydrator batches queued shells and preserves priority order', async () => {
   const previewElement = new FakePreviewElement();
   const idleCallbacks = [];

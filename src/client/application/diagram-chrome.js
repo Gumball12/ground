@@ -78,6 +78,7 @@ export class DiagramChrome {
     this.maximizedRoots = new Map();
     this.resizeObservers = new Set();
     this.shellControllers = new WeakMap();
+    this.shellViewStates = new WeakMap();
     this.shellRefits = new WeakMap();
     this.resizeFrameId = null;
   }
@@ -105,12 +106,27 @@ export class DiagramChrome {
   destroyShell(shell) {
     this.shellControllers.get(shell)?.destroy?.();
     this.shellControllers.delete(shell);
+    this.shellViewStates.delete(shell);
     this.shellRefits.delete(shell);
     if (this.activeMaximizedShell === shell) {
       this.restoreShellMount(shell);
       this.activeMaximizedShell = null;
     }
     this.syncBodyMaximizedClasses();
+  }
+
+  captureShellViewState(shell) {
+    const viewState = this.shellControllers.get(shell)?.getViewState?.() ?? null;
+    if (viewState) {
+      this.shellViewStates.set(shell, viewState);
+    }
+    return viewState;
+  }
+
+  getShellViewState(shell) {
+    return this.shellViewStates.get(shell)
+      ?? this.shellControllers.get(shell)?.getViewState?.()
+      ?? null;
   }
 
   cancelActiveShell(kind) {
@@ -398,10 +414,12 @@ export class DiagramChrome {
       return null;
     }
 
-    this.destroyShell(shell);
-
     const config = getKindConfig(kind);
     const zoomPolicy = getKindZoomPolicy(kind);
+    const previousFrame = shell.querySelector(config.frameClassName.split(' ').map((name) => `.${name}`).join(''));
+    const previousViewportWidth = previousFrame ? getFrameViewportSize(previousFrame).width : 0;
+    const previousViewState = this.getShellViewState(shell);
+    this.destroyShell(shell);
     const {
       copyButton,
       decreaseButton,
@@ -418,14 +436,51 @@ export class DiagramChrome {
     });
     const frame = this.document.createElement('div');
     frame.className = config.frameClassName;
+    const shouldRestoreScrollPosition = Boolean(
+      previousViewState
+      && (previousViewState.scrollLeft > 0 || previousViewState.scrollTop > 0)
+    );
+    const shouldStageReplacement = Boolean(
+      shouldRestoreScrollPosition
+      && previousFrame?.isConnected
+      && previousFrame.clientWidth > 0
+      && previousFrame.clientHeight > 0
+    );
+    const shouldRestoreShellPosition = Boolean(
+      shouldStageReplacement
+      && !shell.classList.contains('is-maximized')
+      && !shell.style.position
+    );
+    if (shouldRestoreShellPosition) {
+      shell.style.position = 'relative';
+    }
+    if (shouldRestoreScrollPosition && !shouldStageReplacement) {
+      frame.style.visibility = 'hidden';
+    }
+    if (shouldStageReplacement) {
+      frame.style.position = 'absolute';
+      frame.style.left = '0';
+      frame.style.top = '0';
+      frame.style.width = `${previousFrame.clientWidth}px`;
+      frame.style.height = `${previousFrame.clientHeight}px`;
+      frame.style.visibility = 'hidden';
+      frame.style.pointerEvents = 'none';
+    }
 
+    let controller = null;
     let currentZoom = zoomPolicy.default;
     let defaultZoom = 1;
     let zoomAnimationFrameId = null;
     let resetZoomFrameId = null;
     let layoutFrameId = null;
-    let hasManualZoom = false;
-    let lastAutoFitViewportWidth = 0;
+    let hasManualZoom = Boolean(
+      previousViewState?.hasManualZoom
+      || previousViewState?.scrollLeft > 0
+      || previousViewState?.scrollTop > 0,
+    );
+    const hasInitialViewport = previousViewportWidth > 0 && Number.isFinite(baseWidth) && baseWidth > 0;
+    const hasRestorableViewState = Number.isFinite(previousViewState?.zoom);
+    let lastAutoFitViewportWidth = hasInitialViewport ? previousViewportWidth : 0;
     let shouldForceScheduledReset = false;
     let isPanning = false;
     let activePointerId = null;
@@ -466,6 +521,14 @@ export class DiagramChrome {
       frame.classList.toggle('is-pannable', isPannable);
       diagramElement.style.margin = isPannable ? '0' : '0 auto';
     };
+
+    // ponytail: size from the current viewport for the first paint; hidden shells refit later.
+    const initialZoom = hasRestorableViewState
+      ? clamp(previousViewState.zoom, zoomPolicy.min, zoomPolicy.max)
+      : hasInitialViewport
+      ? clamp(previousViewportWidth / baseWidth, zoomPolicy.min, zoomPolicy.fitMax)
+      : zoomPolicy.default;
+    applyZoom(initialZoom);
 
     const getViewportCenter = () => ({
       x: frame.scrollLeft + (frame.clientWidth / 2),
@@ -673,14 +736,74 @@ export class DiagramChrome {
 
     frame.appendChild(diagramElement);
     const sourceNode = sourceSelector ? shell.querySelector(sourceSelector) : null;
-    shell.replaceChildren();
+    const nextChildren = sourceNode ? [sourceNode, toolbar, frame] : [toolbar, frame];
     if (sourceNode) {
       sourceNode.hidden = true;
-      shell.appendChild(sourceNode);
     }
-    shell.append(toolbar, frame);
+    if (shouldStageReplacement) {
+      shell.append(frame);
+    } else {
+      shell.replaceChildren(...nextChildren);
+    }
+    applyZoom(initialZoom);
 
-    const controller = {
+    const restoreScrollPosition = () => {
+      const maxScrollLeft = Math.max(0, frame.scrollWidth - frame.clientWidth);
+      const maxScrollTop = Math.max(0, frame.scrollHeight - frame.clientHeight);
+      const scrollLeft = clamp(previousViewState.scrollLeft ?? 0, 0, maxScrollLeft);
+      const scrollTop = clamp(previousViewState.scrollTop ?? 0, 0, maxScrollTop);
+      frame.scrollLeft = scrollLeft;
+      frame.scrollTop = scrollTop;
+      return frame.clientWidth > 0
+        && frame.clientHeight > 0
+        && frame.scrollLeft === scrollLeft
+        && frame.scrollTop === scrollTop;
+    };
+
+    const commitStagedReplacement = () => {
+      if (this.shellControllers.get(shell) !== controller) {
+        frame.remove();
+        return;
+      }
+
+      if (!restoreScrollPosition()) {
+        this.window.requestAnimationFrame(commitStagedReplacement);
+        return;
+      }
+
+      shell.replaceChildren(...nextChildren);
+      frame.style.position = '';
+      frame.style.left = '';
+      frame.style.top = '';
+      frame.style.width = '';
+      frame.style.height = '';
+      frame.style.pointerEvents = '';
+      frame.style.visibility = '';
+      if (shouldRestoreShellPosition) {
+        shell.style.position = '';
+      }
+      applyZoom(initialZoom);
+      restoreScrollPosition();
+    };
+
+    if (shouldStageReplacement) {
+      restoreScrollPosition();
+      this.window.requestAnimationFrame(commitStagedReplacement);
+    } else if (previousViewState) {
+      const restoredImmediately = restoreScrollPosition();
+      if (shouldRestoreScrollPosition && !restoredImmediately) {
+        this.window.requestAnimationFrame(() => {
+          if (frame.isConnected) {
+            restoreScrollPosition();
+            frame.style.visibility = '';
+          }
+        });
+      } else if (shouldRestoreScrollPosition) {
+        frame.style.visibility = '';
+      }
+    }
+
+    controller = {
       destroy: () => {
         stopPanning();
         if (zoomAnimationFrameId) {
@@ -695,6 +818,12 @@ export class DiagramChrome {
         resizeObserver?.disconnect?.();
         this.resizeObservers.delete(resizeObserver);
       },
+      getViewState: () => ({
+        hasManualZoom,
+        scrollLeft: frame.scrollLeft,
+        scrollTop: frame.scrollTop,
+        zoom: currentZoom,
+      }),
       scheduleResetZoomToFit,
       syncMaximizeButtonState: () => this.syncMaximizeButtonState(shell, maximizeButton),
     };
@@ -702,7 +831,9 @@ export class DiagramChrome {
     this.shellControllers.set(shell, controller);
     this.shellRefits.set(shell, scheduleResetZoomToFit);
     this.syncMaximizeButtonState(shell, maximizeButton);
-    scheduleResetZoomToFit({ force: true });
+    if (!hasInitialViewport && !hasRestorableViewState) {
+      scheduleResetZoomToFit({ force: true });
+    }
     return controller;
   }
 }

@@ -70,6 +70,22 @@ export class PreviewRenderer {
         return;
       }
 
+      const retryButton = event.target.closest('.diagram-preview-retry');
+      if (retryButton) {
+        const shell = retryButton.closest('.diagram-preview-shell');
+        if (!shell) {
+          return;
+        }
+
+        event.preventDefault();
+        if (shell.classList.contains('mermaid-shell')) {
+          this.mermaidHydrator.retryShell(shell);
+        } else if (shell.classList.contains('plantuml-shell')) {
+          this.plantUmlHydrator.retryShell(shell);
+        }
+        return;
+      }
+
       const plantUmlButton = event.target.closest('.plantuml-placeholder-btn');
       if (plantUmlButton) {
         const shell = plantUmlButton.closest('.plantuml-shell');
@@ -200,6 +216,8 @@ export class PreviewRenderer {
   queueRender() {
     const markdownText = this.getContent();
     this.renderScheduler.cancel();
+    this.mermaidHydrator.markPending();
+    this.plantUmlHydrator.markPending();
     this.pendingRenderVersion += 1;
     const scheduledVersion = this.pendingRenderVersion;
     this.renderScheduler.queue({
@@ -291,8 +309,8 @@ export class PreviewRenderer {
     this.currentStats = stats;
     this.isLargeDocument = isLargeDocumentStats(stats);
 
-    this.mermaidHydrator.cancelHydration();
-    this.plantUmlHydrator.cancelHydration();
+    this.mermaidHydrator.cancelHydration({ preserveActiveShell: true });
+    this.plantUmlHydrator.cancelHydration({ preserveActiveShell: true });
     document.body.classList.remove('mermaid-maximized-open');
     document.body.classList.remove('plantuml-maximized-open');
     this.mermaidHydrator.preserveHydratedShellsForCommit();

@@ -4,9 +4,11 @@ import {
 } from './diagram-preview-export.js';
 import { DiagramPreviewHydrator } from './diagram-preview-hydrator.js';
 import {
+  createDiagramErrorPlaceholderCard,
   createPlantUmlPlaceholderCard,
   getSvgSize,
   PLANTUML_BATCH_SIZE,
+  normalizeDiagramError,
   sanitizeSvgMarkup,
 } from './preview-diagram-utils.js';
 
@@ -39,12 +41,14 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
 
   destroy() {
     this.cancelHydration();
-    this.preservedShells.clear();
+    this.clearPreservedShells();
   }
 
-  cancelHydration() {
+  cancelHydration({ preserveActiveShell = false } = {}) {
     super.cancelHydration();
-    this.diagramChrome?.cancelActiveShell?.('plantuml');
+    if (!preserveActiveShell) {
+      this.diagramChrome?.cancelActiveShell?.('plantuml');
+    }
   }
 
   scheduleActiveRefit() {
@@ -58,8 +62,12 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
     this.diagramChrome?.syncActiveShell?.();
   }
 
-  async hydrateShell(shell) {
+  async hydrateShell(shell, _batchContext, { hydrationToken, renderVersion } = {}) {
     if (!shell?.isConnected || this.isShellHydrated(shell)) {
+      return;
+    }
+
+    if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
       return;
     }
 
@@ -87,9 +95,13 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
         throw new Error(shell.dataset.plantumlTarget ? 'PlantUML file is empty' : 'PlantUML source is empty');
       }
 
+      if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
+        return;
+      }
+
       const svgMarkup = await this.fetchSvg(source);
 
-      if (!shell.isConnected) {
+      if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
         return;
       }
 
@@ -97,13 +109,25 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
       this.markShellHydrated(shell);
     } catch (error) {
       console.warn('[preview] PlantUML render failed:', error);
+      if (!this.isHydrationCurrent(renderVersion, shell, hydrationToken)) {
+        return;
+      }
+
+      if (this.markShellError(shell, error)) {
+        return;
+      }
+
+      const key = shell.dataset.plantumlKey || 'plantuml';
+      const message = normalizeDiagramError(error);
       shell.querySelector(':scope > .plantuml-toolbar')?.remove();
       shell.querySelector(':scope > .plantuml-frame')?.remove();
       if (!shell.querySelector('.plantuml-placeholder-card')) {
-        sourceNode?.after(createPlantUmlPlaceholderCard(
-          shell.dataset.plantumlKey || 'plantuml',
-          error instanceof Error ? error.message : 'Render failed',
-        ));
+        sourceNode?.after(createDiagramErrorPlaceholderCard({
+          key,
+          kind: 'plantuml',
+          label: shell.dataset.plantumlLabel || 'PlantUML diagram',
+          message,
+        }));
       }
     }
   }
@@ -141,7 +165,7 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
 
     this.diagramChrome?.destroyShell?.(shell);
 
-    shell.removeAttribute('data-plantuml-hydrated');
+    this.clearShellOutput(shell);
     shell.removeAttribute('data-plantuml-instance-id');
     shell.removeAttribute('data-plantuml-queued');
     shell.classList.remove('is-maximized');
@@ -188,5 +212,6 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
       },
       sourceSelector: '.plantuml-source',
     });
+    this.markShellRendered(shell);
   }
 }
