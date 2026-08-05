@@ -5,6 +5,7 @@ import {
   COMMENT_REACTION_MORE_EMOJIS,
   COMMENT_REACTION_PRESET_EMOJIS,
   clamp,
+  createRectFromRects,
   createRenderedCommentBody,
   formatAnchorLabel,
   formatReactionCount,
@@ -29,8 +30,8 @@ function ensureCardRoot() {
 }
 
 /** @this {any} */
-function openComposerForSelection(origin = 'editor', sourceRect = null) {
-  const anchor = this.session?.getCurrentSelectionCommentAnchor?.();
+function openComposerForSelection(origin = 'editor', sourceRect = null, previewSelection = null) {
+  const anchor = previewSelection?.anchor ?? this.session?.getCurrentSelectionCommentAnchor?.();
   if (!anchor) {
     return;
   }
@@ -46,8 +47,9 @@ function openComposerForSelection(origin = 'editor', sourceRect = null) {
     composerDraft: null,
     mode: 'create',
     origin: nextOrigin,
+    previewRange: previewSelection?.range ?? null,
     replyThreadId: null,
-    sourceRect: nextSourceRect,
+    sourceRect: nextSourceRect ?? null,
   };
   this.render();
 }
@@ -71,10 +73,14 @@ function openThreadGroup(group, { anchor, origin, sourceRect }) {
 
 /** @this {any} */
 function closeCard() {
+  const wasPreviewComposer = this.activeCard?.mode === 'create' && this.activeCard.origin === 'preview';
   this.activeCard = null;
   this.pendingCardFocusElement = null;
   this.reactionPicker = null;
   this.renderCard();
+  if (wasPreviewComposer) {
+    this.clearPreviewSelection();
+  }
   this.scheduleLayoutRefresh();
 }
 
@@ -91,6 +97,10 @@ function updateCardSourceRect() {
     return this.activeCard.sourceRect;
   }
   if (this.activeCard.origin === 'preview') {
+    const selectionRect = createRectFromRects(Array.from(this.activeCard.previewRange?.getClientRects?.() ?? []));
+    if (selectionRect) {
+      return selectionRect;
+    }
     return this.resolvePreviewTarget(this.activeCard.anchor)?.bubbleRect ?? this.activeCard.sourceRect;
   }
   if (this.activeCard.origin === 'toolbar') {
@@ -214,6 +224,13 @@ function renderCard() {
 
   const content = document.createElement('div');
   content.className = 'comment-card-scroll';
+
+  if (this.activeCard.mode === 'create' && this.activeCard.anchor?.fallbackToLines) {
+    const anchorNote = document.createElement('p');
+    anchorNote.className = 'comment-card-anchor-note';
+    anchorNote.textContent = `Exact preview mapping was unavailable. This comment will be anchored to ${formatAnchorLabel(this.activeCard.anchor).toLowerCase()}.`;
+    content.appendChild(anchorNote);
+  }
 
   if (this.activeCard.anchor?.quote) {
     const quote = document.createElement('p');

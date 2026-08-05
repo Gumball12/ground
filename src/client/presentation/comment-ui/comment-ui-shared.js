@@ -1,5 +1,6 @@
 import {
   COMMENT_BODY_MAX_LENGTH,
+  normalizeCommentQuote,
   normalizeCommentQuoteForComparison,
 } from '../../../domain/comment-threads.js';
 import { clamp } from '../../domain/vault-utils.js';
@@ -150,6 +151,89 @@ export function overlapsAnchorRange(element, anchor) {
   }
 
   return anchor.startLine <= endLine && anchor.endLine >= startLine;
+}
+
+export function createPreviewSelection(selection, previewElement, sourceText = '') {
+  if (
+    !selection
+    || selection.isCollapsed
+    || selection.rangeCount === 0
+    || !previewElement?.contains(selection.anchorNode)
+    || !previewElement.contains(selection.focusNode)
+  ) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  const selectedText = String(selection.toString()).trim();
+  const quote = normalizeCommentQuote(selectedText);
+  const endpointElement = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentElement;
+  if (!quote || endpointElement?.closest?.('.diagram-preview-shell')) {
+    return null;
+  }
+
+  const blocks = Array.from(previewElement.querySelectorAll('[data-source-line]'))
+    .filter((element) => isLeafSourceBlock(element) && range.intersectsNode(element));
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  const sourceLines = String(sourceText).split('\n');
+  const startLine = Math.min(Math.max(Math.min(
+    ...blocks.map((element) => parseLineNumber(element.getAttribute('data-source-line')) ?? sourceLines.length),
+  ), 1), sourceLines.length);
+  const endLine = Math.min(Math.max(
+    ...blocks.map((element) => (
+      parseLineNumber(element.getAttribute('data-source-line-end'))
+      ?? parseLineNumber(element.getAttribute('data-source-line'))
+      ?? 1
+    )),
+  ), sourceLines.length);
+  const lineStartIndex = sourceLines
+    .slice(0, startLine - 1)
+    .reduce((index, line) => index + line.length + 1, 0);
+  const lineEndIndex = sourceLines
+    .slice(startLine - 1, endLine)
+    .reduce((index, line, lineIndex) => index + line.length + (lineIndex === 0 ? 0 : 1), lineStartIndex);
+
+  let anchorKind = 'line';
+  let startIndex = lineStartIndex;
+  let endIndex = lineEndIndex;
+  let fallbackToLines = true;
+  if (blocks.length === 1) {
+    const sourceRange = String(sourceText).slice(lineStartIndex, lineEndIndex);
+    const matchIndex = sourceRange.indexOf(selectedText);
+    if (matchIndex >= 0 && matchIndex === sourceRange.lastIndexOf(selectedText)) {
+      anchorKind = 'text';
+      startIndex = lineStartIndex + matchIndex;
+      endIndex = startIndex + selectedText.length;
+      fallbackToLines = false;
+    }
+  }
+
+  const lineNumberAt = (index) => String(sourceText).slice(0, index).split('\n').length;
+  const anchorStartLine = fallbackToLines ? startLine : lineNumberAt(startIndex);
+  const anchorEndLine = fallbackToLines ? endLine : lineNumberAt(Math.max(endIndex - 1, startIndex));
+  const rect = createRectFromRects(Array.from(range.getClientRects()))
+    || createRectFromRects(blocks.map((element) => element.getBoundingClientRect()));
+
+  return {
+    anchor: {
+      anchorKind,
+      anchorQuote: quote,
+      endIndex,
+      endLine: anchorEndLine,
+      fallbackToLines,
+      kind: anchorKind,
+      quote,
+      startIndex,
+      startLine: anchorStartLine,
+    },
+    range: range.cloneRange(),
+    rect,
+  };
 }
 
 export function createNormalizedTextIndex(root) {

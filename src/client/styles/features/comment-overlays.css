@@ -34,6 +34,21 @@
   position: absolute;
 }
 
+.comment-preview-selection-chip {
+  --ui-chip-color: var(--color-comment);
+  position: absolute;
+  z-index: 2;
+  box-shadow: var(--shadow-sm);
+  pointer-events: auto;
+}
+
+@media (pointer: coarse) {
+  .comment-preview-selection-chip {
+    min-height: 44px;
+    padding-inline: var(--space-3);
+  }
+}
+
 .comment-preview-highlight {
   position: absolute;
   border: 1px solid oklch(from var(--color-comment) l c h / 0.16);

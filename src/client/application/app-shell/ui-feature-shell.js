@@ -413,6 +413,15 @@ function isInteractiveTaskListDescendant(target) {
   return Boolean(target.closest('a, button, input, select, textarea, summary, [contenteditable="true"], [role="button"], [role="link"]'));
 }
 
+function hasTaskListTextSelection(taskItem) {
+  const selection = window.getSelection();
+  return Boolean(
+    !selection?.isCollapsed
+    && taskItem.contains(selection.anchorNode)
+    && taskItem.contains(selection.focusNode)
+  );
+}
+
 function normalizeFragmentTargetId(rawTarget = '') {
   const normalizedTarget = String(rawTarget ?? '').trim();
   if (!normalizedTarget) {
@@ -649,6 +658,10 @@ function handlePreviewContentClick(event) {
 
   const taskItem = event.target.closest('.task-list-item[data-source-line]');
   if (!taskItem || isNestedTaskListClickTarget(event.target, taskItem) || isInteractiveTaskListDescendant(event.target)) {
+    return;
+  }
+
+  if (hasTaskListTextSelection(taskItem)) {
     return;
   }
 

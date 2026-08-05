@@ -56,6 +56,7 @@ function attachSession(session) {
   this.selectionAnchor = session?.getCurrentSelectionCommentAnchor?.() ?? null;
   this.pendingSelectionAnchor = null;
   this.committedSelectionAnchor = null;
+  this.previewSelection = null;
   this.reactionPicker = null;
   this.clearSelectionRevealTimer();
   this.pointerSelecting = false;
@@ -82,6 +83,7 @@ function setCurrentFile(filePath, { fileKind = 'markdown', supported = false } =
     this.updateHoveredPreviewGroups([]);
     this.previewHoverRegions = [];
     this.lastPreviewPointerPosition = null;
+    this.previewSelection = null;
     this.reactionPicker = null;
   }
   if (!this.supported) {
@@ -97,6 +99,7 @@ function setCurrentFile(filePath, { fileKind = 'markdown', supported = false } =
     this.updateHoveredPreviewGroups([]);
     this.previewHoverRegions = [];
     this.lastPreviewPointerPosition = null;
+    this.previewSelection = null;
     this.reactionPicker = null;
   }
   this.render();

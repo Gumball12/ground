@@ -48,6 +48,14 @@
   text-transform: uppercase;
 }
 
+.comment-card-anchor-note {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-comment-offset-soft);
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
 .comment-card-close,
 .comment-thread-card-action {
   border: 1px solid transparent;

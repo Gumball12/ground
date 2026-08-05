@@ -2,7 +2,7 @@ import { commentUiCardMethods } from './comment-ui/comment-ui-card.js';
 import { commentUiLayoutMethods } from './comment-ui/comment-ui-layout.js';
 import { commentUiRenderMethods } from './comment-ui/comment-ui-render.js';
 import { commentUiStateMethods } from './comment-ui/comment-ui-state.js';
-import { isTextSelectionAnchor } from './comment-ui/comment-ui-shared.js';
+import { createPreviewSelection, isTextSelectionAnchor } from './comment-ui/comment-ui-shared.js';
 
 export class CommentUiController {
   constructor({
@@ -54,6 +54,7 @@ export class CommentUiController {
     this.hoveredPreviewGroupKeysSignature = '';
     this.previewHoverRegions = [];
     this.lastPreviewPointerPosition = null;
+    this.previewSelection = null;
     this.editorLayer = null;
     this.previewLayer = null;
     this.previewHighlightLayer = null;
@@ -83,6 +84,15 @@ export class CommentUiController {
     };
     this.handlePreviewFocusOut = (event) => {
       this.updateHoveredPreviewGroups(this.getPreviewGroupKeysForTarget(event.relatedTarget));
+    };
+    this.handleDocumentSelectionChange = () => {
+      if (this.activeCard?.mode === 'create' && this.activeCard.origin === 'preview') {
+        return;
+      }
+      this.previewSelection = this.supported && this.fileKind === 'markdown'
+        ? createPreviewSelection(window.getSelection(), this.previewElement, this.session?.getText?.() ?? '')
+        : null;
+      this.scheduleLayoutRefresh();
     };
     this.handleCommentSelectionButtonPointerDown = (event) => {
       event.preventDefault();
@@ -173,6 +183,9 @@ export class CommentUiController {
       if (event.key === 'Escape' && this.activeCard) {
         this.closeCard();
       }
+      if (event.key === 'Escape' && this.previewSelection) {
+        this.clearPreviewSelection();
+      }
       if (event.key === 'Escape' && this.committedSelectionAnchor) {
         this.clearSelectionRevealTimer();
         this.pendingSelectionAnchor = null;
@@ -200,6 +213,7 @@ export class CommentUiController {
     document.addEventListener('pointercancel', this.handleDocumentPointerUp);
     document.addEventListener('pointerdown', this.handleDocumentPointerDown);
     document.addEventListener('keydown', this.handleDocumentKeyDown);
+    document.addEventListener('selectionchange', this.handleDocumentSelectionChange);
   }
 
   destroy() {
@@ -221,7 +235,9 @@ export class CommentUiController {
     document.removeEventListener('pointercancel', this.handleDocumentPointerUp);
     document.removeEventListener('pointerdown', this.handleDocumentPointerDown);
     document.removeEventListener('keydown', this.handleDocumentKeyDown);
+    document.removeEventListener('selectionchange', this.handleDocumentSelectionChange);
     this.previewHoverRegions = [];
+    this.previewSelection = null;
     this.cardRoot?.remove();
     this.editorLayer?.remove();
     this.previewLayer?.remove();

@@ -19,7 +19,7 @@ function flushFrame() {
   });
 }
 
-function createController({ onNavigateToLine = () => {} } = {}) {
+function createController({ onNavigateToLine = () => {}, sourceText = '' } = {}) {
   document.body.innerHTML = `
     <div id="editor"></div>
     <button id="comment-selection"><span class="ui-action-label">Comment</span></button>
@@ -74,6 +74,7 @@ function createController({ onNavigateToLine = () => {} } = {}) {
     getLocalUser: () => ({ userId: 'local-user' }),
     getScrollContainer: () => editorContainer,
     getSelectionChipClientRect: () => createRect({ left: 10, top: 16, width: 80, height: 24 }),
+    getText: () => sourceText,
   };
 
   controller.attachSession(session);
@@ -88,6 +89,7 @@ describe('CommentUiController browser behavior', () => {
   afterEach(() => {
     controller?.destroy();
     controller = null;
+    window.getSelection()?.removeAllRanges();
     document.body.innerHTML = '';
   });
 
@@ -394,5 +396,143 @@ describe('CommentUiController browser behavior', () => {
     expect(didChange).toBe(true);
     expect(setup.previewElement.style.getPropertyValue('--preview-comment-rail-reserved')).toBe('36px');
     expect(setup.previewElement.style.getPropertyValue('--preview-comment-rail-offset')).toBe('100px');
+  });
+});
+
+describe('CommentUiController preview creation', () => {
+  let controller;
+
+  afterEach(() => {
+    controller?.destroy();
+    controller = null;
+    window.getSelection()?.removeAllRanges();
+    document.body.innerHTML = '';
+  });
+
+  it('opens the existing composer for an exact preview text selection', async () => {
+    const setup = createController({ sourceText: 'Read the selected words here.' });
+    controller = setup.controller;
+    const paragraph = document.createElement('p');
+    paragraph.dataset.sourceLine = '1';
+    paragraph.dataset.sourceLineEnd = '1';
+    paragraph.textContent = 'Read the selected words here.';
+    paragraph.getBoundingClientRect = () => createRect({ left: 40, top: 40, width: 240, height: 24 });
+    setup.previewElement.appendChild(paragraph);
+
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild, 9);
+    range.setEnd(paragraph.firstChild, 23);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await flushFrame();
+    await flushFrame();
+
+    setup.previewElement.querySelector('.comment-preview-selection-chip').click();
+    await flushFrame();
+
+    expect(controller.activeCard).toMatchObject({
+      anchor: {
+        anchorKind: 'text',
+        endIndex: 23,
+        fallbackToLines: false,
+        quote: 'selected words',
+        startIndex: 9,
+      },
+      mode: 'create',
+      origin: 'preview',
+    });
+    expect(controller.cardRoot.querySelector('.comment-card-anchor-note')).toBeNull();
+    expect(setup.previewElement.querySelector('.comment-preview-highlight')).not.toBeNull();
+  });
+
+  it('shows the comment pill for selected task-list text', async () => {
+    const setup = createController({ sourceText: '- [ ] First todo' });
+    controller = setup.controller;
+    const taskItem = document.createElement('li');
+    taskItem.className = 'task-list-item';
+    taskItem.dataset.sourceLine = '1';
+    taskItem.dataset.sourceLineEnd = '1';
+    taskItem.getBoundingClientRect = () => createRect({ left: 40, top: 40, width: 240, height: 24 });
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.taskCheckbox = 'true';
+    const text = document.createTextNode(' First todo');
+    taskItem.append(checkbox, text);
+    setup.previewElement.appendChild(taskItem);
+
+    const range = document.createRange();
+    range.setStart(text, 1);
+    range.setEnd(text, text.length);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await flushFrame();
+    await flushFrame();
+
+    const pill = setup.previewElement.querySelector('.comment-preview-selection-chip');
+    expect(pill?.classList.contains('ui-chip-button')).toBe(true);
+    expect(pill?.classList.contains('ui-selection-pill')).toBe(false);
+  });
+
+  it('discloses the line-range fallback for a cross-block preview selection', async () => {
+    const setup = createController({ sourceText: 'First paragraph.\n\nSecond paragraph.' });
+    controller = setup.controller;
+    const first = document.createElement('p');
+    first.dataset.sourceLine = '1';
+    first.dataset.sourceLineEnd = '1';
+    first.textContent = 'First paragraph.';
+    first.getBoundingClientRect = () => createRect({ left: 40, top: 40, width: 180, height: 24 });
+    const second = document.createElement('p');
+    second.dataset.sourceLine = '3';
+    second.dataset.sourceLineEnd = '3';
+    second.textContent = 'Second paragraph.';
+    second.getBoundingClientRect = () => createRect({ left: 40, top: 80, width: 190, height: 24 });
+    setup.previewElement.append(first, second);
+
+    const range = document.createRange();
+    range.setStart(first.firstChild, 0);
+    range.setEnd(second.firstChild, second.textContent.length);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await flushFrame();
+    await flushFrame();
+
+    setup.previewElement.querySelector('.comment-preview-selection-chip').click();
+
+    expect(controller.activeCard.anchor).toMatchObject({
+      anchorKind: 'line',
+      endLine: 3,
+      fallbackToLines: true,
+      startLine: 1,
+    });
+    expect(controller.cardRoot.querySelector('.comment-card-anchor-note')?.textContent).toContain('lines 1-3');
+  });
+
+  it('falls back to the source line when selected text is ambiguous', async () => {
+    const setup = createController({ sourceText: 'Repeat this, then Repeat this.' });
+    controller = setup.controller;
+    const paragraph = document.createElement('p');
+    paragraph.dataset.sourceLine = '1';
+    paragraph.dataset.sourceLineEnd = '1';
+    paragraph.textContent = 'Repeat this, then Repeat this.';
+    paragraph.getBoundingClientRect = () => createRect({ left: 40, top: 40, width: 240, height: 24 });
+    setup.previewElement.appendChild(paragraph);
+
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild, 0);
+    range.setEnd(paragraph.firstChild, 11);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await flushFrame();
+    await flushFrame();
+
+    expect(controller.previewSelection.anchor).toMatchObject({
+      anchorKind: 'line',
+      fallbackToLines: true,
+      startLine: 1,
+    });
   });
 });

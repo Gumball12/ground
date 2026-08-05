@@ -52,6 +52,7 @@ function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) 
 
 describe('uiFeature browser helpers', () => {
   afterEach(() => {
+    window.getSelection()?.removeAllRanges();
     document.body.innerHTML = '';
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -686,6 +687,21 @@ describe('uiFeature browser helpers', () => {
 
     expect(context.handleWikiLinkClick).toHaveBeenCalledWith('README');
     expect(context.session.toggleTaskListItem).toHaveBeenCalledTimes(1);
+
+    context.session.toggleTaskListItem.mockClear();
+    const taskItem = context.elements.previewContent.querySelector('li[data-source-line="7"]');
+    const taskText = Array.from(taskItem.childNodes)
+      .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.includes('First todo'));
+    const range = document.createRange();
+    const start = taskText.textContent.indexOf('First todo');
+    range.setStart(taskText, start);
+    range.setEnd(taskText, start + 'First todo'.length);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+
+    taskItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    expect(context.session.toggleTaskListItem).not.toHaveBeenCalled();
   });
 
   it('scrolls preview fragment links through shared heading navigation without intercepting app hash routes', () => {

@@ -229,6 +229,22 @@ function renderPreviewLayer() {
   }
 
   const previewRect = this.previewElement.getBoundingClientRect();
+  if (this.activeCard?.mode === 'create' && this.activeCard.origin === 'preview') {
+    const selectionRects = Array.from(this.activeCard.previewRange?.getClientRects?.() ?? []);
+    const highlightRects = selectionRects.length > 0
+      ? selectionRects
+      : [this.resolvePreviewTarget(this.activeCard.anchor)?.bubbleRect].filter(Boolean);
+    highlightRects.forEach((rect) => {
+      const highlight = document.createElement('div');
+      highlight.className = 'comment-preview-highlight is-active';
+      highlight.style.left = `${rect.left - previewRect.left}px`;
+      highlight.style.top = `${rect.top - previewRect.top}px`;
+      highlight.style.width = `${rect.width}px`;
+      highlight.style.height = `${rect.height}px`;
+      this.previewHighlightLayer?.appendChild(highlight);
+    });
+  }
+
   const groups = this.getThreadGroups();
   const occupiedTops = [];
   const hoverRegions = [];
@@ -304,6 +320,37 @@ function renderPreviewLayer() {
     previewBubbles.push(bubble);
   });
 
+  if (this.previewSelection && this.activeCard?.mode !== 'create') {
+    const previewSelection = this.previewSelection;
+    const selectionRect = createRectFromRects(Array.from(previewSelection.range?.getClientRects?.() ?? []))
+      || previewSelection.rect;
+    if (selectionRect) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ui-chip-button ui-chip-button--comment comment-preview-selection-chip';
+      button.textContent = 'Comment';
+      button.setAttribute('aria-label', 'Comment on selected preview text');
+      button.style.left = `${clamp(
+        selectionRect.left - previewRect.left,
+        8,
+        Math.max(this.previewElement.clientWidth - 88, 8),
+      )}px`;
+      button.style.top = `${clamp(
+        selectionRect.bottom - previewRect.top + 8,
+        8,
+        Math.max(this.previewElement.clientHeight - COMMENT_CONTROL_SLOT_HEIGHT, 8),
+      )}px`;
+      button.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener('click', () => {
+        this.openComposerForSelection('preview', button.getBoundingClientRect(), previewSelection);
+      });
+      this.previewLayer?.appendChild(button);
+    }
+  }
+
   this.previewHoverRegions = hoverRegions;
   const maxBubbleWidth = previewBubbles.reduce(
     (maxWidth, bubble) => Math.max(maxWidth, bubble.offsetWidth || COMMENT_PREVIEW_BADGE_MIN_WIDTH),
@@ -317,6 +364,12 @@ function renderPreviewLayer() {
       this.getPreviewGroupKeysAtPoint(this.lastPreviewPointerPosition.x, this.lastPreviewPointerPosition.y),
     );
   }
+}
+
+function clearPreviewSelection() {
+  this.previewSelection = null;
+  window.getSelection()?.removeAllRanges();
+  this.scheduleLayoutRefresh();
 }
 
 /** @this {any} */
@@ -435,6 +488,7 @@ function shouldRenderPassivePreviewMarkers() {
 }
 
 export const commentUiLayoutMethods = {
+  clearPreviewSelection,
   ensureEditorLayer,
   ensurePreviewLayer,
   getPreviewGroupKeysAtPoint,
