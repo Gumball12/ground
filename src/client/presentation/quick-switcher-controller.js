@@ -9,12 +9,8 @@ import {
 
 const MAX_VISIBLE_RESULTS = 12;
 
-function stripDisplayExtension(filePath) {
-  return stripVaultFileExtension(filePath);
-}
-
 function createCorpusEntry(filePath) {
-  const displayName = stripDisplayExtension(filePath);
+  const displayName = stripVaultFileExtension(filePath);
   const fileName = displayName.split('/').pop() || displayName;
 
   return {
@@ -28,11 +24,12 @@ function createCorpusEntry(filePath) {
 }
 
 function getFileName(filePath) {
-  return stripDisplayExtension(filePath).split('/').pop() || stripDisplayExtension(filePath);
+  const displayName = stripVaultFileExtension(filePath);
+  return displayName.split('/').pop() || displayName;
 }
 
 function getDirPath(filePath) {
-  const displayName = stripDisplayExtension(filePath);
+  const displayName = stripVaultFileExtension(filePath);
   return displayName.includes('/') ? displayName.substring(0, displayName.lastIndexOf('/')) : '';
 }
 

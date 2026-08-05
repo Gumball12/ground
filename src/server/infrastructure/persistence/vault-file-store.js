@@ -391,9 +391,9 @@ export class VaultFileStore {
     return { absolute, adapter };
   }
 
-  async readContentFile(filePath, expectedKind) {
+  async readContentFile(filePath, expectedKind = null) {
     const resolved = this.resolveAdapter(filePath);
-    if (!resolved || resolved.adapter.kind !== expectedKind) {
+    if (!resolved || (expectedKind && resolved.adapter.kind !== expectedKind)) {
       return null;
     }
 
@@ -409,20 +409,7 @@ export class VaultFileStore {
   }
 
   async readEditableVaultContent(filePath) {
-    const resolved = this.resolveAdapter(filePath);
-    if (!resolved) {
-      return null;
-    }
-
-    try {
-      return await readFile(resolved.absolute, 'utf-8');
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        return null;
-      }
-
-      throw error;
-    }
+    return this.readContentFile(filePath);
   }
 
   async writeResolvedContentFile(resolved, filePath, content, { invalidateCollaborationSnapshot = true } = {}) {
@@ -440,9 +427,9 @@ export class VaultFileStore {
     }
   }
 
-  async writeContentFile(filePath, content, expectedKind, { invalidateCollaborationSnapshot = true } = {}) {
+  async writeContentFile(filePath, content, expectedKind = null, { invalidateCollaborationSnapshot = true } = {}) {
     const resolved = this.resolveAdapter(filePath);
-    if (!resolved || resolved.adapter.kind !== expectedKind) {
+    if (!resolved || (expectedKind && resolved.adapter.kind !== expectedKind)) {
       return {
         ok: false,
         error: resolved?.adapter?.invalidPathError ?? getEditableVaultContentKind(filePath)?.invalidPathError ?? INVALID_VAULT_FILE_PATH_ERROR,
@@ -453,15 +440,7 @@ export class VaultFileStore {
   }
 
   async writeEditableVaultContent(filePath, content, { invalidateCollaborationSnapshot = true } = {}) {
-    const resolved = this.resolveAdapter(filePath);
-    if (!resolved) {
-      return {
-        ok: false,
-        error: getEditableVaultContentKind(filePath)?.invalidPathError ?? INVALID_VAULT_FILE_PATH_ERROR,
-      };
-    }
-
-    return this.writeResolvedContentFile(resolved, filePath, content, { invalidateCollaborationSnapshot });
+    return this.writeContentFile(filePath, content, null, { invalidateCollaborationSnapshot });
   }
 
   async readMarkdownFile(filePath) {

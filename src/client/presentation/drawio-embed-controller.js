@@ -1,42 +1,16 @@
 import { createDrawioLeaseRoomName } from '../../domain/drawio-room.js';
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveAppUrl } from '../domain/runtime-paths.js';
+import {
+  cancelIdleRender,
+  isNearViewport,
+  requestIdleRender,
+} from '../browser-utils.js';
 
 const HYDRATE_VIEWPORT_MARGIN_PX = 360;
 const DRAWIO_VIEWER_SCRIPT_URL = 'https://viewer.diagrams.net/js/viewer-static.min.js';
 
 let drawioViewerLoadPromise = null;
-
-function requestIdleRender(callback, timeout) {
-  if (typeof window.requestIdleCallback === 'function') {
-    return window.requestIdleCallback(callback, { timeout });
-  }
-
-  return window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 1);
-}
-
-function cancelIdleRender(id) {
-  if (id === null) {
-    return;
-  }
-
-  if (typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(id);
-    return;
-  }
-
-  window.clearTimeout(id);
-}
-
-function isNearViewport(element, root, marginPx) {
-  if (!element || !root) {
-    return false;
-  }
-
-  const rootRect = root.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
-  return elementRect.bottom >= (rootRect.top - marginPx) && elementRect.top <= (rootRect.bottom + marginPx);
-}
 
 function ensureDrawioViewerLoaded() {
   if (window.GraphViewer?.processElements) {

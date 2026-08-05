@@ -165,37 +165,55 @@ export function parseStatusOutput(output) {
   };
 }
 
-export function parseNumstatOutput(output) {
-  return String(output ?? '')
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .reduce((summary, line) => {
-      const [rawAdditions = '0', rawDeletions = '0'] = line.split('\t');
-      const additions = rawAdditions === '-' ? 0 : Number.parseInt(rawAdditions, 10) || 0;
-      const deletions = rawDeletions === '-' ? 0 : Number.parseInt(rawDeletions, 10) || 0;
+export function parseGitLogHeader(headerLine) {
+  const [
+    hash = '',
+    shortHash = '',
+    subject = '',
+    authorName = '',
+    authorEmail = '',
+    authoredAt = '',
+    rawParents = '',
+  ] = String(headerLine ?? '').split('\x1f');
+  const parentHashes = rawParents.split(' ').map((value) => value.trim()).filter(Boolean);
 
-      return {
-        additions: summary.additions + additions,
-        deletions: summary.deletions + deletions,
-      };
-    }, {
-      additions: 0,
-      deletions: 0,
-    });
+  return {
+    authorEmail,
+    authorName,
+    authoredAt,
+    hash,
+    isMergeCommit: parentHashes.length > 1,
+    parentCount: parentHashes.length,
+    parentHashes,
+    shortHash,
+    subject,
+  };
+}
+
+function parseNumstatLine(line) {
+  const [rawAdditions = '0', rawDeletions = '0', ...rest] = String(line ?? '').split('\t');
+  return {
+    additions: rawAdditions === '-' ? 0 : Number.parseInt(rawAdditions, 10) || 0,
+    deletions: rawDeletions === '-' ? 0 : Number.parseInt(rawDeletions, 10) || 0,
+    rawPath: rest.join('\t'),
+  };
+}
+
+export function parseNumstatOutput(output) {
+  return parseNumstatEntries(output).reduce((summary, entry) => ({
+    additions: summary.additions + entry.additions,
+    deletions: summary.deletions + entry.deletions,
+  }), {
+    additions: 0,
+    deletions: 0,
+  });
 }
 
 export function parseNumstatEntries(output) {
   return String(output ?? '')
     .split(/\r?\n/u)
     .filter(Boolean)
-    .map((line) => {
-      const [rawAdditions = '0', rawDeletions = '0', ...rest] = line.split('\t');
-      return {
-        additions: rawAdditions === '-' ? 0 : Number.parseInt(rawAdditions, 10) || 0,
-        deletions: rawDeletions === '-' ? 0 : Number.parseInt(rawDeletions, 10) || 0,
-        rawPath: rest.join('\t'),
-      };
-    });
+    .map((line) => parseNumstatLine(line));
 }
 
 export function parseNameStatusOutput(output) {

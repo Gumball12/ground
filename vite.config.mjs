@@ -5,7 +5,6 @@ import { defineConfig } from 'vite';
 
 const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 const clientAppRoot = resolve(projectRoot, 'src/client/app');
-const clientStaticRoot = resolve(projectRoot, 'src/client/static');
 const clientDistRoot = resolve(projectRoot, 'dist/client');
 const backendProxyTarget = process.env.COLLABMD_DEV_PROXY_TARGET || 'http://127.0.0.1:1234';
 const excalidrawMermaidStubSource = resolve(projectRoot, 'src/client/excalidraw-mermaid-stub.js');
@@ -29,7 +28,6 @@ export default defineConfig(({ command }) => ({
       },
     },
   },
-  publicDir: clientStaticRoot,
   resolve: {
     alias: {
       '@excalidraw/mermaid-to-excalidraw': excalidrawMermaidStubSource,

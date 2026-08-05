@@ -2,10 +2,10 @@ import { watch } from 'node:fs';
 import { basename } from 'node:path';
 
 import { logPerfEvent } from '../../config/perf-logging.js';
+import { hasWorkspaceMutation } from '../../../domain/workspace-change.js';
 import {
   deriveIncrementalWorkspaceState,
   detectWorkspaceStateChange,
-  hasWorkspaceStatePaths,
   readWorkspacePathSnapshot as readWorkspacePathSnapshotFromAdapter,
 } from '../../domain/workspace-state.js';
 import { isIgnoredVaultEntry } from '../persistence/path-utils.js';
@@ -193,7 +193,7 @@ export class FileSystemSyncService {
     let filteredChange = this.mutationCoordinator.filterManagedWorkspaceChange(workspaceChange);
     if (!filteredChange) {
       const authoritativeChange = detectWorkspaceStateChange(authoritativePreviousState, nextState);
-      if (hasWorkspaceStatePaths(authoritativeChange)) {
+      if (hasWorkspaceMutation(authoritativeChange)) {
         nextState = await this.vaultFileStore.scanWorkspaceState();
         workspaceChange = detectWorkspaceStateChange(authoritativePreviousState, nextState);
         this.lastState = nextState;
@@ -204,7 +204,7 @@ export class FileSystemSyncService {
     }
 
     if (!filteredChange) {
-      if (this.mutationCoordinator.isGloballySuppressed?.() || hasWorkspaceStatePaths(workspaceChange)) {
+      if (this.mutationCoordinator.isGloballySuppressed?.() || hasWorkspaceMutation(workspaceChange)) {
         this.mutationCoordinator.syncWorkspaceEntries(nextState, {
           previousState: previousWorkspaceState,
         });

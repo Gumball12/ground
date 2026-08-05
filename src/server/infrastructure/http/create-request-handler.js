@@ -67,10 +67,7 @@ export function createRequestHandler(
   const handleGitApiQuery = createGitApiQueryHandler({ gitService });
   const handleGitApiCommand = createGitApiCommandHandler({
     authService,
-    backlinkIndex,
     gitService,
-    roomRegistry,
-    vaultFileStore,
     workspaceMutationCoordinator,
   });
   const handleVaultApiQuery = createVaultApiQueryHandler({

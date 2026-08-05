@@ -1,4 +1,5 @@
 import { clamp } from '../domain/vault-utils.js';
+import { cancelIdleRender, requestIdleRender } from '../browser-utils.js';
 
 const VIEWPORT_FOCUS_RATIO = 0.35;
 const LARGE_DOCUMENT_EDITOR_IDLE_MS = 120;
@@ -29,32 +30,6 @@ function getElementScrollTop(container, element) {
 
 function isLeafSourceBlock(element) {
   return !element.querySelector('[data-source-line]');
-}
-
-function requestIdleWork(callback) {
-  if (typeof window.requestIdleCallback === 'function') {
-    return window.requestIdleCallback(callback, { timeout: 500 });
-  }
-
-  return window.setTimeout(() => {
-    callback({
-      didTimeout: false,
-      timeRemaining: () => 0,
-    });
-  }, 1);
-}
-
-function cancelIdleWork(id) {
-  if (id === null) {
-    return;
-  }
-
-  if (typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(id);
-    return;
-  }
-
-  window.clearTimeout(id);
 }
 
 export class ScrollSyncController {
@@ -143,7 +118,7 @@ export class ScrollSyncController {
     this.editorScrollIdleTimer = null;
     this.pendingSync = null;
     this.previewBlocks = null;
-    cancelIdleWork(this.previewBlocksWarmId);
+    cancelIdleRender(this.previewBlocksWarmId);
     this.previewBlocksWarmId = null;
     this.previewBlocksReadyCallbacks = [];
     this.lockedElements.clear();
@@ -188,7 +163,7 @@ export class ScrollSyncController {
 
   invalidatePreviewBlocks() {
     this.previewBlocks = null;
-    cancelIdleWork(this.previewBlocksWarmId);
+    cancelIdleRender(this.previewBlocksWarmId);
     this.previewBlocksWarmId = null;
     this.previewBlocksReadyCallbacks = [];
   }
@@ -224,11 +199,11 @@ export class ScrollSyncController {
       return;
     }
 
-    this.previewBlocksWarmId = requestIdleWork(() => {
+    this.previewBlocksWarmId = requestIdleRender(() => {
       this.previewBlocksWarmId = null;
       this.previewBlocks = this.buildPreviewBlocks();
       this.flushPreviewBlocksReadyCallbacks();
-    });
+    }, 500);
   }
 
   realignAfterLayoutChange() {

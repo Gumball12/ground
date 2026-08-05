@@ -1,9 +1,5 @@
 import { createWorkspaceChange } from '../../../domain/workspace-change.js';
 
-function normalizeWorkspaceChange(workspaceChange = {}) {
-  return createWorkspaceChange(workspaceChange);
-}
-
 export const gitFeature = {
   formatPullBackupToast(pullBackup = null) {
     const fileCount = Number(pullBackup?.fileCount || 0);
@@ -388,7 +384,7 @@ export const gitFeature = {
     result = {},
     showLocalFileToast = false,
   } = {}) {
-    const workspaceChange = normalizeWorkspaceChange(result.workspaceChange);
+    const workspaceChange = createWorkspaceChange(result.workspaceChange);
     await this.refreshWorkspaceAfterGitAction({ filePath, preferredScope });
     this.handleWorkspaceChangeForCurrentFile(workspaceChange, { action, local: true, showToast: showLocalFileToast });
     return workspaceChange;
@@ -445,7 +441,7 @@ export const gitFeature = {
       return;
     }
 
-    const workspaceChange = normalizeWorkspaceChange(event.workspaceChange);
+    const workspaceChange = createWorkspaceChange(event.workspaceChange);
     if (event.origin === 'git') {
       await this.refreshGitAfterAction();
     }

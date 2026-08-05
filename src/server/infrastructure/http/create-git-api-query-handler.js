@@ -1,4 +1,4 @@
-import { getRequestErrorStatusCode } from './http-errors.js';
+import { handleApiError } from './http-request-helpers.js';
 import { jsonResponse } from './http-response.js';
 
 function resolveDiffScope(requestUrl) {
@@ -28,22 +28,6 @@ function readHistoryOffset(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function handleGitError(req, res, error, message, fallback) {
-  const statusCode = getRequestErrorStatusCode(error);
-  if (statusCode) {
-    const payload = { error: error.message };
-    if (typeof error?.requestCode === 'string') {
-      payload.code = error.requestCode;
-    }
-    jsonResponse(req, res, statusCode, payload);
-    return true;
-  }
-
-  console.error(message, error.message);
-  jsonResponse(req, res, 500, { error: fallback });
-  return true;
-}
-
 export function createGitApiQueryHandler({ gitService }) {
   return async function handleGitApiQuery(req, res, requestUrl) {
     if (requestUrl.pathname === '/api/git/status' && req.method === 'GET') {
@@ -52,7 +36,7 @@ export function createGitApiQueryHandler({ gitService }) {
           force: isTruthyParam(requestUrl.searchParams.get('force')),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git status:', 'Failed to read git status');
+        handleApiError(req, res, error, '[api] Failed to read git status:', 'Failed to read git status');
       }
       return true;
     }
@@ -66,7 +50,7 @@ export function createGitApiQueryHandler({ gitService }) {
           scope: resolveDiffScope(requestUrl),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git diff:', 'Failed to read git diff');
+        handleApiError(req, res, error, '[api] Failed to read git diff:', 'Failed to read git diff');
       }
       return true;
     }
@@ -78,7 +62,7 @@ export function createGitApiQueryHandler({ gitService }) {
           offset: readHistoryOffset(requestUrl.searchParams.get('offset')),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git history:', 'Failed to read git history');
+        handleApiError(req, res, error, '[api] Failed to read git history:', 'Failed to read git history');
       }
       return true;
     }
@@ -91,7 +75,7 @@ export function createGitApiQueryHandler({ gitService }) {
           path: requestUrl.searchParams.get('path'),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git file history:', 'Failed to read git file history');
+        handleApiError(req, res, error, '[api] Failed to read git file history:', 'Failed to read git file history');
       }
       return true;
     }
@@ -105,7 +89,7 @@ export function createGitApiQueryHandler({ gitService }) {
           path: requestUrl.searchParams.get('path'),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git commit:', 'Failed to read git commit');
+        handleApiError(req, res, error, '[api] Failed to read git commit:', 'Failed to read git commit');
       }
       return true;
     }
@@ -117,7 +101,7 @@ export function createGitApiQueryHandler({ gitService }) {
           path: requestUrl.searchParams.get('path'),
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read git file snapshot:', 'Failed to read git file snapshot');
+        handleApiError(req, res, error, '[api] Failed to read git file snapshot:', 'Failed to read git file snapshot');
       }
       return true;
     }
@@ -128,7 +112,7 @@ export function createGitApiQueryHandler({ gitService }) {
           backups: await gitService.listPullBackups(),
         });
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to read pull backups:', 'Failed to read pull backups');
+        handleApiError(req, res, error, '[api] Failed to read pull backups:', 'Failed to read pull backups');
       }
       return true;
     }

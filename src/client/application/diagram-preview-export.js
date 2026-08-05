@@ -4,7 +4,10 @@ import {
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
 import { getVaultPathLeaf } from '../domain/vault-paths.js';
+import { downloadBlob } from '../browser-utils.js';
 import { sanitizeSvgMarkup, serializeSvgElement } from './preview-diagram-utils.js';
+
+export { downloadBlob };
 
 const LIGHT_EXPORT_MERMAID_CONFIG = Object.freeze({
   htmlLabels: false,
@@ -268,20 +271,6 @@ export async function rasterizeSvgMarkupToPngBlob(svgMarkup) {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvasToPngBlob(canvas);
-}
-
-export function downloadBlob(blob, fileName) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = downloadUrl;
-  anchor.download = fileName;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  window.setTimeout(() => {
-    anchor.remove();
-    URL.revokeObjectURL(downloadUrl);
-  }, 30_000);
 }
 
 export async function writeBlobToClipboard(blob) {

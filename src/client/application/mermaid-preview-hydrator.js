@@ -4,7 +4,6 @@ import {
 } from './diagram-preview-export.js';
 import { DiagramPreviewHydrator } from './diagram-preview-hydrator.js';
 import {
-  createMermaidPlaceholderCard,
   createMermaidPlaceholderCardWithMessage,
   MERMAID_BATCH_SIZE,
   normalizeMermaidSvg,
@@ -286,7 +285,7 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       shell.querySelector(':scope > .mermaid-frame')?.remove();
       shell.querySelector(':scope > .mermaid-render-node')?.remove();
       if (!shell.querySelector('.mermaid-placeholder-card')) {
-        shell.querySelector('.mermaid-source')?.after(createMermaidPlaceholderCard(shell.dataset.mermaidKey || 'mermaid'));
+        shell.querySelector('.mermaid-source')?.after(createMermaidPlaceholderCardWithMessage(shell.dataset.mermaidKey || 'mermaid'));
       }
       this.enqueueShell(shell, { prioritize: true });
     });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createServer } from 'node:http';
 
+import { extractCookieHeader } from './helpers/cookie.js';
 import {
   AUTH_STRATEGY_NONE,
   AUTH_STRATEGY_OIDC,
@@ -169,13 +170,6 @@ function withAuthEnvCleared(fn) {
       process.env.GIT_COMMITTER_EMAIL = previousCommitterEmail;
     }
   }
-}
-
-function extractCookieHeader(setCookieHeader) {
-  const rawValue = Array.isArray(setCookieHeader)
-    ? setCookieHeader[0]
-    : setCookieHeader;
-  return String(rawValue || '').split(';')[0];
 }
 
 function decodeFlowCookiePayload(setCookieHeader) {

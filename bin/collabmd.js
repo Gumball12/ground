@@ -19,7 +19,6 @@ const { values, positionals } = parseArgs({
     port: { type: 'string', short: 'p', default: '1234' },
     host: { type: 'string' },
     'no-tunnel': { type: 'boolean', default: false },
-    tunnel: { type: 'boolean', default: true },
     version: { type: 'boolean', short: 'v', default: false },
   },
   strict: false,

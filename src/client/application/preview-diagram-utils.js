@@ -2,31 +2,11 @@ export const IDLE_RENDER_TIMEOUT_MS = 500;
 export const MERMAID_BATCH_SIZE = 2;
 export const PLANTUML_BATCH_SIZE = 2;
 
-export function requestIdleRender(callback, timeout) {
-  if (typeof window.requestIdleCallback === 'function') {
-    return window.requestIdleCallback(callback, { timeout });
-  }
-
-  return window.setTimeout(() => {
-    callback({
-      didTimeout: false,
-      timeRemaining: () => 0,
-    });
-  }, 1);
-}
-
-export function cancelIdleRender(id) {
-  if (id === null) {
-    return;
-  }
-
-  if (typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(id);
-    return;
-  }
-
-  window.clearTimeout(id);
-}
+export {
+  cancelIdleRender,
+  isNearViewport,
+  requestIdleRender,
+} from '../browser-utils.js';
 
 export function syncAttribute(target, source, name) {
   const nextValue = source.getAttribute(name);
@@ -92,13 +72,6 @@ export function getFrameViewportSize(frame) {
 
 export function easeOutCubic(progress) {
   return 1 - ((1 - progress) ** 3);
-}
-
-export function createMermaidPlaceholderCard(key) {
-  return createMermaidPlaceholderCardWithMessage(key, {
-    label: 'Mermaid diagram',
-    message: 'Loads when visible',
-  });
 }
 
 export function createMermaidPlaceholderCardWithMessage(key, { label = 'Mermaid diagram', message = 'Loads when visible' } = {}) {
@@ -230,18 +203,4 @@ export function shouldPreserveHydratedDiagram({ nextSource = '', nextTarget = ''
   }
 
   return false;
-}
-
-export function isNearViewport(element, root, marginPx) {
-  if (!element || !root) {
-    return false;
-  }
-
-  const rootRect = root.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
-
-  return (
-    elementRect.bottom >= (rootRect.top - marginPx)
-    && elementRect.top <= (rootRect.bottom + marginPx)
-  );
 }

@@ -1,34 +1,10 @@
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 import { getVaultPathLeaf } from '../domain/vault-paths.js';
 import { createRequestHeaders, parseApiResponse } from './api-client-utils.js';
+import { downloadBlob, parseDownloadFileName } from '../browser-utils.js';
 
 function encodeHeaderMetadata(value) {
   return encodeURIComponent(String(value ?? ''));
-}
-
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function parseDownloadFileName(contentDisposition = '', fallbackName = 'download') {
-  const utfMatch = String(contentDisposition).match(/filename\*=UTF-8''([^;]+)/iu);
-  if (utfMatch) {
-    try {
-      return decodeURIComponent(utfMatch[1]);
-    } catch {
-      return fallbackName;
-    }
-  }
-
-  const asciiMatch = String(contentDisposition).match(/filename="([^"]+)"/iu);
-  return asciiMatch?.[1] || fallbackName;
 }
 
 async function triggerDownload(url, {
@@ -45,6 +21,7 @@ async function triggerDownload(url, {
   downloadBlob(
     blob,
     parseDownloadFileName(response.headers.get('content-disposition') || '', fallbackFileName),
+    { removeDelayMs: 0, revokeDelayMs: 0 },
   );
   return response;
 }

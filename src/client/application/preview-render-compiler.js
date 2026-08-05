@@ -3,7 +3,8 @@ import hljs from 'highlight.js';
 
 import { isImageAttachmentFilePath } from '../../domain/file-kind.js';
 import { resolveVaultRelativePath } from '../../domain/vault-paths.js';
-import { escapeHtml, resolveWikiTarget } from '../domain/vault-utils.js';
+import { resolveWikiTargetPath } from '../../domain/wiki-link-resolver.js';
+import { escapeHtml } from '../domain/vault-utils.js';
 import { extractYamlFrontmatter, renderFrontmatterBlock } from './markdown-frontmatter.js';
 import { analyzeMarkdownComplexity } from './preview-render-profile.js';
 
@@ -408,7 +409,7 @@ function renderInlineWikiText(content, {
     } else {
       const target = match[4].trim();
       const display = (match[5] || match[4]).trim();
-      const resolved = resolveWikiTarget(target, fileList);
+      const resolved = resolveWikiTargetPath(target, fileList);
       const classes = resolved ? 'wiki-link' : 'wiki-link wiki-link-new';
       const title = resolved
         ? normalizePreviewTypography(display)

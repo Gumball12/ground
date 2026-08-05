@@ -1,5 +1,3 @@
-import { resolveWikiTargetPath } from '../../domain/wiki-link-resolver.js';
-
 /**
  * Shared utilities for vault file operations and HTML escaping.
  */
@@ -18,22 +16,6 @@ export function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-/**
- * Resolves a wiki-link target (e.g. "My Note") to an existing vault file path.
- *
- * Matching rules (in order):
- *   1. Exact path match (with .md appended if missing)
- *   2. Exact path without .md extension matches the target
- *   3. Filename/path suffix match at any directory depth
- *
- * @param {string} target — the raw wiki-link target text
- * @param {string[]} files — list of vault file paths
- * @returns {string | undefined} matched file path, or undefined if unresolved
- */
-export function resolveWikiTarget(target, files) {
-  return resolveWikiTargetPath(target, files) ?? undefined;
 }
 
 /**

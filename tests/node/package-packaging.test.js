@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
+import { extractAssetPath } from './helpers/asset-path.js';
+
 const execFile = promisify(execFileCallback);
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -93,12 +95,6 @@ async function packProject() {
     cleanup: () => rm(tempRoot, { force: true, recursive: true }),
     packageRoot: resolve(unpackDir, 'package'),
   };
-}
-
-function extractAssetPath(html, pattern, label) {
-  const match = String(html || '').match(pattern);
-  assert.ok(match, `expected ${label} asset reference`);
-  return match[1];
 }
 
 test('npm pack includes built public assets and runtime helper scripts required by the packaged install', async () => {

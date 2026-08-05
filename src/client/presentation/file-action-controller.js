@@ -251,10 +251,6 @@ export class FileActionController {
     this.showToast(error?.message ? `${message}: ${error.message}` : message);
   }
 
-  ensureExtension(pathValue, extension) {
-    return ensureVaultExtension(pathValue, extension);
-  }
-
   createPendingWorkspaceRequestId() {
     if (!this.pendingWorkspaceRequestIds) {
       return null;
@@ -748,7 +744,7 @@ export class FileActionController {
           return false;
         }
 
-        const filePath = this.ensureExtension(composeVaultChildPath(context.normalizedParentDir, normalizedPath), '.md');
+        const filePath = ensureVaultExtension(composeVaultChildPath(context.normalizedParentDir, normalizedPath), '.md');
         return this.createVaultFile(filePath, createMarkdownStarter(filePath), {
           errorMessage: 'Failed to create file',
           openAfterCreate: true,
@@ -826,7 +822,7 @@ export class FileActionController {
           return false;
         }
 
-        const filePath = this.ensureExtension(composeVaultChildPath(context.normalizedParentDir, normalizedPath), '.excalidraw');
+        const filePath = ensureVaultExtension(composeVaultChildPath(context.normalizedParentDir, normalizedPath), '.excalidraw');
         return this.createVaultFile(filePath, createEmptyExcalidrawScene(), {
           errorMessage: 'Failed to create drawing',
           openAfterCreate: true,

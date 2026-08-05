@@ -4,6 +4,7 @@ import { sanitizeSvgMarkup } from '../application/preview-diagram-utils.js';
 import { compilePreviewDocument } from '../application/preview-render-compiler.js';
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { parseSceneJson, sceneToInitialData } from '../domain/excalidraw-scene.js';
+import { downloadBlob } from '../browser-utils.js';
 import { resolveApiUrl, resolveAppUrl } from '../infrastructure/runtime-config.js';
 
 const EXPORT_PAGE_SOURCE = 'collabmd-export-page';
@@ -1433,14 +1434,10 @@ export async function docxAdapter(snapshot) {
   }
 
   const blob = await response.blob();
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = downloadUrl;
-  anchor.download = `${createDocumentTitle(snapshot.filePath, snapshot.title)}.docx`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+  downloadBlob(blob, `${createDocumentTitle(snapshot.filePath, snapshot.title)}.docx`, {
+    removeDelayMs: 0,
+    revokeDelayMs: 1000,
+  });
 }
 
 export async function printPdfAdapter() {

@@ -39,10 +39,6 @@ function parseOptionalPositiveInt(rawValue, {
   throw new Error(`${variableName} must be a positive integer.`);
 }
 
-function parsePort(rawPort, fallbackPort) {
-  return parsePositiveInt(rawPort, fallbackPort);
-}
-
 function normalizeOptionalString(value) {
   const normalized = String(value ?? '').trim();
   return normalized.length > 0 ? normalized : '';
@@ -401,7 +397,7 @@ export function loadConfig(overrides = {}) {
     maxDownloadFileBytes: parsePositiveInt(process.env.COLLABMD_MAX_DOWNLOAD_FILE_BYTES, 268_435_456),
     maxInitialSyncBytes: parsePositiveInt(process.env.COLLABMD_MAX_INITIAL_SYNC_BYTES, 16_777_216),
     perfLoggingEnabled: overrides.perfLoggingEnabled ?? isPerfLoggingEnabled(process.env.COLLABMD_PERF_LOGGING),
-    port: parsePort(process.env.PORT, 1234),
+    port: parsePositiveInt(process.env.PORT, 1234),
     nodeEnv,
     plantumlServerUrl: process.env.PLANTUML_SERVER_URL || 'https://www.plantuml.com/plantuml',
     publicDir,

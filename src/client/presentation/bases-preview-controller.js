@@ -4,6 +4,7 @@ import { escapeHtml } from '../domain/vault-utils.js';
 import { buttonClassNames } from './components/ui/button.js';
 import { inputClassNames } from './components/ui/class-names.js';
 import { segmentedButtonClassNames, segmentedControlClassNames } from './components/ui/segmented-control.js';
+import { downloadBlob, parseDownloadFileName } from '../browser-utils.js';
 
 function createShellKey() {
   return `base-${Math.random().toString(36).slice(2, 10)}`;
@@ -1143,26 +1144,6 @@ function updateShellPanel(entry, result) {
   });
 }
 
-function downloadBlob(blob, fileName = 'base.csv') {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function parseDownloadFileName(contentDisposition = '') {
-  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/iu);
-  if (utfMatch) {
-    return decodeURIComponent(utfMatch[1]);
-  }
-  const asciiMatch = contentDisposition.match(/filename="([^"]+)"/iu);
-  return asciiMatch?.[1] || 'base.csv';
-}
-
 export class BasesPreviewController {
   constructor({
     getActiveFilePath = () => '',
@@ -1721,7 +1702,10 @@ export class BasesPreviewController {
         activeFilePath: this.getActiveFilePath?.() ?? '',
         ...entry.payload,
       });
-      downloadBlob(response.blob, parseDownloadFileName(response.contentDisposition));
+      downloadBlob(response.blob, parseDownloadFileName(response.contentDisposition, 'base.csv'), {
+        removeDelayMs: 0,
+        revokeDelayMs: 0,
+      });
     } catch (error) {
       this.toastController?.show?.(error.message || 'Failed to export base CSV');
     }

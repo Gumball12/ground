@@ -1,5 +1,5 @@
 import { createMarkdownStarter, normalizeVaultPathInput } from '../domain/vault-paths.js';
-import { resolveWikiTarget } from '../domain/vault-utils.js';
+import { resolveWikiTargetPath } from '../../domain/wiki-link-resolver.js';
 
 export class WikiLinkFileController {
   constructor({
@@ -19,7 +19,7 @@ export class WikiLinkFileController {
   }
 
   handleWikiLinkClick(target) {
-    const match = resolveWikiTarget(target, this.getFileList());
+    const match = resolveWikiTargetPath(target, this.getFileList());
 
     if (match) {
       this.navigation.navigateToFile(match);

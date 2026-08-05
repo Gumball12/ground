@@ -5,14 +5,10 @@ import { constants as fsConstants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { extractAssetPath } from './helpers/asset-path.js';
+
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const clientDistDir = resolve(rootDir, 'dist/client');
-
-function extractAssetPath(html, pattern, label) {
-  const match = html.match(pattern);
-  assert.ok(match, `expected ${label} asset reference`);
-  return match[1];
-}
 
 test('client build emits hashed entry assets and the main bundle references the emitted preview worker', async () => {
   const indexHtml = await readFile(resolve(clientDistDir, 'index.html'), 'utf8');

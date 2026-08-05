@@ -3,6 +3,7 @@ import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/fil
 import { normalizeRelativeGitPath } from './path-utils.js';
 import {
   countPatchLines,
+  parseGitLogHeader,
   parseNumstatEntries,
   parseNameStatusEntries,
   parseUnifiedDiff,
@@ -484,22 +485,21 @@ export class GitHistoryService {
     const [headerLine = '', ...statLines] = String(chunk ?? '')
       .split(/\r?\n/u)
       .filter((line) => line.length > 0);
-    const [
-      hash = '',
-      shortHash = '',
-      subject = '',
-      authorName = '',
-      authorEmail = '',
-      authoredAt = '',
-      rawParents = '',
-    ] = headerLine.split('\x1f');
-    const parentHashes = rawParents.split(' ').map((value) => value.trim()).filter(Boolean);
+    const {
+      authorEmail,
+      authorName,
+      authoredAt,
+      hash,
+      isMergeCommit,
+      parentCount,
+      shortHash,
+      subject,
+    } = parseGitLogHeader(headerLine);
 
-    const summary = statLines.reduce((result, line) => {
-      const [rawAdditions = '0', rawDeletions = '0'] = line.split('\t');
+    const summary = parseNumstatEntries(statLines.join('\n')).reduce((result, entry) => {
       return {
-        additions: result.additions + (rawAdditions === '-' ? 0 : Number.parseInt(rawAdditions, 10) || 0),
-        deletions: result.deletions + (rawDeletions === '-' ? 0 : Number.parseInt(rawDeletions, 10) || 0),
+        additions: result.additions + entry.additions,
+        deletions: result.deletions + entry.deletions,
         filesChanged: result.filesChanged + 1,
       };
     }, {
@@ -516,8 +516,8 @@ export class GitHistoryService {
       deletions: summary.deletions,
       filesChanged: summary.filesChanged,
       hash,
-      isMergeCommit: parentHashes.length > 1,
-      parentCount: parentHashes.length,
+      isMergeCommit,
+      parentCount,
       relativeDateLabel: formatRelativeDate(authoredAt),
       shortHash,
       subject,
@@ -528,16 +528,16 @@ export class GitHistoryService {
     const [headerLine = '', ...detailLines] = String(chunk ?? '')
       .split(/\r?\n/u)
       .filter((line) => line.length > 0);
-    const [
-      hash = '',
-      shortHash = '',
-      subject = '',
-      authorName = '',
-      authorEmail = '',
-      authoredAt = '',
-      rawParents = '',
-    ] = headerLine.split('\x1f');
-    const parentHashes = rawParents.split(' ').map((value) => value.trim()).filter(Boolean);
+    const {
+      authorEmail,
+      authorName,
+      authoredAt,
+      hash,
+      isMergeCommit,
+      parentCount,
+      shortHash,
+      subject,
+    } = parseGitLogHeader(headerLine);
 
     return {
       authorEmail,
@@ -545,8 +545,8 @@ export class GitHistoryService {
       authoredAt,
       detailLines,
       hash,
-      isMergeCommit: parentHashes.length > 1,
-      parentCount: parentHashes.length,
+      isMergeCommit,
+      parentCount,
       relativeDateLabel: formatRelativeDate(authoredAt),
       shortHash,
       subject,
@@ -605,21 +605,20 @@ export class GitHistoryService {
       throw createGitRequestError(404, 'Commit not found');
     });
 
-    const [
-      commitHash = '',
-      shortHash = '',
-      subject = '',
-      authorName = '',
-      authorEmail = '',
-      authoredAt = '',
-      rawParents = '',
-    ] = String(headerOutput ?? '').trim().split('\x1f');
+    const {
+      authorEmail,
+      authorName,
+      authoredAt,
+      hash: commitHash,
+      parentHashes,
+      shortHash,
+      subject,
+    } = parseGitLogHeader(String(headerOutput ?? '').trim());
 
     if (!commitHash) {
       throw createGitRequestError(404, 'Commit not found');
     }
 
-    const parentHashes = rawParents.split(' ').map((value) => value.trim()).filter(Boolean);
     const baseRef = parentHashes[0] || EMPTY_TREE_HASH;
     const nameStatusOutput = await this.commandRunner.execGit([
       'diff',
@@ -661,23 +660,19 @@ export class GitHistoryService {
   }
 
   mergeCommitMetadataFiles(nameStatusEntries, numstatOutput) {
-    const statsByPath = new Map();
-    const numstatLines = String(numstatOutput ?? '')
-      .split(/\r?\n/u)
-      .filter(Boolean);
+    const numstatEntries = parseNumstatEntries(numstatOutput);
 
-    for (let index = 0; index < nameStatusEntries.length; index += 1) {
-      const line = numstatLines[index] ?? '';
-      const [rawAdditions = '0', rawDeletions = '0'] = line.split('\t');
-      statsByPath.set(nameStatusEntries[index].path, {
-        additions: rawAdditions === '-' ? 0 : Number.parseInt(rawAdditions, 10) || 0,
-        deletions: rawDeletions === '-' ? 0 : Number.parseInt(rawDeletions, 10) || 0,
-      });
-    }
-
-    return nameStatusEntries.map((entry) => ({
-      ...entry,
-      stats: statsByPath.get(entry.path) ?? createEmptyStats(),
-    }));
+    return nameStatusEntries.map((entry, index) => {
+      const numstatEntry = numstatEntries[index];
+      return {
+        ...entry,
+        stats: numstatEntry
+          ? {
+            additions: numstatEntry.additions,
+            deletions: numstatEntry.deletions,
+          }
+          : createEmptyStats(),
+      };
+    });
   }
 }

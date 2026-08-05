@@ -14,8 +14,11 @@ import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-import { startTestServer } from './helpers/test-server.js';
+import { extractAssetPath } from './helpers/asset-path.js';
+import { extractCookieHeader } from './helpers/cookie.js';
 import { waitForCondition } from './helpers/test-server.js';
+import { createImageBuffer, createOrientedJpegBuffer } from './helpers/image-fixtures.js';
+import { startTestServer } from './helpers/test-server.js';
 import { waitForProviderSync } from './helpers/collaboration-protocol.js';
 
 const execFile = promisify(execFileCallback);
@@ -52,19 +55,6 @@ function httpRequest(url, { method = 'GET', headers = {}, body } = {}) {
   });
 }
 
-function extractCookieHeader(setCookieHeader) {
-  const rawValue = Array.isArray(setCookieHeader)
-    ? setCookieHeader[0]
-    : setCookieHeader;
-  return String(rawValue || '').split(';')[0];
-}
-
-function extractAssetPath(html, pattern, label) {
-  const match = String(html || '').match(pattern);
-  assert.ok(match, `expected ${label} asset path`);
-  return match[1];
-}
-
 function listZipEntryNames(buffer) {
   const endOfCentralDirectorySignature = 0x06054b50;
   const centralDirectoryFileHeaderSignature = 0x02014b50;
@@ -95,37 +85,6 @@ function listZipEntryNames(buffer) {
   }
 
   return entryNames;
-}
-
-async function createImageBuffer(format = 'png') {
-  const image = sharp({
-    create: {
-      background: { alpha: 1, b: 42, g: 23, r: 15 },
-      channels: 4,
-      height: 2,
-      width: 2,
-    },
-  });
-
-  if (format === 'jpeg') {
-    return image.jpeg().toBuffer();
-  }
-
-  return image.png().toBuffer();
-}
-
-async function createOrientedJpegBuffer() {
-  return sharp({
-    create: {
-      background: { alpha: 1, b: 42, g: 23, r: 15 },
-      channels: 3,
-      height: 3,
-      width: 2,
-    },
-  })
-    .jpeg()
-    .withMetadata({ orientation: 6 })
-    .toBuffer();
 }
 
 async function createPublicDirSnapshot() {

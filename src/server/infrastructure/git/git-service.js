@@ -165,7 +165,7 @@ export class GitService {
       throw createGitRequestError(409, 'No upstream branch is configured for pull');
     }
 
-    const beforeRef = await this.getHeadRef();
+    const beforeRef = await this.resolveRef('HEAD');
     await this.fetchUpstream(status.branch.upstream);
 
     const targetRef = await this.resolveRef(status.branch.upstream);
@@ -205,7 +205,7 @@ export class GitService {
       throw await this.classifyPullError(error);
     }
 
-    const afterRef = await this.getHeadRef();
+    const afterRef = await this.resolveRef('HEAD');
     this.invalidateStatusCache();
     return {
       afterRef,
@@ -220,31 +220,15 @@ export class GitService {
   async resetFileToHead(path) {
     const normalizedPath = normalizeRelativeGitPath(path);
     const sourceRef = 'HEAD';
-    const existsOnSource = await this.pathExistsAtRef(sourceRef, normalizedPath);
-
-    if (existsOnSource) {
-      await this.commandRunner.execGit(['restore', '--source', sourceRef, '--staged', '--worktree', '--', normalizedPath]);
-      this.invalidateStatusCache();
-      return {
-        ok: true,
-        path: normalizedPath,
-        sourceRef,
-        workspaceChange: createWorkspaceChange({
-          changedPaths: [normalizedPath],
-        }),
-      };
-    }
-
-    await this.commandRunner.execGit(['rm', '-f', '--ignore-unmatch', '--', normalizedPath]);
-    await this.commandRunner.execGit(['clean', '-f', '--', normalizedPath]);
+    const existsOnSource = await this.restorePathToHead(normalizedPath);
     this.invalidateStatusCache();
     return {
       ok: true,
       path: normalizedPath,
       sourceRef,
-      workspaceChange: createWorkspaceChange({
-        deletedPaths: [normalizedPath],
-      }),
+      workspaceChange: createWorkspaceChange(existsOnSource
+        ? { changedPaths: [normalizedPath] }
+        : { deletedPaths: [normalizedPath] }),
     };
   }
 
@@ -279,15 +263,6 @@ export class GitService {
     return this.historyService.getFileSnapshot({ hash, path });
   }
 
-  async getHeadRef() {
-    try {
-      const output = await this.commandRunner.execGit(['rev-parse', 'HEAD']);
-      return output.trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
   async pathExistsAtRef(ref, path) {
     try {
       await this.commandRunner.execGit(['cat-file', '-e', `${ref}:${path}`]);
@@ -314,7 +289,7 @@ export class GitService {
   }
 
   async canFastForwardTo(targetRef) {
-    const headRef = await this.getHeadRef();
+    const headRef = await this.resolveRef('HEAD');
     if (!headRef || !targetRef || headRef === targetRef) {
       return true;
     }
@@ -436,11 +411,12 @@ export class GitService {
 
     if (existsOnSource) {
       await this.commandRunner.execGit(['restore', '--source', sourceRef, '--staged', '--worktree', '--', normalizedPath]);
-      return;
+      return true;
     }
 
     await this.commandRunner.execGit(['rm', '-f', '--ignore-unmatch', '--', normalizedPath]);
     await this.commandRunner.execGit(['clean', '-f', '--', normalizedPath]);
+    return false;
   }
 
   async hasConflictedStatus() {

@@ -654,14 +654,6 @@ export function detectWorkspaceStateChange(previousState, nextState) {
   });
 }
 
-export function hasWorkspaceStatePaths(workspaceChange = {}) {
-  return (
-    (workspaceChange.changedPaths?.length ?? 0) > 0
-    || (workspaceChange.deletedPaths?.length ?? 0) > 0
-    || (workspaceChange.renamedPaths?.length ?? 0) > 0
-  );
-}
-
 export function isIncrementalWorkspaceMutationAction(action) {
   return action === 'create-directory'
     || action === 'create-file'

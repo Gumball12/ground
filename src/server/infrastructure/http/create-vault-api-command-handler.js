@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
-import { createRequestError, getRequestErrorStatusCode } from './http-errors.js';
+import { createRequestError } from './http-errors.js';
+import { handleApiError, readRequestId } from './http-request-helpers.js';
 import {
   createSafeAsciiFilename,
   encodeContentDispositionFilename,
@@ -35,23 +36,6 @@ function decodeHeaderMetadata(value) {
   }
 }
 
-function readRequestId(req) {
-  const value = String(req.headers['x-collabmd-request-id'] || '').trim();
-  return value ? value.slice(0, 120) : null;
-}
-
-function handleVaultError(req, res, error, logMessage, fallbackMessage) {
-  const statusCode = getRequestErrorStatusCode(error);
-  if (statusCode) {
-    jsonResponse(req, res, statusCode, { error: error.message });
-    return true;
-  }
-
-  console.error(logMessage, error.message);
-  jsonResponse(req, res, 500, { error: fallbackMessage });
-  return true;
-}
-
 function getDirectoryDeleteStatusCode(message = '') {
   return String(message).includes('Directory is not empty') ? 409 : 400;
 }
@@ -80,7 +64,7 @@ async function handleExportDocx({ docxExporter }, req, res) {
       statusCode: 200,
     });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to export DOCX:', 'Failed to export DOCX');
+    handleApiError(req, res, error, '[api] Failed to export DOCX:', 'Failed to export DOCX');
   }
   return true;
 }
@@ -105,7 +89,7 @@ async function handleWriteFile({ workspaceMutationCoordinator }, req, res) {
 
     jsonResponse(req, res, 200, { ok: true });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to write file:', 'Failed to write file');
+    handleApiError(req, res, error, '[api] Failed to write file:', 'Failed to write file');
   }
   return true;
 }
@@ -140,7 +124,7 @@ async function handleUploadAttachment({ workspaceMutationCoordinator }, req, res
       path: result.path,
     });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to upload attachment:', 'Failed to upload attachment');
+    handleApiError(req, res, error, '[api] Failed to upload attachment:', 'Failed to upload attachment');
   }
   return true;
 }
@@ -164,7 +148,7 @@ async function handleCreateFile({ workspaceMutationCoordinator }, req, res) {
     }
     jsonResponse(req, res, 201, { ok: true, path: body.path });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to create file:', 'Failed to create file');
+    handleApiError(req, res, error, '[api] Failed to create file:', 'Failed to create file');
   }
   return true;
 }
@@ -212,7 +196,7 @@ async function handleRenameFile({ workspaceMutationCoordinator }, req, res) {
     }
     jsonResponse(req, res, 200, { ok: true, path: body.newPath });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to rename file:', 'Failed to rename file');
+    handleApiError(req, res, error, '[api] Failed to rename file:', 'Failed to rename file');
   }
   return true;
 }
@@ -236,7 +220,7 @@ async function handleCreateDirectory({ workspaceMutationCoordinator }, req, res)
 
     jsonResponse(req, res, 201, { ok: true });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to create directory:', 'Failed to create directory');
+    handleApiError(req, res, error, '[api] Failed to create directory:', 'Failed to create directory');
   }
   return true;
 }
@@ -261,7 +245,7 @@ async function handleRenameDirectory({ workspaceMutationCoordinator }, req, res)
 
     jsonResponse(req, res, 200, { ok: true, path: body.newPath });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to rename directory:', 'Failed to rename directory');
+    handleApiError(req, res, error, '[api] Failed to rename directory:', 'Failed to rename directory');
   }
   return true;
 }
@@ -287,7 +271,7 @@ async function handleDeleteDirectory({ workspaceMutationCoordinator }, req, res,
 
     jsonResponse(req, res, 200, { ok: true });
   } catch (error) {
-    handleVaultError(req, res, error, '[api] Failed to delete directory:', 'Failed to delete directory');
+    handleApiError(req, res, error, '[api] Failed to delete directory:', 'Failed to delete directory');
   }
   return true;
 }

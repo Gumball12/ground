@@ -1,4 +1,4 @@
-import { getRequestErrorStatusCode } from './http-errors.js';
+import { handleApiError, readRequestId } from './http-request-helpers.js';
 import { jsonResponse } from './http-response.js';
 import { parseJsonBody } from './request-body.js';
 import { createEmptyWorkspaceChange, hasWorkspaceMutation } from '../../../domain/workspace-change.js';
@@ -11,27 +11,6 @@ async function parseRequiredBody(req, res, fieldName) {
   }
 
   return body;
-}
-
-function handleGitError(req, res, error, logMessage, fallbackMessage) {
-  const statusCode = getRequestErrorStatusCode(error);
-  if (statusCode) {
-    const payload = { error: error.message };
-    if (typeof error?.requestCode === 'string') {
-      payload.code = error.requestCode;
-    }
-    jsonResponse(req, res, statusCode, payload);
-    return true;
-  }
-
-  console.error(logMessage, error.message);
-  jsonResponse(req, res, 500, { error: fallbackMessage });
-  return true;
-}
-
-function readRequestId(req) {
-  const value = String(req.headers['x-collabmd-request-id'] || '').trim();
-  return value ? value.slice(0, 120) : null;
 }
 
 async function applyWorkspaceMutationEffects({
@@ -79,7 +58,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to stage git file:', 'Failed to stage git file');
+        handleApiError(req, res, error, '[api] Failed to stage git file:', 'Failed to stage git file');
       }
       return true;
     }
@@ -100,7 +79,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to unstage git file:', 'Failed to unstage git file');
+        handleApiError(req, res, error, '[api] Failed to unstage git file:', 'Failed to unstage git file');
       }
       return true;
     }
@@ -124,7 +103,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to commit staged changes:', 'Failed to commit staged changes');
+        handleApiError(req, res, error, '[api] Failed to commit staged changes:', 'Failed to commit staged changes');
       }
       return true;
     }
@@ -140,7 +119,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to push git branch:', 'Failed to push git branch');
+        handleApiError(req, res, error, '[api] Failed to push git branch:', 'Failed to push git branch');
       }
       return true;
     }
@@ -156,7 +135,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to pull git branch:', 'Failed to pull git branch');
+        handleApiError(req, res, error, '[api] Failed to pull git branch:', 'Failed to pull git branch');
       }
       return true;
     }
@@ -177,7 +156,7 @@ export function createGitApiCommandHandler({
           workspaceMutationCoordinator,
         }));
       } catch (error) {
-        handleGitError(req, res, error, '[api] Failed to reset git file:', 'Failed to reset git file');
+        handleApiError(req, res, error, '[api] Failed to reset git file:', 'Failed to reset git file');
       }
       return true;
     }
