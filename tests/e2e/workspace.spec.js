@@ -409,8 +409,9 @@ test('image toolbar uploads a vault attachment and inserts inline markdown', asy
   )).toMatch(/!\[inline diagram\]\(assets\/inline-diagram-[^)]+\.webp\)/i);
 
   await expect(page.locator('#fileTree')).toContainText('assets');
-  await expect(page.locator('#previewContent img')).toBeVisible();
-  await expect(page.locator('#previewContent img')).toHaveAttribute(
+  const uploadedImage = page.locator('#previewContent img[src$=".webp"]');
+  await expect(uploadedImage).toBeVisible();
+  await expect(uploadedImage).toHaveAttribute(
     'src',
     /\/api\/attachment\?path=assets%2Finline-diagram-[^?]+\.webp/,
   );
@@ -511,8 +512,9 @@ test('pasting an image uploads a vault attachment and inserts inline markdown', 
   )).toMatch(/!\[[^\]]+\]\(assets\/[a-z-]+-[^)]+\.webp\)/i);
 
   await expect(page.locator('#fileTree')).toContainText('assets');
-  await expect(page.locator('#previewContent img')).toBeVisible();
-  await expect(page.locator('#previewContent img')).toHaveAttribute(
+  const uploadedImage = page.locator('#previewContent img[src$=".webp"]');
+  await expect(uploadedImage).toBeVisible();
+  await expect(uploadedImage).toHaveAttribute(
     'src',
     /\/api\/attachment\?path=assets%2F[^?]+\.webp/,
   );
