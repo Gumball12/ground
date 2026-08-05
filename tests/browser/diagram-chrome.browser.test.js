@@ -102,7 +102,7 @@ describe('DiagramChrome', () => {
     expect(scheduledFrames).toHaveLength(0);
   });
 
-  it('preserves zoom and scroll position when replacing diagram output', async () => {
+  it('preserves zoom and scroll position without dropping the visible frame', async () => {
     const frameStyle = document.createElement('style');
     frameStyle.textContent = '.diagram-preview-frame { width: 240px; height: 120px; overflow: auto; }';
     document.body.append(frameStyle);
@@ -116,8 +116,6 @@ describe('DiagramChrome', () => {
     frame.scrollTop = 70;
     expect(frame.scrollLeft).toBe(90);
     expect(frame.scrollTop).toBe(70);
-    expect(chrome.shellControllers.get(shell)?.getViewState?.().scrollLeft).toBe(90);
-    expect(chrome.shellControllers.get(shell)?.getViewState?.().scrollTop).toBe(70);
     const previousZoom = shell.querySelector('.mermaid-zoom-label')?.textContent;
     chrome.captureShellViewState(shell);
     const parent = shell.parentElement;
@@ -134,11 +132,8 @@ describe('DiagramChrome', () => {
       sourceSelector: '.mermaid-source',
     });
 
-    const framesDuringSwap = shell.querySelectorAll('.mermaid-frame');
-    expect(framesDuringSwap).toHaveLength(2);
-    expect(framesDuringSwap[0]).toBe(frame);
-    expect(framesDuringSwap[0].style.visibility).toBe('');
-    expect(framesDuringSwap[1].style.visibility).toBe('hidden');
+    expect(frame.isConnected).toBe(true);
+    expect(getComputedStyle(frame).visibility).toBe('visible');
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const nextFrame = shell.querySelector('.mermaid-frame');
     expect(nextFrame).not.toBe(frame);

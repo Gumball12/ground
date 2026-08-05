@@ -1,11 +1,11 @@
 import {
   cancelIdleRender,
+  createDiagramErrorPlaceholderCard,
   IDLE_RENDER_TIMEOUT_MS,
   isNearViewport,
   requestIdleRender,
   shouldPreserveHydratedDiagram,
   syncAttribute,
-  getDiagramErrorLocation,
   normalizeDiagramError,
 } from './preview-diagram-utils.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
@@ -54,8 +54,7 @@ export class DiagramPreviewHydrator {
     this.hydrationToken = 0;
     this.hydrationRenderVersion = null;
     this.instanceCounter = 0;
-    this.preservedShells = new Map();
-    this.preservedShellsByLocation = new Map();
+    this.preservedShells = [];
     this.fileInflightRequests = new Map();
   }
 
@@ -94,20 +93,6 @@ export class DiagramPreviewHydrator {
     this.hydrationInProgress = false;
   }
 
-  invalidateHydration() {
-    this.hydrationToken += 1;
-    this.hydrationRenderVersion = null;
-    if (this.observer) {
-      this.observer.disconnect();
-      this.observer = null;
-    }
-
-    this.cancelIdleRenderFn(this.idleId);
-    this.idleId = null;
-    this.pendingShells = [];
-    this.hydrationInProgress = false;
-  }
-
   cancelPendingIdleWork() {
     this.cancelIdleRenderFn(this.idleId);
     this.idleId = null;
@@ -117,8 +102,7 @@ export class DiagramPreviewHydrator {
     this.preservedShells.forEach(({ shell }) => {
       this.renderer.diagramChrome?.destroyShell?.(shell);
     });
-    this.preservedShells.clear();
-    this.preservedShellsByLocation.clear();
+    this.preservedShells.length = 0;
   }
 
   getPreviewShells() {
@@ -150,33 +134,12 @@ export class DiagramPreviewHydrator {
     return shell?.getAttribute?.('data-diagram-state') === 'error';
   }
 
-  preserveEntry(entry) {
-    this.preservedShells.set(entry.key, entry);
-    if (entry.identity) {
-      this.preservedShellsByLocation.set(entry.identity, entry);
-    }
-  }
-
-  removePreservedEntry(entry) {
-    if (!entry) {
-      return;
-    }
-
-    if (this.preservedShells.get(entry.key) === entry) {
-      this.preservedShells.delete(entry.key);
-    }
-    if (entry.identity && this.preservedShellsByLocation.get(entry.identity) === entry) {
-      this.preservedShellsByLocation.delete(entry.identity);
-    }
-  }
-
   hasPendingWork() {
     return this.hydrationInProgress || this.pendingShells.length > 0;
   }
 
   preserveHydratedShellsForCommit() {
-    this.preservedShells.clear();
-    this.preservedShellsByLocation.clear();
+    this.preservedShells.length = 0;
     const previewElement = this.renderer.previewElement;
     if (!previewElement) {
       return;
@@ -195,7 +158,7 @@ export class DiagramPreviewHydrator {
         shell.remove();
       }
 
-      this.preserveEntry({
+      this.preservedShells.push({
         key,
         identity: this.getPreservationIdentity(shell),
         shell,
@@ -207,7 +170,7 @@ export class DiagramPreviewHydrator {
 
   reconcileHydratedShells() {
     const previewElement = this.renderer.previewElement;
-    if (!previewElement || this.preservedShells.size === 0) {
+    if (!previewElement || this.preservedShells.length === 0) {
       this.clearPreservedShells();
       return;
     }
@@ -215,11 +178,20 @@ export class DiagramPreviewHydrator {
     let restoredMaximizedShell = false;
     Array.from(previewElement.querySelectorAll(`${this.shellSelector}[${this.attributeNames.key}]`)).forEach((nextShell) => {
       const key = nextShell.dataset[this.datasetKeys.key];
-      const preservedEntry = (key ? this.preservedShells.get(key) : null)
-        ?? this.preservedShellsByLocation.get(this.getPreservationIdentity(nextShell));
-      if (!preservedEntry) {
+      let preservedIndex = key
+        ? this.preservedShells.findIndex((entry) => entry.key === key)
+        : -1;
+      if (preservedIndex === -1) {
+        const identity = this.getPreservationIdentity(nextShell);
+        // ponytail: diagram counts are small; index entries if reconciliation becomes measurable.
+        preservedIndex = identity
+          ? this.preservedShells.findIndex((entry) => entry.identity === identity)
+          : -1;
+      }
+      if (preservedIndex === -1) {
         return;
       }
+      const preservedEntry = this.preservedShells[preservedIndex];
 
       const nextSource = nextShell.querySelector(this.sourceSelector)?.textContent ?? '';
       const nextTarget = nextShell.dataset[this.datasetKeys.target] ?? '';
@@ -246,14 +218,13 @@ export class DiagramPreviewHydrator {
         frame.scrollTop = viewState.scrollTop ?? 0;
       }
       restoredMaximizedShell = restoredMaximizedShell || preservedEntry.shell.classList.contains('is-maximized');
-      this.removePreservedEntry(preservedEntry);
+      this.preservedShells.splice(preservedIndex, 1);
     });
 
     this.preservedShells.forEach(({ shell }) => {
       this.renderer.diagramChrome?.destroyShell?.(shell);
     });
-    this.preservedShells.clear();
-    this.preservedShellsByLocation.clear();
+    this.preservedShells.length = 0;
     this.handleReconcile({ restoredMaximizedShell });
   }
 
@@ -299,11 +270,8 @@ export class DiagramPreviewHydrator {
     this.markShellHydrated(preservedShell);
   }
 
-  getShellStatus(shell) {
-    const directChildren = Array.from(shell?.children ?? []);
-    return directChildren.find((child) => child.classList?.contains('diagram-preview-status'))
-      ?? shell?.querySelector?.(':scope > .diagram-preview-status')
-      ?? null;
+  getShellErrorCard(shell) {
+    return shell?.querySelector?.(':scope > .diagram-preview-error-card') ?? null;
   }
 
   notifyShellLayoutChange() {
@@ -312,64 +280,12 @@ export class DiagramPreviewHydrator {
     });
   }
 
-  setShellStatus(shell, state, message = '') {
+  clearShellErrorCard(shell) {
     if (!shell) {
       return;
     }
 
-    this.getShellStatus(shell)?.remove?.();
-    if (state === 'ready') {
-      this.notifyShellLayoutChange();
-      return;
-    }
-
-    const documentRef = shell.ownerDocument ?? globalThis.document;
-    if (!documentRef?.createElement) {
-      return;
-    }
-
-    const status = documentRef.createElement('div');
-    status.className = `diagram-preview-status diagram-preview-status--${state}`;
-    status.setAttribute('role', state === 'error' ? 'alert' : 'status');
-    status.setAttribute('aria-live', state === 'error' ? 'assertive' : 'polite');
-
-    const copy = documentRef.createElement('div');
-    copy.className = 'diagram-preview-status-copy';
-
-    const title = documentRef.createElement('strong');
-    title.textContent = `${this.getShellLabel(shell)} could not render`;
-    copy.append(title);
-
-    const subtitle = documentRef.createElement('span');
-    subtitle.textContent = 'Showing the last valid result.';
-    copy.append(subtitle);
-
-    const location = getDiagramErrorLocation(message);
-    if (location) {
-      const locationNode = documentRef.createElement('span');
-      locationNode.textContent = location;
-      copy.append(locationNode);
-    }
-
-    const details = documentRef.createElement('details');
-    const summary = documentRef.createElement('summary');
-    summary.textContent = 'Details';
-    const detailMessage = documentRef.createElement('code');
-    detailMessage.textContent = message;
-    details.append(summary, detailMessage);
-    copy.append(details);
-
-    status.append(copy);
-
-    if (state === 'error') {
-      const retry = documentRef.createElement('button');
-      retry.type = 'button';
-      retry.className = 'diagram-preview-retry diagram-preview-placeholder-btn';
-      retry.textContent = 'Retry';
-      status.append(retry);
-    }
-
-    shell.append(status);
+    this.getShellErrorCard(shell)?.remove?.();
     this.notifyShellLayoutChange();
   }
 
@@ -385,7 +301,7 @@ export class DiagramPreviewHydrator {
     shell.setAttribute('data-diagram-output', 'true');
     shell.removeAttribute('data-diagram-state');
     shell.removeAttribute('aria-busy');
-    this.setShellStatus(shell, 'ready');
+    this.clearShellErrorCard(shell);
   }
 
   markShellPending(shell) {
@@ -397,8 +313,8 @@ export class DiagramPreviewHydrator {
     shell.setAttribute('data-diagram-output', 'true');
     shell.setAttribute('data-diagram-state', 'pending');
     shell.setAttribute('aria-busy', 'true');
-    if (this.getShellStatus(shell)) {
-      this.setShellStatus(shell, 'ready');
+    if (this.getShellErrorCard(shell)) {
+      this.clearShellErrorCard(shell);
     }
     return true;
   }
@@ -413,7 +329,16 @@ export class DiagramPreviewHydrator {
     shell.setAttribute('data-diagram-output', 'true');
     shell.setAttribute('data-diagram-state', 'error');
     shell.removeAttribute('aria-busy');
-    this.setShellStatus(shell, 'error', message);
+    this.getShellErrorCard(shell)?.remove?.();
+    const kind = this.shellClassName.replace(/-shell$/, '');
+    shell.append(createDiagramErrorPlaceholderCard({
+      key: shell.dataset[this.datasetKeys.key],
+      kind,
+      label: this.getShellLabel(shell),
+      message,
+      subtitle: 'Showing the last valid result.',
+    }));
+    this.notifyShellLayoutChange();
     return true;
   }
 
@@ -422,11 +347,11 @@ export class DiagramPreviewHydrator {
     shell?.removeAttribute?.('data-diagram-output');
     shell?.removeAttribute?.('data-diagram-state');
     shell?.removeAttribute?.('aria-busy');
-    this.setShellStatus(shell, 'ready');
+    this.clearShellErrorCard(shell);
   }
 
   markPending() {
-    this.invalidateHydration();
+    this.cancelHydration();
     this.getPreviewShells().filter((shell) => this.isShellRenderable(shell)).forEach((shell) => {
       this.markShellPending(shell);
     });

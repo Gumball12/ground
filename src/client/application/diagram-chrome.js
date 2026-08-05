@@ -458,21 +458,23 @@ export class DiagramChrome {
       frame.style.visibility = 'hidden';
     }
     if (shouldStageReplacement) {
-      frame.style.position = 'absolute';
-      frame.style.left = '0';
-      frame.style.top = '0';
-      frame.style.width = `${previousFrame.clientWidth}px`;
-      frame.style.height = `${previousFrame.clientHeight}px`;
-      frame.style.visibility = 'hidden';
-      frame.style.pointerEvents = 'none';
+      Object.assign(frame.style, {
+        height: `${previousFrame.clientHeight}px`,
+        left: '0',
+        pointerEvents: 'none',
+        position: 'absolute',
+        top: '0',
+        visibility: 'hidden',
+        width: `${previousFrame.clientWidth}px`,
+      });
     }
 
-    let controller = null;
     let currentZoom = zoomPolicy.default;
     let defaultZoom = 1;
     let zoomAnimationFrameId = null;
     let resetZoomFrameId = null;
     let layoutFrameId = null;
+    let replacementFrameId = null;
     let hasManualZoom = Boolean(
       previousViewState?.hasManualZoom
       || previousViewState?.scrollLeft > 0
@@ -760,50 +762,32 @@ export class DiagramChrome {
         && frame.scrollTop === scrollTop;
     };
 
-    const commitStagedReplacement = () => {
-      if (this.shellControllers.get(shell) !== controller) {
-        frame.remove();
-        return;
-      }
-
-      if (!restoreScrollPosition()) {
-        this.window.requestAnimationFrame(commitStagedReplacement);
-        return;
-      }
-
-      shell.replaceChildren(...nextChildren);
-      frame.style.position = '';
-      frame.style.left = '';
-      frame.style.top = '';
-      frame.style.width = '';
-      frame.style.height = '';
-      frame.style.pointerEvents = '';
-      frame.style.visibility = '';
-      if (shouldRestoreShellPosition) {
-        shell.style.position = '';
-      }
-      applyZoom(initialZoom);
-      restoreScrollPosition();
-    };
-
     if (shouldStageReplacement) {
       restoreScrollPosition();
-      this.window.requestAnimationFrame(commitStagedReplacement);
-    } else if (previousViewState) {
-      const restoredImmediately = restoreScrollPosition();
-      if (shouldRestoreScrollPosition && !restoredImmediately) {
+      replacementFrameId = this.window.requestAnimationFrame(() => {
+        replacementFrameId = null;
+        shell.replaceChildren(...nextChildren);
+        frame.removeAttribute('style');
+        if (shouldRestoreShellPosition) {
+          shell.style.position = '';
+        }
+        applyZoom(initialZoom);
+        restoreScrollPosition();
+      });
+    } else if (shouldRestoreScrollPosition) {
+      if (!restoreScrollPosition()) {
         this.window.requestAnimationFrame(() => {
           if (frame.isConnected) {
             restoreScrollPosition();
             frame.style.visibility = '';
           }
         });
-      } else if (shouldRestoreScrollPosition) {
+      } else {
         frame.style.visibility = '';
       }
     }
 
-    controller = {
+    const controller = {
       destroy: () => {
         stopPanning();
         if (zoomAnimationFrameId) {
@@ -814,6 +798,9 @@ export class DiagramChrome {
         }
         if (layoutFrameId) {
           this.window.cancelAnimationFrame(layoutFrameId);
+        }
+        if (replacementFrameId) {
+          this.window.cancelAnimationFrame(replacementFrameId);
         }
         resizeObserver?.disconnect?.();
         this.resizeObservers.delete(resizeObserver);

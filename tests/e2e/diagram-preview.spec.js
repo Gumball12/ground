@@ -97,10 +97,13 @@ test('debounces PlantUML WIP renders and keeps the last valid output on errors',
     '```',
   ].join('\n'));
 
-  await expect(page.locator('#previewContent .diagram-preview-status--error')).toContainText('could not render');
+  await expect(page.locator('#previewContent .diagram-preview-error-card')).toContainText('needs attention');
   await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-valid');
-  await expect(page.locator('#previewContent .diagram-preview-status--error details')).toContainText('line 4');
+  await expect(page.locator('#previewContent .diagram-preview-error-card details')).toContainText('line 4');
   expect(renderRequests).toBe(initialRequestCount + 1);
+  await page.locator('#previewContent .diagram-preview-error-card .plantuml-placeholder-btn').click();
+  await expect.poll(() => renderRequests).toBe(initialRequestCount + 2);
+  await expect(page.locator('#previewContent .diagram-preview-error-card')).toContainText('needs attention');
 
   await replaceEditorContent(page, [
     '# PlantUML WIP',
@@ -112,7 +115,7 @@ test('debounces PlantUML WIP renders and keeps the last valid output on errors',
     '```',
   ].join('\n'));
 
-  await expect(page.locator('#previewContent .diagram-preview-status--error')).toHaveCount(0);
+  await expect(page.locator('#previewContent .diagram-preview-error-card')).toHaveCount(0);
   await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-fixed');
 });
 

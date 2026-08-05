@@ -143,9 +143,12 @@ export function createDiagramErrorPlaceholderCard({
   kind,
   label = 'Diagram',
   message = 'Render failed',
+  subtitle = 'The current source could not be rendered.',
 } = {}) {
   const card = document.createElement('div');
   card.className = `${kind}-placeholder-card diagram-preview-placeholder-card diagram-preview-error-card`;
+  card.setAttribute('role', 'alert');
+  card.setAttribute('aria-live', 'assertive');
 
   const copy = document.createElement('div');
   copy.className = 'diagram-preview-placeholder-copy';
@@ -153,8 +156,8 @@ export function createDiagramErrorPlaceholderCard({
   const title = document.createElement('strong');
   title.textContent = `${label} needs attention`;
 
-  const subtitle = document.createElement('span');
-  subtitle.textContent = 'The current source could not be rendered.';
+  const subtitleNode = document.createElement('span');
+  subtitleNode.textContent = subtitle;
 
   const location = getDiagramErrorLocation(message);
   let locationNode = null;
@@ -176,7 +179,7 @@ export function createDiagramErrorPlaceholderCard({
   button.dataset[`${kind}Key`] = key;
   button.textContent = 'Retry';
 
-  copy.append(title, subtitle);
+  copy.append(title, subtitleNode);
   if (locationNode) {
     copy.append(locationNode);
   }

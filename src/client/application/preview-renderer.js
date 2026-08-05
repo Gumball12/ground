@@ -66,22 +66,10 @@ export class PreviewRenderer {
         }
 
         event.preventDefault();
-        this.mermaidHydrator.enqueueShell(shell, { prioritize: true });
-        return;
-      }
-
-      const retryButton = event.target.closest('.diagram-preview-retry');
-      if (retryButton) {
-        const shell = retryButton.closest('.diagram-preview-shell');
-        if (!shell) {
-          return;
-        }
-
-        event.preventDefault();
-        if (shell.classList.contains('mermaid-shell')) {
+        if (mermaidButton.closest('.diagram-preview-error-card')) {
           this.mermaidHydrator.retryShell(shell);
-        } else if (shell.classList.contains('plantuml-shell')) {
-          this.plantUmlHydrator.retryShell(shell);
+        } else {
+          this.mermaidHydrator.enqueueShell(shell, { prioritize: true });
         }
         return;
       }
@@ -94,7 +82,11 @@ export class PreviewRenderer {
         }
 
         event.preventDefault();
-        this.plantUmlHydrator.enqueueShell(shell, { prioritize: true });
+        if (plantUmlButton.closest('.diagram-preview-error-card')) {
+          this.plantUmlHydrator.retryShell(shell);
+        } else {
+          this.plantUmlHydrator.enqueueShell(shell, { prioritize: true });
+        }
       }
     };
 

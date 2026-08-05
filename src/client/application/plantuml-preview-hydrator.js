@@ -212,6 +212,5 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
       },
       sourceSelector: '.plantuml-source',
     });
-    this.markShellRendered(shell);
   }
 }

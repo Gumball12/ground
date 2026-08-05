@@ -358,7 +358,6 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       sourceSelector: '.mermaid-source',
     });
     shell._diagramRenderedSource = renderedSource;
-    this.markShellRendered(shell);
   }
 
   scheduleActiveRefit() {
