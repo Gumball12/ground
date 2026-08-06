@@ -1,6 +1,10 @@
+import { execFile as execFileCallback } from 'node:child_process';
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+
 import { createGitRequestError } from './errors.js';
 import { normalizeRelativeGitPath } from './path-utils.js';
-import { GitCommandRunner } from './command-runner.js';
 import { GitDiffService } from './diff-service.js';
 import { GitHistoryService } from './history-service.js';
 import { parseNameStatusOutput } from './parsers.js';
@@ -8,6 +12,8 @@ import { createEmptyWorkspaceChange, createWorkspaceChange } from '../../../doma
 import { GitStatusService } from './status-service.js';
 import { GitUntrackedFileService } from './untracked-files.js';
 import { PullBackupStore } from '../persistence/pull-backup-store.js';
+
+const execFile = promisify(execFileCallback);
 
 function buildAuthorEnv(author = null) {
   const name = String(author?.name ?? '').trim();
@@ -35,12 +41,36 @@ export class GitService {
     statusCacheTtlMs = 2_000,
     vaultDir,
   }) {
-    this.commandRunner = new GitCommandRunner({
-      commandEnv,
-      enabled,
-      execFileImpl,
-      vaultDir,
-    });
+    const gitExecFile = execFileImpl ?? execFile;
+    this.commandRunner = {
+      async isGitRepo() {
+        if (!enabled) {
+          return false;
+        }
+
+        try {
+          await access(join(vaultDir, '.git'));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      async execGit(args, { env = null } = {}) {
+        const result = await gitExecFile('git', ['-c', 'core.quotepath=false', ...args], {
+          cwd: vaultDir,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            ...(commandEnv ?? {}),
+            ...(env ?? {}),
+          },
+          maxBuffer: 5 * 1024 * 1024,
+          timeout: 10_000,
+        });
+
+        return String(result.stdout ?? '');
+      },
+    };
     this.untrackedFileService = new GitUntrackedFileService({ vaultDir });
     this.statusService = new GitStatusService({
       commandRunner: this.commandRunner,

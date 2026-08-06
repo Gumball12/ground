@@ -1,6 +1,5 @@
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import {
-  downloadBlob,
   rasterizeSvgMarkupToPngBlob,
   writeBlobToClipboard,
 } from './diagram-preview-export.js';
@@ -9,6 +8,7 @@ import {
   getFrameViewportSize,
 } from './preview-diagram-utils.js';
 import { clamp } from '../domain/vault-utils.js';
+import { downloadBlob } from '../browser-utils.js';
 
 export const DIAGRAM_CHROME_ZOOM = Object.freeze({
   animationDurationMs: 160,

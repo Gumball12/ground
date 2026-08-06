@@ -4,10 +4,7 @@ import {
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
 import { getVaultPathLeaf } from '../domain/vault-paths.js';
-import { downloadBlob } from '../browser-utils.js';
 import { sanitizeSvgMarkup, serializeSvgElement } from './preview-diagram-utils.js';
-
-export { downloadBlob };
 
 const LIGHT_EXPORT_MERMAID_CONFIG = Object.freeze({
   htmlLabels: false,

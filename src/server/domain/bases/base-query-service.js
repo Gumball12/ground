@@ -152,82 +152,6 @@ export class BaseQueryService {
     this.propertyCatalogCache = new Map();
   }
 
-  get workspaceStateProvider() {
-    return this.snapshotStore.workspaceStateProvider;
-  }
-
-  set workspaceStateProvider(value) {
-    this.snapshotStore.workspaceStateProvider = value;
-  }
-
-  get workspaceStateSynchronizer() {
-    return this.snapshotStore.workspaceStateSynchronizer;
-  }
-
-  set workspaceStateSynchronizer(value) {
-    this.snapshotStore.workspaceStateSynchronizer = value;
-  }
-
-  get indexSnapshot() {
-    return this.snapshotStore.indexSnapshot;
-  }
-
-  set indexSnapshot(value) {
-    this.snapshotStore.indexSnapshot = value;
-  }
-
-  get lastWorkspaceState() {
-    return this.snapshotStore.lastWorkspaceState;
-  }
-
-  set lastWorkspaceState(value) {
-    this.snapshotStore.lastWorkspaceState = value;
-  }
-
-  async getWorkspaceState() {
-    return this.snapshotStore.getWorkspaceState();
-  }
-
-  createSnapshotRow(...args) {
-    return this.snapshotStore.createSnapshotRow(...args);
-  }
-
-  rebuildBacklinks(...args) {
-    return this.snapshotStore.rebuildBacklinks(...args);
-  }
-
-  async buildIndexSnapshot(...args) {
-    return this.snapshotStore.buildIndexSnapshot(...args);
-  }
-
-  async synchronizeWorkspaceState() {
-    return this.snapshotStore.synchronizeWorkspaceState();
-  }
-
-  removeSnapshotPath(...args) {
-    return this.snapshotStore.removeSnapshotPath(...args);
-  }
-
-  upsertSnapshotPath(...args) {
-    return this.snapshotStore.upsertSnapshotPath(...args);
-  }
-
-  collectImpactedSourcesForMembershipChanges(...args) {
-    return this.snapshotStore.collectImpactedSourcesForMembershipChanges(...args);
-  }
-
-  async refreshSnapshotRows(...args) {
-    return this.snapshotStore.refreshSnapshotRows(...args);
-  }
-
-  async ensureIndexSnapshot(...args) {
-    return this.snapshotStore.ensureIndexSnapshot(...args);
-  }
-
-  async initializeFromWorkspaceState(...args) {
-    return this.snapshotStore.initializeFromWorkspaceState(...args);
-  }
-
   async applyWorkspaceChange(...args) {
     const result = await this.snapshotStore.applyWorkspaceChange(...args);
     const scannedAt = this.snapshotStore.indexSnapshot?.scannedAt;
@@ -279,7 +203,7 @@ export class BaseQueryService {
     }
 
     const definition = this.getCachedDefinition(source === null ? `file:${basePath}` : `source:${sourcePath}:${basePath}`, baseSource);
-    const snapshot = await this.ensureIndexSnapshot({
+    const snapshot = await this.snapshotStore.ensureIndexSnapshot({
       basePath,
       sourcePath,
     });

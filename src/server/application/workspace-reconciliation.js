@@ -135,7 +135,7 @@ export class WorkspaceReconciliation {
   async initialize({ snapshot = null } = {}) {
     const effectiveSnapshot = snapshot ?? await this.vaultFileStore.scanWorkspaceState();
     this.replaceWorkspaceState(effectiveSnapshot);
-    await this.baseQueryService?.initializeFromWorkspaceState?.(effectiveSnapshot);
+    await this.baseQueryService?.snapshotStore?.initializeFromWorkspaceState?.(effectiveSnapshot);
     this.getWorkspaceRoom()?.replaceWorkspaceEntries(effectiveSnapshot.entries, {
       generatedAt: effectiveSnapshot.scannedAt,
     });

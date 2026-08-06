@@ -1,5 +1,6 @@
 import '../styles/features/auth-gate.css';
 
+import { getHashParamsFromRaw } from '../domain/hash-routes.js';
 import { getRuntimeConfig } from './runtime-config.js';
 
 const DEFAULT_AUTH_CONFIG = {
@@ -24,19 +25,12 @@ function getClientAuthConfig() {
   };
 }
 
-function getHashParams() {
-  const rawHash = window.location.hash.startsWith('#')
-    ? window.location.hash.slice(1)
-    : window.location.hash;
-  return new URLSearchParams(rawHash);
-}
-
 function getPasswordFromHash() {
-  return getHashParams().get('auth_password') || '';
+  return getHashParamsFromRaw(window.location.hash).get('auth_password') || '';
 }
 
 function removePasswordFromHash() {
-  const params = getHashParams();
+  const params = getHashParamsFromRaw(window.location.hash);
   if (!params.has('auth_password')) {
     return;
   }
@@ -48,7 +42,7 @@ function removePasswordFromHash() {
 }
 
 function consumeHashParam(name) {
-  const params = getHashParams();
+  const params = getHashParamsFromRaw(window.location.hash);
   const value = params.get(name) || '';
   if (!value) {
     return '';

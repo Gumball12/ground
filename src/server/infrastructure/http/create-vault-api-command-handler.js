@@ -40,7 +40,7 @@ function getDirectoryDeleteStatusCode(message = '') {
   return String(message).includes('Directory is not empty') ? 409 : 400;
 }
 
-async function handleExportDocx({ docxExporter }, req, res) {
+async function handleExportDocx({ renderDocx }, req, res) {
   try {
     const body = await parseJsonBody(req, DOCX_EXPORT_REQUEST_LIMIT_BYTES);
     if (!body?.filePath || typeof body?.html !== 'string') {
@@ -48,12 +48,12 @@ async function handleExportDocx({ docxExporter }, req, res) {
       return true;
     }
 
-    if (!docxExporter?.render) {
+    if (typeof renderDocx !== 'function') {
       jsonResponse(req, res, 503, { error: 'DOCX export is unavailable' });
       return true;
     }
 
-    const docxBuffer = await docxExporter.render({
+    const docxBuffer = await renderDocx({
       html: body.html,
       title: body.title || '',
     });
@@ -289,11 +289,11 @@ const ROUTE_TABLE = [
 ];
 
 export function createVaultApiCommandHandler({
-  docxExporter = null,
+  renderDocx = null,
   vaultFileStore,
   workspaceMutationCoordinator = null,
 }) {
-  const context = { docxExporter, vaultFileStore, workspaceMutationCoordinator };
+  const context = { renderDocx, vaultFileStore, workspaceMutationCoordinator };
 
   return async function handleVaultApiCommand(req, res, requestUrl) {
     for (const route of ROUTE_TABLE) {

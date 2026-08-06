@@ -42,6 +42,31 @@ export class VaultApiClient {
     return parseApiResponse(response, 'Failed to read file');
   }
 
+  async readBacklinks(filePath, { signal } = {}) {
+    const response = await fetch(
+      resolveApiUrl(`/backlinks?file=${encodeURIComponent(filePath)}`),
+      { signal },
+    );
+    const data = await parseApiResponse(response, 'Failed to load backlinks');
+    return Array.isArray(data.backlinks) ? data.backlinks : [];
+  }
+
+  async renderSvg(source) {
+    const response = await fetch(resolveApiUrl('/plantuml/render'), {
+      body: JSON.stringify({ source }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+    });
+    const data = await parseApiResponse(response, 'Failed to render PlantUML');
+    if (!data.ok || typeof data.svg !== 'string') {
+      throw new Error(data.error || 'Failed to render PlantUML');
+    }
+
+    return data.svg;
+  }
+
   async searchText({ limit = 50, query = '', signal = null } = {}) {
     const searchParams = new URLSearchParams({
       limit: String(limit),

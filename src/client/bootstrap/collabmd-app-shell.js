@@ -20,7 +20,6 @@ import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/
 import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { BrowserPreferencesPort } from '../infrastructure/browser-preferences-port.js';
 import { AppVersionMonitor } from '../infrastructure/app-version-monitor.js';
-import { backlinksApiClient } from '../infrastructure/backlinks-api-client.js';
 import { gitApiClient } from '../infrastructure/git-api-client.js';
 import {
   getHashRoute,
@@ -32,7 +31,6 @@ import {
   navigateToGitFilePreview,
   navigateToGitHistory,
 } from '../infrastructure/runtime-config.js';
-import { plantUmlApiClient } from '../infrastructure/plantuml-api-client.js';
 import { TabActivityLock } from '../infrastructure/tab-activity-lock.js';
 import { vaultApiClient } from '../infrastructure/vault-api-client.js';
 import { WorkspaceSyncClient } from '../infrastructure/workspace-sync-client.js';
@@ -110,9 +108,7 @@ export class CollabMdAppShell {
       userNameKey: 'collabmd-user-name',
     });
     this.notifications = new BrowserNotificationPort();
-    this.backlinksApiClient = backlinksApiClient;
     this.gitApiClient = gitApiClient;
-    this.plantUmlApiClient = plantUmlApiClient;
     this.vaultApiClient = vaultApiClient;
     this._session = null;
     this._hasPromptedForDisplayName = false;
@@ -248,7 +244,7 @@ export class CollabMdAppShell {
         this.refreshCommentUiLayout();
       },
       outlineController: this.outlineController,
-      plantUmlRenderClient: this.plantUmlApiClient,
+      plantUmlRenderClient: this.vaultApiClient,
       previewContainer: this.elements.previewContainer,
       previewElement: this.elements.previewContent,
       toastController: this.toastController,
@@ -269,7 +265,7 @@ export class CollabMdAppShell {
     this.backlinksPanel = new BacklinksPanel({
       headerPanelElement: this.elements.backlinksHeaderPanel,
       inlinePanelElement: this.elements.backlinksInlinePanel,
-      loadBacklinks: (filePath, options = {}) => this.backlinksApiClient.readBacklinks(filePath, options),
+      loadBacklinks: (filePath, options = {}) => this.vaultApiClient.readBacklinks(filePath, options),
       onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
       panelElement: this.elements.backlinksPanel,
     });

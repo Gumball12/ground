@@ -7,7 +7,7 @@ import { BacklinkIndex } from './domain/backlink-index.js';
 import { BaseQueryService } from './domain/bases/base-query-service.js';
 import { CollaborationDocumentStore } from './domain/collaboration/collaboration-document-store.js';
 import { CollaborationRoom } from './domain/collaboration/collaboration-room.js';
-import { DocxExporter } from './domain/docx-exporter.js';
+import { renderDocx } from './domain/docx-exporter.js';
 import { GitService } from './infrastructure/git/git-service.js';
 import { GitHubAppClient } from './infrastructure/github/github-app-client.js';
 import { GitHubSetupFlow } from './infrastructure/github/github-setup-flow.js';
@@ -80,7 +80,6 @@ export function createAppServer(config = loadConfig()) {
     workspaceStateProvider: () => workspaceMutationCoordinator?.workspaceState ?? null,
     workspaceStateSynchronizer: () => fileSystemSyncService?.flushPendingChanges?.(),
   });
-  const docxExporter = new DocxExporter();
   const plantUmlRenderer = new PlantUmlRenderer({
     serverUrl: config.plantumlServerUrl,
   });
@@ -144,7 +143,7 @@ export function createAppServer(config = loadConfig()) {
     vaultFileStore,
     backlinkIndex,
     baseQueryService,
-    docxExporter,
+    renderDocx,
     roomRegistry,
     plantUmlRenderer,
     gitService,

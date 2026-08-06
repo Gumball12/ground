@@ -569,7 +569,7 @@ test('BaseQueryService creates one row evaluation context per candidate row', as
     vaultFileStore,
     workspaceStateProvider: () => workspaceState,
   });
-  await service.initializeFromWorkspaceState(workspaceState);
+  await service.snapshotStore.initializeFromWorkspaceState(workspaceState);
 
   const result = await service.query({
     basePath: 'views/tasks.base',
@@ -577,7 +577,7 @@ test('BaseQueryService creates one row evaluation context per candidate row', as
   });
 
   assert.equal(result.totalRows, 2);
-  assert.equal(service.rowContextCalls, service.indexSnapshot.filePaths.length);
+  assert.equal(service.rowContextCalls, service.snapshotStore.indexSnapshot.filePaths.length);
 });
 
 test('BaseQueryService reuses the in-memory snapshot for repeated queries', async (t) => {
@@ -597,7 +597,7 @@ test('BaseQueryService reuses the in-memory snapshot for repeated queries', asyn
     vaultFileStore,
     workspaceStateProvider: () => workspaceState,
   });
-  await service.initializeFromWorkspaceState(workspaceState);
+  await service.snapshotStore.initializeFromWorkspaceState(workspaceState);
 
   let scanCalls = 0;
   const originalScanWorkspaceState = vaultFileStore.scanWorkspaceState.bind(vaultFileStore);
@@ -683,7 +683,7 @@ test('BaseQueryService full snapshot rebuild reuses cached unchanged markdown ro
   const vaultFileStore = new VaultFileStore({ vaultDir });
   const service = new BaseQueryService({ vaultFileStore });
   let workspaceState = await vaultFileStore.scanWorkspaceState();
-  await service.buildIndexSnapshot(workspaceState);
+  await service.snapshotStore.buildIndexSnapshot(workspaceState);
 
   let readPaths = [];
   const originalReadMarkdownFile = vaultFileStore.readMarkdownFile.bind(vaultFileStore);
@@ -699,11 +699,11 @@ test('BaseQueryService full snapshot rebuild reuses cached unchanged markdown ro
     '---',
   ].join('\n'));
   workspaceState = await vaultFileStore.scanWorkspaceState();
-  await service.buildIndexSnapshot(workspaceState);
+  await service.snapshotStore.buildIndexSnapshot(workspaceState);
 
   assert.deepEqual(readPaths, ['notes/a.md']);
-  assert.equal(service.indexSnapshot.rowsByPath.get('notes/a.md').noteProperties.status, 'reopened');
-  assert.equal(service.indexSnapshot.rowsByPath.get('notes/b.md').noteProperties.status, 'done');
+  assert.equal(service.snapshotStore.indexSnapshot.rowsByPath.get('notes/a.md').noteProperties.status, 'reopened');
+  assert.equal(service.snapshotStore.indexSnapshot.rowsByPath.get('notes/b.md').noteProperties.status, 'done');
 });
 
 test('BaseQueryService refreshes only changed rows for content updates', async (t) => {
@@ -734,7 +734,7 @@ test('BaseQueryService refreshes only changed rows for content updates', async (
     vaultFileStore,
     workspaceStateProvider: () => workspaceState,
   });
-  await service.initializeFromWorkspaceState(workspaceState);
+  await service.snapshotStore.initializeFromWorkspaceState(workspaceState);
   await service.query({ basePath: 'views/tasks.base' });
 
   let readPaths = [];
@@ -785,7 +785,7 @@ test('BaseQueryService refreshes rename membership changes incrementally', async
     vaultFileStore,
     workspaceStateProvider: () => workspaceState,
   });
-  await service.initializeFromWorkspaceState(workspaceState);
+  await service.snapshotStore.initializeFromWorkspaceState(workspaceState);
   await service.query({ basePath: 'views/tasks.base' });
 
   let readPaths = [];
@@ -798,8 +798,8 @@ test('BaseQueryService refreshes rename membership changes incrementally', async
     throw new Error('full backlink rebuild should not run for incremental rename updates');
   };
   let rowsByPathForEachCalls = 0;
-  const originalRowsByPathForEach = service.indexSnapshot.rowsByPath.forEach.bind(service.indexSnapshot.rowsByPath);
-  service.indexSnapshot.rowsByPath.forEach = (...args) => {
+  const originalRowsByPathForEach = service.snapshotStore.indexSnapshot.rowsByPath.forEach.bind(service.snapshotStore.indexSnapshot.rowsByPath);
+  service.snapshotStore.indexSnapshot.rowsByPath.forEach = (...args) => {
     rowsByPathForEachCalls += 1;
     return originalRowsByPathForEach(...args);
   };
@@ -817,11 +817,11 @@ test('BaseQueryService refreshes rename membership changes incrementally', async
     nextState: workspaceState,
   });
 
-  assert.equal(service.indexSnapshot.rowsByPath.has('notes/b.md'), false);
-  assert.equal(service.indexSnapshot.rowsByPath.has('archive/b.md'), true);
-  assert.equal(service.indexSnapshot.rowsByPath.get('notes/a.md').file.links[0].path, 'archive/b.md');
+  assert.equal(service.snapshotStore.indexSnapshot.rowsByPath.has('notes/b.md'), false);
+  assert.equal(service.snapshotStore.indexSnapshot.rowsByPath.has('archive/b.md'), true);
+  assert.equal(service.snapshotStore.indexSnapshot.rowsByPath.get('notes/a.md').file.links[0].path, 'archive/b.md');
   assert.deepEqual(
-    service.indexSnapshot.rowsByPath.get('archive/b.md').file.backlinks.map((item) => item.path),
+    service.snapshotStore.indexSnapshot.rowsByPath.get('archive/b.md').file.backlinks.map((item) => item.path),
     ['notes/a.md'],
   );
   assert.deepEqual(new Set(readPaths), new Set(['archive/b.md', 'notes/a.md']));

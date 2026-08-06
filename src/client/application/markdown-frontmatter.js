@@ -2,8 +2,6 @@ import { dump as dumpYaml } from 'js-yaml';
 
 import { escapeHtml } from '../domain/vault-utils.js';
 
-export { extractYamlFrontmatter } from '../../domain/yaml-frontmatter.js';
-
 function isPlainObject(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
 }

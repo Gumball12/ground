@@ -5,7 +5,8 @@ import { isImageAttachmentFilePath } from '../../domain/file-kind.js';
 import { resolveVaultRelativePath } from '../../domain/vault-paths.js';
 import { resolveWikiTargetPath } from '../../domain/wiki-link-resolver.js';
 import { escapeHtml } from '../domain/vault-utils.js';
-import { extractYamlFrontmatter, renderFrontmatterBlock } from './markdown-frontmatter.js';
+import { extractYamlFrontmatter } from '../../domain/yaml-frontmatter.js';
+import { renderFrontmatterBlock } from './markdown-frontmatter.js';
 import { analyzeMarkdownComplexity } from './preview-render-profile.js';
 
 const DIRECT_VIDEO_MIME_TYPES = Object.freeze({

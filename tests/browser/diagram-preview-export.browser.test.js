@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  downloadBlob,
   exportSvgMarkupFromElement,
   exportTrimmedSvgMarkupFromElement,
   rasterizeSvgMarkupToPngBlob,
   renderMermaidExportSvgMarkup,
 } from '../../src/client/application/diagram-preview-export.js';
+import { downloadBlob } from '../../src/client/browser-utils.js';
 
 describe('diagram preview export helpers', () => {
   afterEach(() => {

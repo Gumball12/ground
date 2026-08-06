@@ -45,7 +45,7 @@ export function createRequestHandler(
   vaultFileStore,
   backlinkIndex,
   baseQueryService = null,
-  docxExporter = null,
+  renderDocx = null,
   roomRegistry = null,
   plantUmlRenderer = null,
   gitService = null,
@@ -80,7 +80,7 @@ export function createRequestHandler(
   });
   const handleVaultApiCommand = createVaultApiCommandHandler({
     backlinkIndex,
-    docxExporter,
+    renderDocx,
     roomRegistry,
     vaultFileStore,
     workspaceMutationCoordinator,
