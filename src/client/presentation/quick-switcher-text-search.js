@@ -1,9 +1,9 @@
 export const DEFAULT_SEARCH_DEBOUNCE_MS = 220;
 const TEXT_RESULT_LIMIT = 50;
 
-export function formatMatchCount(count = 0) {
+export function formatMatchCount(count = 0, { truncated = false } = {}) {
   const normalized = Number(count) || 0;
-  return `${normalized} ${normalized === 1 ? 'match' : 'matches'}`;
+  return `${normalized}${truncated ? '+' : ''} ${normalized === 1 ? 'match' : 'matches'}`;
 }
 
 export function flattenTextResults(payload = {}) {

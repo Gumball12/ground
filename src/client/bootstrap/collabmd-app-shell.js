@@ -104,6 +104,7 @@ export class CollabMdAppShell {
       chatNotificationsKey: 'collabmd-chat-notifications-enabled',
       fileTreeShowExtensionsKey: 'collabmd-file-tree-show-extensions',
       lineWrappingKey: 'collabmd-editor-line-wrap',
+      recentFilesKey: 'collabmd-recent-files',
       sidebarVisibleKey: 'collabmd-sidebar-visible',
       userNameKey: 'collabmd-user-name',
     });
@@ -415,6 +416,9 @@ export class CollabMdAppShell {
       },
       onFileOpenReady: () => {
         this.hideEditorLoading();
+        if (this.currentFilePath) {
+          this.preferences.recordRecentFile(this.currentFilePath);
+        }
       },
       onSelectionChange: (anchor) => this.handleCommentSelectionChange(anchor),
       onImagePaste: (file) => this.handleEditorImageInsert(file),

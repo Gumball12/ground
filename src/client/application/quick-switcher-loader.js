@@ -22,6 +22,8 @@ export async function ensureQuickSwitcherInstance(host) {
   if (!host.quickSwitcher) {
     host.quickSwitcher = new QuickSwitcherController({
       getFileList: () => host.fileExplorer.flatFiles,
+      getFileMetadata: () => host.fileExplorer.fileEntries,
+      getRecentFiles: () => host.preferences?.getRecentFiles?.() ?? [],
       getSearchConfig: () => host.runtimeConfig.search ?? {},
       onFileSelect: (filePath) => host.handleFileSelection(filePath, {
         closeSidebarOnMobile: true,

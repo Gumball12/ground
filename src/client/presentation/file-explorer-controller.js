@@ -121,6 +121,10 @@ export class FileExplorerController {
     return this.state.flatFiles;
   }
 
+  get fileEntries() {
+    return this.state.flatFileEntries;
+  }
+
   get flatDocumentFiles() {
     return this.state.flatFiles.filter((path) => !isImageAttachmentFilePath(path));
   }

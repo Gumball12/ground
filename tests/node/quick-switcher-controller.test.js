@@ -58,9 +58,9 @@ function installDocumentStub(t, { modeTabs = [] } = {}) {
   return elements;
 }
 
-test('QuickSwitcherController keeps a bounded top-12 result set and rebuilds corpus only when files change', (t) => {
+test('QuickSwitcherController keeps a bounded top-30 result set and rebuilds corpus only when files change', (t) => {
   const elements = installDocumentStub(t);
-  const firstFileList = Array.from({ length: 20 }, (_, index) => `docs/guide-${String(index).padStart(2, '0')}.md`);
+  const firstFileList = Array.from({ length: 40 }, (_, index) => `docs/guide-${String(index).padStart(2, '0')}.md`);
   const secondFileList = [...firstFileList, 'archive/guide-special.md'];
   let currentFiles = firstFileList;
 
@@ -74,8 +74,8 @@ test('QuickSwitcherController keeps a bounded top-12 result set and rebuilds cor
   controller.input.value = 'guide';
   controller.filterFiles();
 
-  assert.equal(controller.fileCorpus.length, 20);
-  assert.equal(controller.filteredFiles.length, 12);
+  assert.equal(controller.fileCorpus.length, 40);
+  assert.equal(controller.filteredFiles.length, 30);
   const firstCorpusRef = controller.fileCorpus;
 
   controller.filterFiles();
@@ -84,13 +84,123 @@ test('QuickSwitcherController keeps a bounded top-12 result set and rebuilds cor
   currentFiles = secondFileList;
   controller.filterFiles();
 
-  assert.equal(controller.fileCorpus.length, 21);
+  assert.equal(controller.fileCorpus.length, 41);
   assert.notEqual(controller.fileCorpus, firstCorpusRef);
-  assert.equal(controller.filteredFiles.length, 12);
+  assert.equal(controller.filteredFiles.length, 30);
 
   controller.input.value = 'special';
   controller.filterFiles();
   assert.deepEqual(controller.filteredFiles, ['archive/guide-special.md']);
+});
+
+test('QuickSwitcherController keeps path-only matches visible and reports capped results', (t) => {
+  const elements = installDocumentStub(t);
+  const files = [
+    'Clippings/Vrite.md',
+    'Clippings/Other.md',
+    ...Array.from({ length: 32 }, (_, index) => `notes/guide-${index}.md`),
+  ];
+  const controller = new QuickSwitcherController({
+    getFileList: () => files,
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.input.value = 'clippings';
+  controller.filterFiles();
+
+  assert.equal(controller.fileMatchCount, 2);
+  assert.deepEqual(controller.fileMatches.get('Clippings/Vrite.md')?.indices, [
+    0, 1, 2, 3, 4, 5, 6, 7, 8,
+  ]);
+  assert.equal(controller.fileResultsTruncated, false);
+
+  controller.input.value = 'guide';
+  controller.filterFiles();
+
+  assert.equal(controller.filteredFiles.length, 30);
+  assert.equal(controller.fileMatchCount, 32);
+  assert.equal(controller.fileResultsTruncated, true);
+
+  controller.input.value = 'notes';
+  controller.filterFiles();
+
+  assert.equal(controller.fileMatchCount, 32);
+  assert.equal(controller.fileResultsTruncated, true);
+
+  controller.input.value = '';
+  controller.filterFiles();
+
+  assert.equal(controller.filteredFiles.length, 30);
+  assert.equal(controller.fileMatchCount, 34);
+  assert.equal(controller.fileResultsTruncated, true);
+});
+
+test('QuickSwitcherController puts recent files first without overriding relevance', (t) => {
+  const elements = installDocumentStub(t);
+  const files = [
+    'archive/notes.md',
+    'projects/alpha.md',
+    'projects/beta.md',
+    'notes.md',
+    'archive.md',
+  ];
+  const controller = new QuickSwitcherController({
+    getFileList: () => files,
+    getRecentFiles: () => ['projects/beta.md', 'projects/alpha.md', 'archive/notes.md'],
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, [
+    'projects/beta.md',
+    'projects/alpha.md',
+    'archive/notes.md',
+    'notes.md',
+    'archive.md',
+  ]);
+
+  controller.input.value = 'notes';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, ['archive/notes.md', 'notes.md']);
+
+  controller.input.value = 'archive';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, ['archive.md', 'archive/notes.md']);
+
+  controller.input.value = 'projects';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, ['projects/beta.md', 'projects/alpha.md']);
+});
+
+test('QuickSwitcherController orders empty results by modified time before recency', (t) => {
+  const elements = installDocumentStub(t);
+  const files = ['old.md', 'recent-tie.md', 'new.md', 'tie-other.md'];
+  const controller = new QuickSwitcherController({
+    getFileList: () => files,
+    getFileMetadata: () => [
+      { mtimeMs: 100, path: 'old.md' },
+      { mtimeMs: 200, path: 'recent-tie.md' },
+      { mtimeMs: 300, path: 'new.md' },
+      { mtimeMs: 200, path: 'tie-other.md' },
+    ],
+    getRecentFiles: () => ['tie-other.md'],
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.filterFiles();
+
+  assert.deepEqual(controller.filteredFiles, [
+    'new.md',
+    'tie-other.md',
+    'recent-tie.md',
+    'old.md',
+  ]);
 });
 
 test('QuickSwitcherController shows unavailable text search when ripgrep is missing', (t) => {

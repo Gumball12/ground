@@ -178,3 +178,42 @@ test('WorkspaceSyncClient rebuilds initial tree nesting from path when parentPat
 
   client.ydoc.destroy();
 });
+
+test('WorkspaceSyncClient preserves file modification times in tree nodes', () => {
+  const client = new WorkspaceSyncClient();
+
+  const tree = client.treeModel.reset({
+    'notes.md': {
+      fileKind: 'file',
+      mtimeMs: 42,
+      name: 'notes.md',
+      nodeType: 'file',
+      parentPath: '',
+      path: 'notes.md',
+      type: 'file',
+    },
+  });
+
+  assert.deepEqual(snapshotTree(tree), [{
+    mtimeMs: 42,
+    name: 'notes.md',
+    path: 'notes.md',
+    type: 'file',
+  }]);
+
+  client.treeModel.applyMapChanges(
+    new Map([['notes.md', { action: 'update' }]]),
+    new Map([['notes.md', {
+      fileKind: 'file',
+      mtimeMs: 84,
+      name: 'notes.md',
+      nodeType: 'file',
+      parentPath: '',
+      path: 'notes.md',
+      type: 'file',
+    }]]),
+  );
+  assert.equal(client.treeModel.getTree()[0].mtimeMs, 84);
+
+  client.ydoc.destroy();
+});

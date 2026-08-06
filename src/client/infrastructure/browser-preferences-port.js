@@ -15,11 +15,14 @@ function writeStorage(storage, key, value) {
   }
 }
 
+const MAX_RECENT_FILES = 20;
+
 export class BrowserPreferencesPort {
   constructor({
     chatNotificationsKey,
     fileTreeShowExtensionsKey,
     lineWrappingKey,
+    recentFilesKey = 'collabmd-recent-files',
     sidebarVisibleKey,
     userNameKey,
     storage = globalThis.localStorage,
@@ -27,6 +30,7 @@ export class BrowserPreferencesPort {
     this.chatNotificationsKey = chatNotificationsKey;
     this.fileTreeShowExtensionsKey = fileTreeShowExtensionsKey;
     this.lineWrappingKey = lineWrappingKey;
+    this.recentFilesKey = recentFilesKey;
     this.sidebarVisibleKey = sidebarVisibleKey;
     this.storage = storage;
     this.userNameKey = userNameKey;
@@ -54,6 +58,28 @@ export class BrowserPreferencesPort {
 
   setLineWrappingEnabled(enabled) {
     writeStorage(this.storage, this.lineWrappingKey, String(enabled));
+  }
+
+  getRecentFiles() {
+    const stored = readStorage(this.storage, this.recentFilesKey, '[]');
+    try {
+      const recentFiles = JSON.parse(stored);
+      return Array.isArray(recentFiles)
+        ? [...new Set(recentFiles.filter((filePath) => typeof filePath === 'string' && filePath))]
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  recordRecentFile(filePath) {
+    if (!filePath) return;
+
+    const recentFiles = [
+      filePath,
+      ...this.getRecentFiles().filter((recentFilePath) => recentFilePath !== filePath),
+    ];
+    writeStorage(this.storage, this.recentFilesKey, JSON.stringify(recentFiles.slice(0, MAX_RECENT_FILES)));
   }
 
   getSidebarVisible() {

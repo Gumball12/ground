@@ -674,23 +674,25 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <div class="qs-overlay" id="quickSwitcher">
+    <div class="qs-overlay" id="quickSwitcher" role="dialog" aria-modal="true" aria-labelledby="quickSwitcherTitle" aria-hidden="true">
       <div class="qs-modal">
+        <h2 class="sr-only" id="quickSwitcherTitle">Search files and text</h2>
         <div class="qs-mode-tabs" role="tablist" aria-label="Search mode">
-          <button class="qs-mode-tab active" type="button" role="tab" aria-selected="true" data-qs-mode="files">Files</button>
-          <button class="qs-mode-tab" type="button" role="tab" aria-selected="false" data-qs-mode="text">Text</button>
+          <button class="qs-mode-tab active" id="quickSwitcherFilesTab" type="button" role="tab" aria-controls="quickSwitcherResults" aria-selected="true" data-qs-mode="files">Files</button>
+          <button class="qs-mode-tab" id="quickSwitcherTextTab" type="button" role="tab" aria-controls="quickSwitcherResults" aria-selected="false" data-qs-mode="text">Text</button>
         </div>
         <div class="qs-input-wrap">
           <svg class="qs-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="text" class="qs-input" id="quickSwitcherInput" placeholder="Search files..." autocomplete="off" spellcheck="false">
+          <input type="text" class="qs-input" id="quickSwitcherInput" placeholder="Search files..." aria-label="Search files" aria-controls="quickSwitcherResults" aria-describedby="quickSwitcherHint quickSwitcherScope" autocomplete="off" spellcheck="false">
           <kbd class="qs-kbd">esc</kbd>
         </div>
-        <div class="qs-results" id="quickSwitcherResults"></div>
-        <div class="qs-hint" id="quickSwitcherHint">Type to search files</div>
-        <div class="qs-footer" aria-hidden="true">
+        <div class="qs-scope hidden" id="quickSwitcherScope" role="note" aria-hidden="true">Exact, case-insensitive text in Markdown, Base, Mermaid, PlantUML, and Draw.io files. Images and Excalidraw are excluded.</div>
+        <div class="qs-results" id="quickSwitcherResults" role="listbox" aria-label="Search results" aria-busy="false" tabindex="-1"></div>
+        <div class="qs-hint" id="quickSwitcherHint" role="status" aria-live="polite" aria-atomic="true">Type to search files</div>
+        <div class="qs-footer">
           <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
           <span><kbd>↵</kbd> Open</span>
           <span><kbd>Tab</kbd> Switch mode</span>

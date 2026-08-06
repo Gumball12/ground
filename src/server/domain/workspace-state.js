@@ -42,6 +42,20 @@ export function createWorkspaceMetadata(pathValue, type, info = {}) {
   };
 }
 
+function enrichWorkspaceEntries(entries, metadata) {
+  const enrichedEntries = new Map(entries);
+  metadata.forEach((entryMetadata, pathValue) => {
+    const entry = enrichedEntries.get(pathValue);
+    const mtimeMs = Number(entryMetadata?.mtimeMs);
+    if (!entry || !Number.isFinite(mtimeMs) || entry.mtimeMs === mtimeMs) {
+      return;
+    }
+
+    enrichedEntries.set(pathValue, { ...entry, mtimeMs });
+  });
+  return enrichedEntries;
+}
+
 export function collectWorkspaceStateStats(entries = new Map(), metadata = new Map()) {
   const filePaths = [];
   const markdownPaths = [];
@@ -75,8 +89,11 @@ export function collectWorkspaceStateStats(entries = new Map(), metadata = new M
 export function createWorkspaceStateSnapshot(entries = new Map(), metadata = new Map(), {
   scannedAt = Date.now(),
 } = {}) {
-  const normalizedEntries = entries instanceof Map ? entries : new Map(entries ?? []);
   const normalizedMetadata = metadata instanceof Map ? metadata : new Map(metadata ?? []);
+  const normalizedEntries = enrichWorkspaceEntries(
+    entries instanceof Map ? entries : new Map(entries ?? []),
+    normalizedMetadata,
+  );
   const stats = collectWorkspaceStateStats(normalizedEntries, normalizedMetadata);
 
   return {
@@ -385,21 +402,24 @@ export function createWorkspaceTree(entries = new Map()) {
       return;
     }
 
-    if (entry?.type === 'directory' || entry?.nodeType === 'directory') {
-      nodesByPath.set(normalizedPath, {
+    const mtimeMs = Number(entry?.mtimeMs);
+    const node = entry?.type === 'directory' || entry?.nodeType === 'directory'
+      ? {
         children: [],
         name: entry?.name ?? basename(normalizedPath),
         path: normalizedPath,
         type: 'directory',
-      });
-      return;
-    }
+      }
+      : {
+        name: entry?.name ?? basename(normalizedPath),
+        path: normalizedPath,
+        type: entry?.type ?? getVaultTreeNodeType(normalizedPath),
+      };
 
-    nodesByPath.set(normalizedPath, {
-      name: entry?.name ?? basename(normalizedPath),
-      path: normalizedPath,
-      type: entry?.type ?? getVaultTreeNodeType(normalizedPath),
-    });
+    if (node.type !== 'directory' && Number.isFinite(mtimeMs)) {
+      node.mtimeMs = mtimeMs;
+    }
+    nodesByPath.set(normalizedPath, node);
   });
 
   nodesByPath.forEach((node, pathValue) => {
@@ -423,6 +443,7 @@ export function workspaceEntriesEqual(left = {}, right = {}) {
     && left.nodeType === right.nodeType
     && left.parentPath === right.parentPath
     && left.path === right.path
+    && left.mtimeMs === right.mtimeMs
     && left.type === right.type
   );
 }

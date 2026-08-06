@@ -106,7 +106,7 @@ function createRipgrepArgs(query, {
     '--max-filesize',
     String(maxFileSize || DEFAULT_MAX_FILE_SIZE),
     '--max-count',
-    String(maxSnippetsPerFile),
+    String(Math.max(Number(maxSnippetsPerFile) || DEFAULT_MAX_SNIPPETS_PER_FILE, 1) + 1),
     '--glob',
     '!.git/**',
     '--glob',
@@ -171,6 +171,7 @@ export function parseRipgrepJson(stdout, {
         kind: getVaultFileKind(filePath) ?? 'text',
         matchCount: 0,
         snippets: [],
+        truncated: false,
       };
       filesByPath.set(filePath, fileGroup);
       files.push(fileGroup);
@@ -187,6 +188,7 @@ export function parseRipgrepJson(stdout, {
       matchCount += 1;
 
       if (fileGroup.snippets.length >= maxSnippetsPerFile) {
+        fileGroup.truncated = true;
         truncated = true;
         continue;
       }

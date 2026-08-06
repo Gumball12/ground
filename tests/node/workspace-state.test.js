@@ -55,6 +55,7 @@ test('Workspace State scan builds entries, metadata, and derived file lists', as
   assert.deepEqual(state.markdownPaths, ['docs/guide.md', 'README.md']);
   assert.equal(state.metadata.get('docs')?.type, 'directory');
   assert.equal(state.metadata.get('docs/guide.md')?.type, 'file');
+  assert.equal(Number.isFinite(state.entries.get('docs/guide.md')?.mtimeMs), true);
   assert.equal(state.scannedAt, 1);
   assert.equal(state.vaultFileCount, 3);
 });
@@ -141,4 +142,10 @@ test('Workspace State exposes room patches and metadata equality rules', () => {
   assert.equal(patch.upserts.get('b.md')?.path, 'b.md');
   assert.equal(workspaceStateMetadataEqual(previousState, nextState), false);
   assert.equal(workspaceStateMetadataEqual(previousState, previousState), true);
+
+  const changedState = createWorkspaceStateSnapshot(
+    new Map([['a.md', { fileKind: 'file', name: 'a.md', nodeType: 'file', parentPath: '', path: 'a.md', type: 'file' }]]),
+    new Map([['a.md', { inode: 1, mtimeMs: 2, path: 'a.md', size: 1, type: 'file' }]]),
+  );
+  assert.equal(diffWorkspaceEntries(previousState.entries, changedState.entries).upserts.get('a.md')?.mtimeMs, 2);
 });

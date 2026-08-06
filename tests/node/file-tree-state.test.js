@@ -69,6 +69,18 @@ test('FileTreeState search matches can include directories and descendant summar
   });
 });
 
+test('FileTreeState preserves file modification times in flattened file entries', () => {
+  const state = new FileTreeState();
+
+  state.setTree([
+    { mtimeMs: 42, name: 'notes.md', path: 'notes.md', type: 'file' },
+  ]);
+
+  assert.deepEqual(state.flatFileEntries, [
+    { mtimeMs: 42, path: 'notes.md' },
+  ]);
+});
+
 test('FileTreeState expands parent directories for active files', () => {
   const state = new FileTreeState();
 

@@ -1,6 +1,6 @@
 import { normalizeVaultPathInput } from '../domain/vault-paths.js';
 
-function flattenTree(nodes, files = [], searchEntries = []) {
+function flattenTree(nodes, files = [], searchEntries = [], fileEntries = []) {
   for (const node of nodes) {
     if (!node?.path || !node?.type) {
       continue;
@@ -23,15 +23,19 @@ function flattenTree(nodes, files = [], searchEntries = []) {
       || node.type === 'image'
     ) {
       files.push(node.path);
+      fileEntries.push({
+        mtimeMs: node.mtimeMs,
+        path: node.path,
+      });
       continue;
     }
 
     if (node.type === 'directory' && Array.isArray(node.children)) {
-      flattenTree(node.children, files, searchEntries);
+      flattenTree(node.children, files, searchEntries, fileEntries);
     }
   }
 
-  return { files, searchEntries };
+  return { fileEntries, files, searchEntries };
 }
 
 function findNodeByPath(nodes, pathValue) {
@@ -82,6 +86,7 @@ export class FileTreeState {
   constructor() {
     this.tree = [];
     this.flatFiles = [];
+    this.flatFileEntries = [];
     this.flatSearchEntries = [];
     this.activeFilePath = null;
     this.expandedDirs = new Set();
@@ -90,8 +95,9 @@ export class FileTreeState {
 
   setTree(tree) {
     this.tree = Array.isArray(tree) ? tree : [];
-    const flattened = flattenTree(this.tree, [], []);
+    const flattened = flattenTree(this.tree, [], [], []);
     this.flatFiles = flattened.files;
+    this.flatFileEntries = flattened.fileEntries;
     this.flatSearchEntries = flattened.searchEntries;
   }
 

@@ -97,6 +97,27 @@ test('parseRipgrepJson converts ripgrep byte offsets to UTF-16 columns', () => {
   });
 });
 
+test('parseRipgrepJson marks files truncated after the snippet limit', () => {
+  const payload = Array.from({ length: 6 }, (_, index) => rgMatch({
+    end: 6,
+    file: './many.md',
+    line: index + 1,
+    start: 0,
+    text: 'needle\n',
+  })).join('\n');
+
+  const result = parseRipgrepJson(payload, {
+    maxFiles: 10,
+    maxSnippetsPerFile: 5,
+    query: 'needle',
+  });
+
+  assert.equal(result.truncated, true);
+  assert.equal(result.files[0].truncated, true);
+  assert.equal(result.files[0].matchCount, 6);
+  assert.equal(result.files[0].snippets.length, 5);
+});
+
 test('RipgrepSearchService reports unavailable when rg is missing', async () => {
   const missing = new Error('spawn rg ENOENT');
   missing.code = 'ENOENT';
@@ -142,6 +163,8 @@ test('RipgrepSearchService searches with safe rg args and handles no matches', a
   assert.equal(calls[1].options.cwd, '/tmp/vault');
   assert.equal(calls[1].args.includes('--json'), true);
   assert.equal(calls[1].args.includes('--fixed-strings'), true);
+  const maxCountIndex = calls[1].args.indexOf('--max-count');
+  assert.equal(calls[1].args[maxCountIndex + 1], '6');
   assert.equal(calls[1].args.includes('*.drawio'), true);
   assert.equal(calls[1].args.includes('*.excalidraw'), false);
   assert.equal(calls[1].args.includes('!node_modules/**'), true);

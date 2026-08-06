@@ -43,11 +43,18 @@ function createNode(entry) {
     };
   }
 
-  return {
+  const node = {
     name: entry.name,
     path: entry.path,
     type: entry.type,
   };
+
+  const mtimeMs = Number(entry.mtimeMs);
+  if (Number.isFinite(mtimeMs)) {
+    node.mtimeMs = mtimeMs;
+  }
+
+  return node;
 }
 
 function sortNodes(nodes = []) {
@@ -184,6 +191,11 @@ class WorkspaceTreeModel {
       node.name = nextNode.name;
       node.path = nextNode.path;
       node.type = nextNode.type;
+      if (nextNode.mtimeMs === undefined) {
+        delete node.mtimeMs;
+      } else {
+        node.mtimeMs = nextNode.mtimeMs;
+      }
       if (node.type === 'directory' && !Array.isArray(node.children)) {
         node.children = [];
       }
