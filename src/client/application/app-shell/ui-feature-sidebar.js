@@ -1,7 +1,7 @@
 /**
  * @typedef {object} UiSidebarContext
  * @property {string} activeSidebarTab
- * @property {{ sidebar?: HTMLElement | null, sidebarBackdrop?: HTMLElement | null, filesSidebarTab?: HTMLElement | null, commentsSidebarTab?: HTMLElement | null, gitSidebarTab?: HTMLElement | null, fileSearch?: HTMLElement | null, gitSearch?: HTMLElement | null, commentOverviewPanel?: HTMLElement | null }} elements
+ * @property {{ sidebar?: HTMLElement | null, sidebarBackdrop?: HTMLElement | null, sidebarResizer?: HTMLElement | null, filesSidebarTab?: HTMLElement | null, commentsSidebarTab?: HTMLElement | null, gitSidebarTab?: HTMLElement | null, fileSearch?: HTMLElement | null, gitSearch?: HTMLElement | null, commentOverviewPanel?: HTMLElement | null }} elements
  * @property {{ setSidebarVisible(showSidebar: boolean): void, getSidebarVisible(): string | null | undefined }} preferences
  * @property {{ setActive(active: boolean): void }} gitPanel
  * @property {boolean} gitRepoAvailable
@@ -10,6 +10,78 @@
  * @property {(showSidebar: boolean) => void} applySidebarVisibility
  * @property {(showSidebar: boolean) => void} setSidebarVisibility
  */
+
+const SIDEBAR_DEFAULT_WIDTH = 260;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_KEYBOARD_STEP = 16;
+
+/** @this {UiSidebarContext} */
+function initializeSidebarResizer() {
+  const sidebar = this.elements.sidebar;
+  const resizer = this.elements.sidebarResizer;
+  if (!sidebar || !resizer) return;
+
+  let sidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+  let pointerId = null;
+  let startX = 0;
+  let startWidth = SIDEBAR_DEFAULT_WIDTH;
+
+  const clampWidth = (width) => Math.round(Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, width)));
+  const applyWidth = (width) => {
+    sidebarWidth = clampWidth(width);
+    sidebar.style.setProperty('--sidebar-width', `${sidebarWidth}px`);
+    resizer.setAttribute('aria-valuenow', String(sidebarWidth));
+  };
+  const finishResize = (event) => {
+    if (event?.pointerId != null && event.pointerId !== pointerId) return;
+    if (pointerId === null) return;
+
+    pointerId = null;
+    sidebar.classList.remove('is-resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+
+  applyWidth(SIDEBAR_DEFAULT_WIDTH);
+
+  resizer.addEventListener('pointerdown', (event) => {
+    if (this.isMobileViewport() || sidebar.classList.contains('collapsed')) return;
+
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startWidth = sidebar.getBoundingClientRect().width || sidebarWidth;
+    sidebar.classList.add('is-resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    resizer.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  resizer.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== pointerId) return;
+    applyWidth(startWidth + event.clientX - startX);
+  });
+
+  resizer.addEventListener('pointerup', finishResize);
+  resizer.addEventListener('pointercancel', finishResize);
+  resizer.addEventListener('lostpointercapture', finishResize);
+
+  resizer.addEventListener('keydown', (event) => {
+    if (this.isMobileViewport() || sidebar.classList.contains('collapsed')) return;
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      applyWidth(sidebarWidth + (event.key === 'ArrowRight' ? SIDEBAR_KEYBOARD_STEP : -SIDEBAR_KEYBOARD_STEP));
+      return;
+    }
+
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      applyWidth(event.key === 'Home' ? SIDEBAR_MIN_WIDTH : SIDEBAR_MAX_WIDTH);
+    }
+  });
+}
 
 /** @this {UiSidebarContext} */
 function isMobileViewport() {
@@ -108,6 +180,7 @@ function setSidebarTab(tab) {
 export const uiFeatureSidebarMethods = {
   applySidebarVisibility,
   closeSidebarOnMobile,
+  initializeSidebarResizer,
   isMobileViewport,
   restoreSidebarState,
   setSidebarTab,

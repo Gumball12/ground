@@ -64,6 +64,7 @@ function initialize() {
   this.renderChat();
   this.elements.chatInput?.setAttribute('maxlength', String(this.lobbyChatMessageMaxLength));
   this.bindEvents();
+  this.initializeSidebarResizer?.();
   this.restoreSidebarState();
   this.initializeVersionMonitoring();
   this.tabActivityLock.initialize();

@@ -68,6 +68,7 @@ export function bindAppShellElements(doc = document) {
     sidebarClose: doc.getElementById('sidebarClose'),
     sidebarBackdrop: doc.getElementById('sidebarBackdrop'),
     sidebar: doc.getElementById('sidebar'),
+    sidebarResizer: doc.getElementById('sidebarResizer'),
     emptyState: doc.getElementById('emptyState'),
     emptyStateNewFileBtn: doc.getElementById('emptyStateNewFileBtn'),
     emptyStateSearchBtn: doc.getElementById('emptyStateSearchBtn'),

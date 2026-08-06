@@ -10,7 +10,7 @@ import { lazyControllerFeature } from '../../src/client/bootstrap/lazy-controlle
 
 function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
   document.body.innerHTML = `
-    <aside id="sidebar"></aside>
+    <aside id="sidebar"><div id="sidebar-resizer"></div></aside>
     <button id="sidebar-backdrop" hidden></button>
     <button id="files-tab"></button>
     <button id="comments-tab"></button>
@@ -33,6 +33,7 @@ function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) 
       gitSidebarTab: document.getElementById('git-tab'),
       sidebar: document.getElementById('sidebar'),
       sidebarBackdrop: document.getElementById('sidebar-backdrop'),
+      sidebarResizer: document.getElementById('sidebar-resizer'),
     },
     gitPanel: {
       setActive: vi.fn(),
@@ -230,6 +231,16 @@ describe('uiFeature browser helpers', () => {
 
     expect(context.elements.sidebarBackdrop.hidden).toBe(true);
     expect(context.elements.sidebarBackdrop.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('resizes the desktop sidebar from the keyboard', () => {
+    const context = createSidebarContext();
+    context.initializeSidebarResizer();
+
+    context.elements.sidebarResizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(context.elements.sidebar.style.getPropertyValue('--sidebar-width')).toBe('276px');
+    expect(context.elements.sidebarResizer.getAttribute('aria-valuenow')).toBe('276');
   });
 
   it('opens the display name dialog and persists submitted names', () => {

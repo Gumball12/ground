@@ -19,7 +19,14 @@
     left: 0;
     bottom: 0;
     z-index: 100;
+    width: min(var(--sidebar-width), calc(100vw - 32px));
+    min-width: min(var(--sidebar-width), calc(100vw - 32px));
+    max-width: min(var(--sidebar-width), calc(100vw - 32px));
     box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar-resizer {
+    display: none;
   }
 
   .sidebar.collapsed {
