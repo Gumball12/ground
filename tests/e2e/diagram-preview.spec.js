@@ -1474,6 +1474,21 @@ test('opens .puml files with side-by-side PlantUML preview', async ({ page }) =>
   await expect(page.locator('#previewContent .plantuml-tool-btn[aria-label="Copy image"]')).toBeVisible();
   await expect(page.locator('#previewContent .plantuml-tool-btn[aria-label="Download SVG"]')).toBeVisible();
   await expect(page.locator('#previewContent .plantuml-tool-btn[aria-label="Reload diagram"]')).toBeVisible();
+  const frameLayout = await page.evaluate(() => {
+    const content = document.querySelector('#previewContent');
+    const frame = content?.querySelector('.plantuml-frame');
+    if (!content || !frame) {
+      return null;
+    }
+
+    return {
+      bottomGap: Math.round(content.getBoundingClientRect().bottom - frame.getBoundingClientRect().bottom),
+      maxHeight: getComputedStyle(frame).maxHeight,
+    };
+  });
+  expect(frameLayout).not.toBeNull();
+  expect(frameLayout.bottomGap).toBeLessThanOrEqual(16);
+  expect(frameLayout.maxHeight).toBe('none');
   await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
   await expect(page.locator('#previewContent .plantuml-zoom-label')).toHaveText('110%');
   await expect(page.locator('#outlineToggle')).toHaveClass(/hidden/);
