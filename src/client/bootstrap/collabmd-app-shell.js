@@ -104,6 +104,7 @@ export class CollabMdAppShell {
     };
     this.preferences = new BrowserPreferencesPort({
       chatNotificationsKey: 'collabmd-chat-notifications-enabled',
+      fileTreeShowExtensionsKey: 'collabmd-file-tree-show-extensions',
       lineWrappingKey: 'collabmd-editor-line-wrap',
       sidebarVisibleKey: 'collabmd-sidebar-visible',
       userNameKey: 'collabmd-user-name',
@@ -166,7 +167,11 @@ export class CollabMdAppShell {
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onFileDelete: () => this.navigation.navigateToFile(null),
       onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
+      onShowFileExtensionsChange: (showFileExtensions) => {
+        this.preferences.setFileTreeShowExtensions(showFileExtensions);
+      },
       pendingWorkspaceRequestIds: this.pendingWorkspaceRequestIds,
+      showFileExtensions: this.preferences.getFileTreeShowExtensions(),
       toastController: this.toastController,
       vaultClient: this.vaultApiClient,
     });

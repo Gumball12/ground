@@ -9,14 +9,18 @@ export class FileExplorerController {
     onFileSelect,
     onFileDelete,
     pendingWorkspaceRequestIds = null,
+    onShowFileExtensionsChange,
+    showFileExtensions = false,
     toastController,
     vaultClient,
   }) {
     this.onFileSelect = onFileSelect;
     this.onFileDelete = onFileDelete;
+    this.onShowFileExtensionsChange = onShowFileExtensionsChange;
     this.toastController = toastController;
     this.vaultClient = vaultClient;
     this.state = new FileTreeState();
+    this.showFileExtensions = Boolean(showFileExtensions);
     this.threadCounts = new Map();
     this.view = new FileExplorerView({
       mobileBreakpointQuery,
@@ -54,7 +58,13 @@ export class FileExplorerController {
       mobileBreakpointQuery,
       onFileDelete: this.onFileDelete,
       onFileSelect: this.onFileSelect,
+      onShowFileExtensionsChange: (enabled) => {
+        this.showFileExtensions = Boolean(enabled);
+        this.onShowFileExtensionsChange?.(this.showFileExtensions);
+        this.renderTree();
+      },
       pendingWorkspaceRequestIds,
+      showFileExtensions: this.showFileExtensions,
       refresh: () => this.refresh(),
       state: this.state,
       toastController: this.toastController,
@@ -126,6 +136,7 @@ export class FileExplorerController {
       reset,
       searchMatches: this.state.getSearchMatches(),
       searchQuery: this.state.searchQuery,
+      showFileExtensions: this.showFileExtensions,
       threadCounts: this.threadCounts,
       tree: this.state.tree,
     });

@@ -6,6 +6,7 @@ import { FileExplorerView } from '../../src/client/presentation/file-explorer-vi
 function createView(overrides = {}) {
   document.body.innerHTML = `
     <input id="fileSearchInput">
+    <button id="fileExplorerOptionsBtn" type="button"></button>
     <nav id="fileTree"></nav>
   `;
 
@@ -77,6 +78,50 @@ describe('FileExplorerView mobile interactions', () => {
     expect(item.classList.contains('has-comments')).toBe(true);
     expect(item.dataset.threadCount).toBe('2');
     expect(item.querySelector('.file-tree-comment-count').textContent).toBe('2');
+  });
+
+  it('shows file extensions when the explorer preference is enabled', () => {
+    const view = createView();
+    const render = (showFileExtensions) => view.render({
+      activeFilePath: null,
+      expandedDirs: new Set(),
+      reset: true,
+      searchMatches: [],
+      searchQuery: '',
+      showFileExtensions,
+      tree: [{ name: '3-drawio.drawio', path: '3-drawio.drawio', type: 'drawio' }],
+    });
+
+    render(false);
+    expect(document.querySelector('.file-tree-name')?.textContent).toBe('3-drawio');
+
+    render(true);
+    expect(document.querySelector('.file-tree-name')?.textContent).toBe('3-drawio.drawio');
+  });
+
+  it('toggles file extensions from the sidebar options menu', () => {
+    createView();
+    const onShowFileExtensionsChange = vi.fn();
+    const controller = new FileExplorerController({
+      mobileBreakpointQuery: { matches: false },
+      onFileDelete: vi.fn(),
+      onFileSelect: vi.fn(),
+      onShowFileExtensionsChange,
+      toastController: { show: vi.fn() },
+      vaultClient: { readTree: vi.fn() },
+    });
+    controller.initialize();
+    controller.setTree([{ name: '3-drawio.drawio', path: '3-drawio.drawio', type: 'drawio' }], { reset: true });
+
+    document.getElementById('fileExplorerOptionsBtn').click();
+
+    const option = document.querySelector('.create-menu-item');
+    expect(option?.textContent).toContain('Show file extensions');
+    expect(option?.textContent).toContain('Off');
+    option.click();
+
+    expect(onShowFileExtensionsChange).toHaveBeenCalledWith(true);
+    expect(document.querySelector('.file-tree-name')?.textContent).toBe('3-drawio.drawio');
   });
 
   it('cancels a long press when the pointer moves like a scroll gesture', () => {

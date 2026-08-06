@@ -101,7 +101,8 @@
   font-weight: 600;
 }
 
-.sidebar-create-btn[aria-expanded='true'] {
+.sidebar-create-btn[aria-expanded='true'],
+.sidebar-options-btn[aria-expanded='true'] {
   border-color: var(--interactive-border);
   background: var(--interactive-surface);
   color: var(--color-primary);
@@ -359,8 +360,8 @@ body.is-file-tree-dragging * {
 .create-menu {
   position: fixed;
   z-index: 1010;
-  width: min(280px, calc(100vw - 16px));
-  padding: var(--space-2);
+  width: min(240px, calc(100vw - 24px));
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: oklch(from var(--color-surface) l c h / 0.98);
@@ -371,7 +372,7 @@ body.is-file-tree-dragging * {
 .create-menu-group,
 .create-action-sheet-group,
 .create-action-sheet-header {
-  padding: 0 var(--space-2);
+  padding: 0 10px;
   color: var(--color-text-faint);
   font-size: var(--text-meta);
   font-weight: 700;
@@ -381,7 +382,7 @@ body.is-file-tree-dragging * {
 
 .create-menu-group:not(:first-child),
 .create-action-sheet-group:not(:first-child) {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .create-action-sheet-header {
@@ -391,10 +392,10 @@ body.is-file-tree-dragging * {
 .create-menu-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
   width: 100%;
-  margin-top: 2px;
-  padding: var(--space-2);
+  min-height: 36px;
+  padding: 0 10px;
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -415,19 +416,19 @@ body.is-file-tree-dragging * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  min-width: 18px;
+  width: 16px;
+  min-width: 16px;
   color: var(--color-text-muted);
 }
 
 .create-menu-item-copy {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .create-menu-item-label {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 

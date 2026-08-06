@@ -18,12 +18,14 @@ function writeStorage(storage, key, value) {
 export class BrowserPreferencesPort {
   constructor({
     chatNotificationsKey,
+    fileTreeShowExtensionsKey,
     lineWrappingKey,
     sidebarVisibleKey,
     userNameKey,
     storage = globalThis.localStorage,
   }) {
     this.chatNotificationsKey = chatNotificationsKey;
+    this.fileTreeShowExtensionsKey = fileTreeShowExtensionsKey;
     this.lineWrappingKey = lineWrappingKey;
     this.sidebarVisibleKey = sidebarVisibleKey;
     this.storage = storage;
@@ -36,6 +38,14 @@ export class BrowserPreferencesPort {
 
   setUserName(name) {
     writeStorage(this.storage, this.userNameKey, name);
+  }
+
+  getFileTreeShowExtensions() {
+    return readStorage(this.storage, this.fileTreeShowExtensionsKey, null) === 'true';
+  }
+
+  setFileTreeShowExtensions(showFileExtensions) {
+    writeStorage(this.storage, this.fileTreeShowExtensionsKey, showFileExtensions ? 'true' : 'false');
   }
 
   getLineWrappingEnabled() {

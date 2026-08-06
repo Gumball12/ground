@@ -66,6 +66,7 @@ export class FileExplorerView {
     this.autoExpandTargetPath = '';
     this.rootDropZone = null;
     this.threadCounts = new Map();
+    this.showFileExtensions = false;
   }
 
   initialize() {
@@ -125,12 +126,13 @@ export class FileExplorerView {
     fileItem?.scrollIntoView({ block: 'nearest' });
   }
 
-  render({ activeFilePath, changedPaths = null, expandedDirs, reset = false, searchMatches, searchQuery, threadCounts = new Map(), tree }) {
+  render({ activeFilePath, changedPaths = null, expandedDirs, reset = false, searchMatches, searchQuery, showFileExtensions = false, threadCounts = new Map(), tree }) {
     if (!this.treeContainer) {
       return;
     }
 
     this.threadCounts = threadCounts instanceof Map ? threadCounts : new Map();
+    this.showFileExtensions = Boolean(showFileExtensions);
     this.currentSearchQuery = String(searchQuery ?? '');
     if (this.currentSearchQuery) {
       this.clearDragFeedback();
@@ -453,9 +455,10 @@ export class FileExplorerView {
     if (threadCount > 0) {
       button.dataset.threadCount = String(threadCount);
     }
+    const displayName = this.showFileExtensions ? String(name ?? '') : stripVaultFileExtension(name);
     button.innerHTML = `
       ${this.getFileIconSvg({ isBase, isDrawio, isExcalidraw, isImage, isMermaid, isPlantUml })}
-      <span class="file-tree-name">${escapeHtml(stripVaultFileExtension(name))}</span>
+      <span class="file-tree-name">${escapeHtml(displayName)}</span>
       ${threadCount > 0 ? `<span class="file-tree-comment-count" aria-label="${threadCount} open comment thread${threadCount === 1 ? '' : 's'}">${threadCount}</span>` : ''}
     `;
     this.configureDragSource(button, { path: filePath, type: 'file' });

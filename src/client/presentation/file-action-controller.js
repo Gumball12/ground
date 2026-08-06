@@ -57,7 +57,9 @@ export class FileActionController {
       : { matches: false },
     onFileDelete,
     onFileSelect,
+    onShowFileExtensionsChange,
     pendingWorkspaceRequestIds = null,
+    showFileExtensions = false,
     state,
     toastController,
     vaultClient,
@@ -66,13 +68,16 @@ export class FileActionController {
   }) {
     this.onFileDelete = onFileDelete;
     this.onFileSelect = onFileSelect;
+    this.onShowFileExtensionsChange = onShowFileExtensionsChange;
     this.pendingWorkspaceRequestIds = pendingWorkspaceRequestIds;
+    this.showFileExtensions = Boolean(showFileExtensions);
     this.state = state;
     this.toastController = toastController;
     this.vaultClient = vaultClient;
     this.view = view;
     this.refresh = refresh;
     this.createButton = document.getElementById('sidebarCreateBtn');
+    this.fileExplorerOptionsButton = document.getElementById('fileExplorerOptionsBtn');
     this.actionDialog = document.getElementById('fileActionDialog');
     this.actionForm = document.getElementById('fileActionForm');
     this.actionTitle = document.getElementById('fileActionTitle');
@@ -87,6 +92,9 @@ export class FileActionController {
     this.createMenu = new CreateMenuPresenter({
       mobileBreakpointQuery,
     });
+    this.fileExplorerOptionsMenu = new CreateMenuPresenter({
+      mobileBreakpointQuery,
+    });
     this.pendingAction = null;
     this.actionBusy = false;
   }
@@ -94,6 +102,9 @@ export class FileActionController {
   initialize() {
     this.createButton?.addEventListener('click', () => {
       this.openRootCreateMenu({ anchor: this.createButton });
+    });
+    this.fileExplorerOptionsButton?.addEventListener('click', () => {
+      this.openFileExplorerOptionsMenu({ anchor: this.fileExplorerOptionsButton });
     });
     this.actionCancelButton?.addEventListener('click', () => this.closeActionDialog());
     this.actionForm?.addEventListener('submit', (event) => {
@@ -313,6 +324,7 @@ export class FileActionController {
 
     this.pendingAction = { requiresInput, emptyMessage, onSubmit };
     this.createMenu.close({ restoreFocus: false });
+    this.fileExplorerOptionsMenu.close({ restoreFocus: false });
     this.view?.removeContextMenu?.();
 
     this.actionTitle.textContent = title;
@@ -716,10 +728,30 @@ export class FileActionController {
 
   openCreateMenu({ anchor = this.createButton, parentDir = '' } = {}) {
     this.view?.removeContextMenu?.();
+    this.fileExplorerOptionsMenu.close({ restoreFocus: false });
     this.createMenu.toggle({
       anchor,
       items: this.getCreateActions({ parentDir }),
       title: 'Create',
+    });
+  }
+
+  openFileExplorerOptionsMenu({ anchor = this.fileExplorerOptionsButton } = {}) {
+    this.view?.removeContextMenu?.();
+    this.createMenu.close({ restoreFocus: false });
+    this.fileExplorerOptionsMenu.toggle({
+      anchor,
+      items: [{
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>',
+        id: 'show-file-extensions',
+        label: 'Show file extensions',
+        meta: this.showFileExtensions ? 'On' : 'Off',
+        onSelect: () => {
+          this.showFileExtensions = !this.showFileExtensions;
+          this.onShowFileExtensionsChange?.(this.showFileExtensions);
+        },
+      }],
+      title: 'File explorer options',
     });
   }
 
