@@ -8,6 +8,13 @@ function createSvg({ height = 80, label = 'Diagram', width = 120 } = {}) {
   return shell.querySelector('svg');
 }
 
+function dispatchTouchEvent(target, type, touches) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'touches', { value: touches });
+  target.dispatchEvent(event);
+  return event;
+}
+
 function mountDiagram(chrome, kind, {
   baseHeight = 80,
   baseWidth = 120,
@@ -103,6 +110,32 @@ describe('DiagramChrome', () => {
     expect(zoomInEvent.defaultPrevented).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(shell.querySelector('.mermaid-zoom-label')?.textContent).not.toBe(initialZoom);
+  });
+
+  it('pinches diagrams without taking over one-finger scrolling', () => {
+    const frameStyle = document.createElement('style');
+    frameStyle.textContent = '.diagram-preview-frame { width: 240px; height: 120px; overflow: auto; }';
+    document.body.append(frameStyle);
+    const chrome = new DiagramChrome();
+    const shell = mountDiagram(chrome, 'mermaid');
+    const frame = shell.querySelector('.mermaid-frame');
+    const initialZoom = shell.querySelector('.mermaid-zoom-label')?.textContent;
+
+    dispatchTouchEvent(frame, 'touchstart', [
+      { clientX: 60, clientY: 60 },
+      { clientX: 180, clientY: 60 },
+    ]);
+    const pinchMove = dispatchTouchEvent(frame, 'touchmove', [
+      { clientX: 40, clientY: 60 },
+      { clientX: 200, clientY: 60 },
+    ]);
+
+    expect(pinchMove.defaultPrevented).toBe(true);
+    expect(shell.querySelector('.mermaid-zoom-label')?.textContent).not.toBe(initialZoom);
+
+    dispatchTouchEvent(frame, 'touchend', [{ clientX: 40, clientY: 60 }]);
+    const oneFingerMove = dispatchTouchEvent(frame, 'touchmove', [{ clientX: 40, clientY: 80 }]);
+    expect(oneFingerMove.defaultPrevented).toBe(false);
   });
 
   it('leaves Mermaid and PlantUML pointer input available for native selection and scrolling', () => {

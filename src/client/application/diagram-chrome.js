@@ -458,6 +458,7 @@ export class DiagramChrome {
     let zoomAnimationTarget = null;
     let resetZoomFrameId = null;
     let replacementFrameId = null;
+    let pinchState = null;
     let hasManualZoom = Boolean(
       previousViewState?.hasManualZoom
       || previousViewState?.scrollLeft > 0
@@ -506,14 +507,21 @@ export class DiagramChrome {
       y: frame.scrollTop + (frame.clientHeight / 2),
     });
 
-    const restoreViewportCenter = (previousZoom, nextZoom, center) => {
+    const restoreViewportPoint = (previousZoom, nextZoom, contentPoint, viewportPoint) => {
       if (previousZoom === 0) {
         return;
       }
 
       const scale = nextZoom / previousZoom;
-      frame.scrollLeft = (center.x * scale) - (frame.clientWidth / 2);
-      frame.scrollTop = (center.y * scale) - (frame.clientHeight / 2);
+      frame.scrollLeft = (contentPoint.x * scale) - viewportPoint.x;
+      frame.scrollTop = (contentPoint.y * scale) - viewportPoint.y;
+    };
+
+    const restoreViewportCenter = (previousZoom, nextZoom, center) => {
+      restoreViewportPoint(previousZoom, nextZoom, center, {
+        x: frame.clientWidth / 2,
+        y: frame.clientHeight / 2,
+      });
     };
 
     const animateZoomTo = (nextZoom) => {
@@ -554,6 +562,15 @@ export class DiagramChrome {
       zoomAnimationFrameId = this.window.requestAnimationFrame(tick);
     };
 
+    const cancelZoomAnimation = () => {
+      if (zoomAnimationFrameId) {
+        this.window.cancelAnimationFrame(zoomAnimationFrameId);
+        zoomAnimationFrameId = null;
+      }
+
+      zoomAnimationTarget = null;
+    };
+
     const zoomBy = (delta) => {
       hasManualZoom = true;
       animateZoomTo((zoomAnimationTarget ?? currentZoom) + delta);
@@ -563,13 +580,8 @@ export class DiagramChrome {
       const defaultZoom = calculateDefaultZoom();
       hasManualZoom = false;
       lastAutoFitViewportWidth = getFrameViewportSize(frame).width;
-
-      if (zoomAnimationFrameId) {
-        this.window.cancelAnimationFrame(zoomAnimationFrameId);
-        zoomAnimationFrameId = null;
-      }
-
-      zoomAnimationTarget = null;
+      pinchState = null;
+      cancelZoomAnimation();
       applyZoom(defaultZoom);
       frame.scrollLeft = 0;
       frame.scrollTop = 0;
@@ -604,6 +616,74 @@ export class DiagramChrome {
 
     const resizeObserver = this.attachShellResizeObserver(shell, frame, () => scheduleResetZoomToFit());
 
+    const getFrameViewportPoint = (clientX, clientY) => {
+      const rect = frame.getBoundingClientRect();
+      return {
+        x: Number(clientX) - rect.left,
+        y: Number(clientY) - rect.top,
+      };
+    };
+
+    const getPinchGesture = (touches) => {
+      if (!touches || touches.length !== 2) {
+        return null;
+      }
+
+      const first = touches[0];
+      const second = touches[1];
+      const center = getFrameViewportPoint(
+        (first.clientX + second.clientX) / 2,
+        (first.clientY + second.clientY) / 2,
+      );
+      const distance = Math.hypot(
+        second.clientX - first.clientX,
+        second.clientY - first.clientY,
+      );
+      if (!Number.isFinite(distance) || distance <= 0) {
+        return null;
+      }
+
+      return { center, distance };
+    };
+
+    const startPinch = (touches) => {
+      const gesture = getPinchGesture(touches);
+      if (!gesture) {
+        return false;
+      }
+
+      cancelZoomAnimation();
+      pinchState = {
+        contentPoint: {
+          x: frame.scrollLeft + gesture.center.x,
+          y: frame.scrollTop + gesture.center.y,
+        },
+        distance: gesture.distance,
+        zoom: currentZoom,
+      };
+      return true;
+    };
+
+    const updatePinch = (touches) => {
+      const gesture = getPinchGesture(touches);
+      if (!gesture) {
+        return false;
+      }
+      if (!pinchState && !startPinch(touches)) {
+        return false;
+      }
+
+      hasManualZoom = true;
+      applyZoom(pinchState.zoom * (gesture.distance / pinchState.distance));
+      restoreViewportPoint(
+        pinchState.zoom,
+        currentZoom,
+        pinchState.contentPoint,
+        gesture.center,
+      );
+      return true;
+    };
+
     decreaseButton.addEventListener('click', () => zoomBy(-zoomPolicy.step));
     increaseButton.addEventListener('click', () => zoomBy(zoomPolicy.step));
     frame.addEventListener('wheel', (event) => {
@@ -622,6 +702,23 @@ export class DiagramChrome {
         zoomBy(wheelDelta);
       }
     }, { passive: false });
+    frame.addEventListener('touchstart', (event) => {
+      if (event.touches.length === 2) {
+        startPinch(event.touches);
+      }
+    }, { passive: true });
+    frame.addEventListener('touchmove', (event) => {
+      if (event.touches.length === 2 && updatePinch(event.touches)) {
+        event.preventDefault();
+      }
+    }, { passive: false });
+    const finishPinch = (event) => {
+      if (event.touches.length !== 2) {
+        pinchState = null;
+      }
+    };
+    frame.addEventListener('touchend', finishPinch);
+    frame.addEventListener('touchcancel', finishPinch);
     resetButton.addEventListener('click', () => {
       scheduleResetZoomToFit({ force: true });
     });
