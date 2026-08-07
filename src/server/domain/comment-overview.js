@@ -1,6 +1,13 @@
-import { summarizeCommentExcerpt } from '../../domain/comment-threads.js';
-
 const COMMENT_OVERVIEW_PREVIEW_MAX_LENGTH = 140;
+
+function summarizeCommentMarkdown(value, maxLength = COMMENT_OVERVIEW_PREVIEW_MAX_LENGTH) {
+  const normalized = String(value ?? '').replace(/\r\n?/gu, '\n').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(maxLength - 1, 1)).trimEnd()}…`;
+}
 
 function asFiniteNumber(value) {
   return Number.isFinite(value) ? value : null;
@@ -58,7 +65,7 @@ function createThreadSummary(thread) {
     latestActivityAt,
     latestMessage: latestMessage
       ? {
-        bodyPreview: summarizeCommentExcerpt(latestMessage.body, COMMENT_OVERVIEW_PREVIEW_MAX_LENGTH),
+        bodyPreview: summarizeCommentMarkdown(latestMessage.body),
         createdAt: asFiniteNumber(latestMessage.createdAt) ?? latestActivityAt,
         userColor: asString(latestMessage.userColor),
         userName: asString(latestMessage.userName) || 'Anonymous',

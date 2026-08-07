@@ -2,7 +2,7 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-4);
   background: var(--color-surface);
 }
 
@@ -11,12 +11,13 @@
 }
 
 .comment-overview-file {
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid color-mix(in oklab, var(--color-divider) 80%, transparent);
+  padding: var(--space-2) 0 var(--space-1);
 }
 
-.comment-overview-file:last-child {
-  border-bottom: none;
+.comment-overview-file + .comment-overview-file {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
 }
 
 .comment-overview-file-header {
@@ -24,7 +25,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 2px 4px 7px;
+  padding: 2px var(--space-1) var(--space-1);
 }
 
 .comment-overview-file-title-wrap {
@@ -72,8 +73,8 @@
 .comment-overview-thread {
   display: grid;
   width: 100%;
-  gap: 6px;
-  margin: 0 0 4px;
+  gap: var(--space-1);
+  margin: 0 0 2px;
   padding: var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -140,37 +141,59 @@
 
 .comment-overview-thread-body {
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
   min-width: 0;
+}
+
+.comment-overview-thread-section {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.comment-overview-thread-section-label {
+  color: var(--color-comment);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .comment-overview-thread-quote,
 .comment-overview-thread-preview,
 .comment-overview-thread-author,
 .comment-overview-thread-message-count {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
   margin: 0;
-  -webkit-box-orient: vertical;
-  text-overflow: ellipsis;
-  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
 
 .comment-overview-thread-quote {
-  -webkit-line-clamp: 1;
-  padding-left: 7px;
-  border-left: 2px solid color-mix(in oklab, var(--color-comment) 34%, var(--color-border));
-  color: var(--color-text-faint);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border-comment-active);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-meta);
+  line-height: 1.35;
+  white-space: pre-wrap;
 }
 
-.comment-overview-thread-preview {
-  -webkit-line-clamp: 1;
+.comment-overview-thread-preview.comment-markdown {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   font-weight: 520;
-  line-height: 1.3;
+  line-height: 1.35;
+}
+
+.comment-overview-thread-preview.comment-markdown > * {
+  margin: 0;
+}
+
+.comment-overview-thread-preview.comment-markdown > * + * {
+  margin-top: var(--space-1);
 }
 
 .comment-overview-thread-author,

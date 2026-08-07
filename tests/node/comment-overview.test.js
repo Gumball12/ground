@@ -44,6 +44,28 @@ test('createCommentOverview groups summaries by file and sorts by latest message
   assert.equal(overview.files[0].threads[0].messageCount, 2);
 });
 
+test('createCommentOverview preserves Markdown structure in latest message previews', () => {
+  const overview = createCommentOverview([{
+    filePath: 'notes/a.md',
+    threads: [{
+      anchorEndLine: 1,
+      anchorKind: 'line',
+      anchorStartLine: 1,
+      createdAt: 10,
+      id: 'thread-markdown',
+      messages: [{
+        body: 'Summary\n\n- First item\n- Second item',
+        createdAt: 20,
+      }],
+    }],
+  }]);
+
+  assert.equal(
+    overview.files[0].threads[0].latestMessage.bodyPreview,
+    'Summary\n\n- First item\n- Second item',
+  );
+});
+
 test('createCommentOverview omits resolved and malformed threads', () => {
   const overview = createCommentOverview([
     {

@@ -1,5 +1,6 @@
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
+import { createRenderedCommentBody } from './comment-ui/comment-ui-shared.js';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -219,10 +220,19 @@ export class CommentOverviewController {
     quote.className = 'comment-overview-thread-quote';
     quote.textContent = thread.anchor?.quote || 'Source anchored comment';
 
-    const preview = document.createElement('p');
-    preview.className = 'comment-overview-thread-preview';
-    preview.textContent = thread.latestMessage?.bodyPreview || '';
-    body.append(preview, quote);
+    const preview = createRenderedCommentBody(
+      thread.latestMessage?.bodyPreview || '',
+      'comment-markdown comment-overview-thread-preview',
+    );
+
+    const quoteSection = document.createElement('div');
+    quoteSection.className = 'comment-overview-thread-section comment-overview-thread-reference';
+    const quoteLabel = document.createElement('span');
+    quoteLabel.className = 'comment-overview-thread-section-label';
+    quoteLabel.textContent = 'Reference';
+    quoteSection.append(quoteLabel, quote);
+
+    body.append(preview, quoteSection);
 
     const footer = document.createElement('div');
     footer.className = 'comment-overview-thread-footer';
