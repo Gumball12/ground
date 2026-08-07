@@ -486,12 +486,6 @@ export class DiagramChrome {
     const hasRestorableViewState = Number.isFinite(previousViewState?.zoom);
     let lastAutoFitViewportWidth = hasInitialViewport ? previousViewportWidth : 0;
     let shouldForceScheduledReset = false;
-    let isPanning = false;
-    let activePointerId = null;
-    let panStartX = 0;
-    let panStartY = 0;
-    let panStartScrollLeft = 0;
-    let panStartScrollTop = 0;
 
     diagramElement.style.display = 'block';
     diagramElement.style.margin = '0 auto';
@@ -520,10 +514,7 @@ export class DiagramChrome {
       decreaseButton.disabled = currentZoom <= zoomPolicy.min;
       increaseButton.disabled = currentZoom >= zoomPolicy.max;
 
-      const viewport = getFrameViewportSize(frame);
-      const isPannable = (baseWidth * currentZoom) > viewport.width || (baseHeight * currentZoom) > viewport.height;
-      frame.classList.toggle('is-pannable', isPannable);
-      diagramElement.style.margin = isPannable ? '0' : '0 auto';
+      diagramElement.style.margin = '0 auto';
     };
 
     // ponytail: size from the current viewport for the first paint; hidden shells refit later.
@@ -684,83 +675,6 @@ export class DiagramChrome {
       );
     });
 
-    const stopPanning = () => {
-      if (!isPanning) {
-        return;
-      }
-
-      isPanning = false;
-      frame.classList.remove('is-dragging');
-      this.window.removeEventListener('pointerup', stopPanning, true);
-      this.window.removeEventListener('pointercancel', stopPanning, true);
-      this.window.removeEventListener('mouseup', stopPanning, true);
-      this.window.removeEventListener('touchend', stopPanning, true);
-      this.window.removeEventListener('touchcancel', stopPanning, true);
-      this.window.removeEventListener('blur', stopPanning, true);
-
-      if (activePointerId !== null && typeof frame.releasePointerCapture === 'function') {
-        try {
-          frame.releasePointerCapture(activePointerId);
-        } catch {
-          // Ignore capture release issues during drag end.
-        }
-      }
-
-      activePointerId = null;
-    };
-
-    frame.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 || !frame.classList.contains('is-pannable')) {
-        return;
-      }
-
-      if (zoomAnimationFrameId) {
-        this.window.cancelAnimationFrame(zoomAnimationFrameId);
-        zoomAnimationFrameId = null;
-      }
-      zoomAnimationTarget = null;
-
-      isPanning = true;
-      activePointerId = event.pointerId;
-      panStartX = event.clientX;
-      panStartY = event.clientY;
-      panStartScrollLeft = frame.scrollLeft;
-      panStartScrollTop = frame.scrollTop;
-
-      frame.classList.add('is-dragging');
-      this.window.addEventListener('pointerup', stopPanning, true);
-      this.window.addEventListener('pointercancel', stopPanning, true);
-      this.window.addEventListener('mouseup', stopPanning, true);
-      this.window.addEventListener('touchend', stopPanning, true);
-      this.window.addEventListener('touchcancel', stopPanning, true);
-      this.window.addEventListener('blur', stopPanning, true);
-      if (typeof frame.setPointerCapture === 'function') {
-        try {
-          frame.setPointerCapture(event.pointerId);
-        } catch {
-          // Safari can reject pointer capture during rapid layout transitions.
-        }
-      }
-      event.preventDefault();
-    });
-
-    frame.addEventListener('pointermove', (event) => {
-      if (!isPanning) {
-        return;
-      }
-
-      frame.scrollLeft = panStartScrollLeft - (event.clientX - panStartX);
-      frame.scrollTop = panStartScrollTop - (event.clientY - panStartY);
-    });
-
-    frame.addEventListener('pointerup', stopPanning);
-    frame.addEventListener('pointercancel', stopPanning);
-    frame.addEventListener('lostpointercapture', stopPanning);
-    frame.addEventListener('mouseleave', stopPanning);
-    frame.addEventListener('mouseup', stopPanning);
-    frame.addEventListener('touchend', stopPanning);
-    frame.addEventListener('touchcancel', stopPanning);
-
     frame.appendChild(diagramElement);
     const sourceNode = sourceSelector ? shell.querySelector(sourceSelector) : null;
     const nextChildren = sourceNode ? [sourceNode, toolbar, frame] : [toolbar, frame];
@@ -814,7 +728,6 @@ export class DiagramChrome {
 
     const controller = {
       destroy: () => {
-        stopPanning();
         if (zoomAnimationFrameId) {
           this.window.cancelAnimationFrame(zoomAnimationFrameId);
         }

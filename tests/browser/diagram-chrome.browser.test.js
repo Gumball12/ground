@@ -105,6 +105,30 @@ describe('DiagramChrome', () => {
     expect(shell.querySelector('.mermaid-zoom-label')?.textContent).not.toBe(initialZoom);
   });
 
+  it('leaves Mermaid and PlantUML pointer input available for native selection and scrolling', () => {
+    const frameStyle = document.createElement('style');
+    frameStyle.textContent = '.diagram-preview-frame { width: 40px; height: 40px; overflow: auto; }';
+    document.body.append(frameStyle);
+
+    for (const [index, kind] of ['mermaid', 'plantuml'].entries()) {
+      const chrome = new DiagramChrome();
+      const shell = mountDiagram(chrome, kind);
+      const frame = shell.querySelector(`.${kind}-frame`);
+      const text = frame.querySelector('text');
+      const pointerDown = new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        pointerId: index + 1,
+      });
+
+      text.dispatchEvent(pointerDown);
+
+      expect(pointerDown.defaultPrevented).toBe(false);
+      expect(frame.classList.contains('is-pannable')).toBe(false);
+    }
+  });
+
   it('keeps rapid ctrl-wheel zoom events on one animation loop', () => {
     const scheduledFrames = new Map();
     const cancelledFrames = [];

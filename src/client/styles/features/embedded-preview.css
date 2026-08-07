@@ -94,20 +94,15 @@
   max-width: none;
 }
 
-.preview-content .mermaid-frame.is-pannable,
-.mermaid-maximized-root .mermaid-frame.is-pannable {
-  cursor: grab;
-}
-
-.preview-content .mermaid-frame.is-dragging,
-.mermaid-maximized-root .mermaid-frame.is-dragging {
-  cursor: grabbing;
-  user-select: none;
-}
-
 .preview-content .mermaid-frame svg,
 .mermaid-maximized-root .mermaid-frame svg {
   display: block;
+}
+
+.preview-content .mermaid-frame :is(text, tspan, foreignObject),
+.mermaid-maximized-root .mermaid-frame :is(text, tspan, foreignObject) {
+  cursor: text;
+  user-select: text;
 }
 
 body.mermaid-maximized-open {
@@ -186,20 +181,15 @@ body.mermaid-maximized-open::before {
   max-width: 100%;
 }
 
-.preview-content .plantuml-frame.is-pannable,
-.plantuml-maximized-root .plantuml-frame.is-pannable {
-  cursor: grab;
-}
-
-.preview-content .plantuml-frame.is-dragging,
-.plantuml-maximized-root .plantuml-frame.is-dragging {
-  cursor: grabbing;
-  user-select: none;
-}
-
 .preview-content .plantuml-frame svg,
 .plantuml-maximized-root .plantuml-frame svg {
   display: block;
+}
+
+.preview-content .plantuml-frame :is(text, tspan, foreignObject),
+.plantuml-maximized-root .plantuml-frame :is(text, tspan, foreignObject) {
+  cursor: text;
+  user-select: text;
 }
 
 body.plantuml-maximized-open {
