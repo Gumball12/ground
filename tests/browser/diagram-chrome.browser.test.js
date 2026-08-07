@@ -73,6 +73,83 @@ describe('DiagramChrome', () => {
     expect(shell.querySelector('.mermaid-frame svg')).toBe(replacement);
   });
 
+  it('zooms diagrams with ctrl-wheel while leaving regular wheel scrolling alone', async () => {
+    const frameStyle = document.createElement('style');
+    frameStyle.textContent = '.diagram-preview-frame { width: 240px; height: 120px; overflow: auto; }';
+    document.body.append(frameStyle);
+    const chrome = new DiagramChrome();
+    const shell = mountDiagram(chrome, 'mermaid');
+    const frame = shell.querySelector('.mermaid-frame');
+    const initialZoom = shell.querySelector('.mermaid-zoom-label')?.textContent;
+
+    const regularWheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -100,
+    });
+    frame.dispatchEvent(regularWheelEvent);
+
+    expect(regularWheelEvent.defaultPrevented).toBe(false);
+    expect(shell.querySelector('.mermaid-zoom-label')?.textContent).toBe(initialZoom);
+
+    const zoomInEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      deltaY: -40,
+    });
+    frame.dispatchEvent(zoomInEvent);
+
+    expect(zoomInEvent.defaultPrevented).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(shell.querySelector('.mermaid-zoom-label')?.textContent).not.toBe(initialZoom);
+  });
+
+  it('keeps rapid ctrl-wheel zoom events on one animation loop', () => {
+    const scheduledFrames = new Map();
+    const cancelledFrames = [];
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(0);
+    let nextFrameId = 1;
+    const windowRef = {
+      addEventListener: () => {},
+      cancelAnimationFrame: (frameId) => {
+        cancelledFrames.push(frameId);
+        scheduledFrames.delete(frameId);
+      },
+      removeEventListener: () => {},
+      requestAnimationFrame: (callback) => {
+        const frameId = nextFrameId;
+        nextFrameId += 1;
+        scheduledFrames.set(frameId, callback);
+        return frameId;
+      },
+    };
+    const chrome = new DiagramChrome({ windowRef });
+    const shell = mountDiagram(chrome, 'mermaid');
+    const frame = shell.querySelector('.mermaid-frame');
+    scheduledFrames.clear();
+    cancelledFrames.length = 0;
+
+    for (let index = 0; index < 4; index += 1) {
+      frame.dispatchEvent(new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        deltaY: -40,
+      }));
+    }
+
+    expect(cancelledFrames).toHaveLength(0);
+    expect(scheduledFrames).toHaveLength(1);
+
+    const [frameId, frameCallback] = scheduledFrames.entries().next().value;
+    scheduledFrames.delete(frameId);
+    nowSpy.mockReturnValue(160);
+    frameCallback(160);
+
+    expect(shell.querySelector('.mermaid-zoom-label')?.textContent).toBe('120%');
+  });
+
   it('does not queue a second fit pass when replacing visible diagram output', () => {
     const scheduledFrames = [];
     const windowRef = {

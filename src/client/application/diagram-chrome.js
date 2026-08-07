@@ -16,6 +16,7 @@ export const DIAGRAM_CHROME_ZOOM = Object.freeze({
   max: 3,
   min: 0.1,
   step: 0.1,
+  wheelSensitivity: 0.01,
 });
 
 const DIAGRAM_CHROME_ZOOM_POLICY = Object.freeze({
@@ -472,6 +473,7 @@ export class DiagramChrome {
     let currentZoom = zoomPolicy.default;
     let defaultZoom = 1;
     let zoomAnimationFrameId = null;
+    let zoomAnimationTarget = null;
     let resetZoomFrameId = null;
     let layoutFrameId = null;
     let replacementFrameId = null;
@@ -549,21 +551,24 @@ export class DiagramChrome {
 
     const animateZoomTo = (nextZoom) => {
       const targetZoom = clamp(nextZoom, zoomPolicy.min, zoomPolicy.max);
+      if (zoomAnimationFrameId) {
+        zoomAnimationTarget = targetZoom;
+        return;
+      }
+
       const startZoom = currentZoom;
       if (targetZoom === startZoom) {
         return;
       }
 
+      zoomAnimationTarget = targetZoom;
       const center = getViewportCenter();
       const startedAt = performance.now();
-      if (zoomAnimationFrameId) {
-        this.window.cancelAnimationFrame(zoomAnimationFrameId);
-      }
 
       const tick = (now) => {
         const progress = clamp((now - startedAt) / zoomPolicy.animationDurationMs, 0, 1);
         const easedProgress = easeOutCubic(progress);
-        const animatedZoom = startZoom + ((targetZoom - startZoom) * easedProgress);
+        const animatedZoom = startZoom + ((zoomAnimationTarget - startZoom) * easedProgress);
         applyZoom(animatedZoom);
         restoreViewportCenter(startZoom, animatedZoom, center);
 
@@ -573,8 +578,10 @@ export class DiagramChrome {
         }
 
         zoomAnimationFrameId = null;
-        applyZoom(targetZoom);
-        restoreViewportCenter(startZoom, targetZoom, center);
+        const completedZoom = zoomAnimationTarget;
+        zoomAnimationTarget = null;
+        applyZoom(completedZoom);
+        restoreViewportCenter(startZoom, completedZoom, center);
       };
 
       zoomAnimationFrameId = this.window.requestAnimationFrame(tick);
@@ -582,7 +589,7 @@ export class DiagramChrome {
 
     const zoomBy = (delta) => {
       hasManualZoom = true;
-      animateZoomTo(currentZoom + delta);
+      animateZoomTo((zoomAnimationTarget ?? currentZoom) + delta);
     };
 
     const resetZoomToFit = ({ animate = false } = {}) => {
@@ -600,6 +607,7 @@ export class DiagramChrome {
         zoomAnimationFrameId = null;
       }
 
+      zoomAnimationTarget = null;
       applyZoom(defaultZoom);
       frame.scrollLeft = 0;
       frame.scrollTop = 0;
@@ -644,6 +652,22 @@ export class DiagramChrome {
 
     decreaseButton.addEventListener('click', () => zoomBy(-zoomPolicy.step));
     increaseButton.addEventListener('click', () => zoomBy(zoomPolicy.step));
+    frame.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey) {
+        return;
+      }
+
+      event.preventDefault();
+      const deltaY = Number.isFinite(event.deltaY) ? event.deltaY : 0;
+      const wheelDelta = clamp(
+        -deltaY * zoomPolicy.wheelSensitivity,
+        -zoomPolicy.step / 2,
+        zoomPolicy.step / 2,
+      );
+      if (wheelDelta !== 0) {
+        zoomBy(wheelDelta);
+      }
+    }, { passive: false });
     resetButton.addEventListener('click', () => {
       scheduleResetZoomToFit({ force: true });
     });
@@ -694,6 +718,7 @@ export class DiagramChrome {
         this.window.cancelAnimationFrame(zoomAnimationFrameId);
         zoomAnimationFrameId = null;
       }
+      zoomAnimationTarget = null;
 
       isPanning = true;
       activePointerId = event.pointerId;
