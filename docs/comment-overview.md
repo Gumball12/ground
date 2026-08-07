@@ -94,7 +94,7 @@ Created metadata should remain in the lightweight summary as durable thread cont
 The generation timestamp is API/debug metadata and should not be shown prominently in the first-version UI.
 The API should return raw summary fields. Client-side overview presentation owns line labels, localized timestamps, and display names.
 Overview rows should show both latest-message preview and source anchor quote when available. The latest message gives discussion recency; the quote gives source context.
-Overview previews should use the shared comment excerpt normalization with an overview-specific server-side cap of 140 characters, and the client should render them as plain text. Do not reuse the per-file drawer's full markdown rendering path for workspace-wide overview previews.
+Overview previews should use a Markdown-preserving server-side cap of 140 characters, and the client should render them with the shared safe comment Markdown renderer using compact overview-specific spacing. Do not hydrate the full conversation for workspace-wide overview previews.
 
 Latest activity means newest message `createdAt`, falling back to thread `createdAt`. Reactions should not affect ordering or trigger an overview refresh in the first version.
 Do not include reaction summaries in the overview response or UI; reactions remain per-file thread detail.

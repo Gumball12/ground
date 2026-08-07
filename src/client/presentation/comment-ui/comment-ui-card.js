@@ -360,17 +360,6 @@ function createThreadElement(thread) {
   const actions = document.createElement('div');
   actions.className = 'ui-record-actions comment-thread-card-actions';
 
-  const jump = document.createElement('button');
-  jump.type = 'button';
-  jump.className = buttonClassNames({
-    variant: 'ghost',
-    size: 'compact',
-    pill: true,
-    extra: ['ui-action-pill', 'comment-thread-card-action'],
-  });
-  jump.textContent = 'Jump';
-  jump.addEventListener('click', () => this.onNavigateToLine?.(thread.anchor?.startLine ?? 1));
-
   const reply = document.createElement('button');
   reply.type = 'button';
   reply.className = buttonClassNames({
@@ -409,7 +398,7 @@ function createThreadElement(thread) {
     await this.onResolveThread?.(thread.id);
   });
 
-  actions.append(jump, reply, resolve);
+  actions.append(reply, resolve);
 
   thread.messages.forEach((message, index) => {
     article.appendChild(this.createMessageElement(thread, message, {
