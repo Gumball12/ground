@@ -128,7 +128,8 @@ describe('CommentUiController browser behavior', () => {
     expect(controller.activeCard).toMatchObject({
       groupKey: controller.getThreadGroups()[0].key,
       mode: 'group',
-      origin: 'drawer',
+      origin: 'editor',
+      sourceRect: expect.objectContaining({ left: 12, top: 24 }),
     });
   });
 
