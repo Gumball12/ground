@@ -80,7 +80,7 @@ export class CommentOverviewController {
       try {
         const payload = await this.vaultApiClient.readCommentOverview();
         this.errorMessage = '';
-        this.setOverview(payload?.overview ?? payload ?? {});
+        this.setOverview(payload?.overview ?? payload ?? {}, { render: false });
       } catch (error) {
         console.error('[comments] Failed to load comment overview:', error.message);
         this.errorMessage = 'Unable to load open comments.';
@@ -95,7 +95,7 @@ export class CommentOverviewController {
     return this.refreshPromise;
   }
 
-  setOverview(overview = {}) {
+  setOverview(overview = {}, { render = true } = {}) {
     this.errorMessage = '';
     this.overview = {
       files: asArray(overview.files),
@@ -105,7 +105,9 @@ export class CommentOverviewController {
     this.onOverviewChange?.(this.overview, {
       threadCounts: this.getThreadCounts(),
     });
-    this.render();
+    if (render) {
+      this.render();
+    }
   }
 
   render() {

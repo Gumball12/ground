@@ -181,8 +181,6 @@ export const presenceFeature = {
       overflow.appendChild(overflowLabel);
       avatars.appendChild(overflow);
     }
-
-    this.renderPresencePanel();
   },
 
   openPresencePanel() {
@@ -196,7 +194,6 @@ export const presenceFeature = {
     this.closeToolbarOverflowMenu?.();
     this.renderAvatars();
     this.renderPresence();
-    this.renderPresencePanel();
   },
 
   closePresencePanel() {
@@ -207,7 +204,6 @@ export const presenceFeature = {
     this.presencePanelOpen = false;
     this.renderAvatars();
     this.renderPresence();
-    this.renderPresencePanel();
   },
 
   togglePresencePanel() {
@@ -227,6 +223,9 @@ export const presenceFeature = {
 
     panel.classList.toggle('hidden', !this.presencePanelOpen);
     panel.setAttribute('aria-hidden', String(!this.presencePanelOpen));
+    if (!this.presencePanelOpen) {
+      return;
+    }
 
     const orderedUsers = getPanelUsers(this.globalUsers, this.followedUserClientId);
     const effectiveConnectionState = getConnectedPresenceState(this);
@@ -346,10 +345,11 @@ export const presenceFeature = {
 
     this.followedUserClientId = clientId;
     this.followedCursorSignature = '';
-    this.renderAvatars();
-
-    if (closePanel) {
+    if (closePanel && this.presencePanelOpen) {
       this.closePresencePanel();
+    } else {
+      this.renderAvatars();
+      this.renderPresencePanel();
     }
 
     if (user.currentFile && user.currentFile !== this.currentFilePath) {
@@ -382,9 +382,11 @@ export const presenceFeature = {
     }
     this.followedUserClientId = null;
     this.followedCursorSignature = '';
-    this.renderAvatars();
-    if (closePanel) {
+    if (closePanel && this.presencePanelOpen) {
       this.closePresencePanel();
+    } else {
+      this.renderAvatars();
+      this.renderPresencePanel();
     }
   },
 

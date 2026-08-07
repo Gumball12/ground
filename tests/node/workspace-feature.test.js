@@ -251,3 +251,41 @@ test('workspaceFeature forwards file selection reveal intent to the route contro
     },
   ]]);
 });
+
+test('workspaceFeature collapses base edits into the latest preview render', () => {
+  const originalClearTimeout = globalThis.clearTimeout;
+  const originalSetTimeout = globalThis.setTimeout;
+  const timers = new Map();
+  let nextTimerId = 0;
+  const calls = [];
+  globalThis.clearTimeout = (timerId) => timers.delete(timerId);
+  globalThis.setTimeout = (callback) => {
+    nextTimerId += 1;
+    timers.set(nextTimerId, callback);
+    return nextTimerId;
+  };
+
+  try {
+    const app = {
+      _basePreviewRenderTimer: null,
+      currentFilePath: 'views/tasks.base',
+      renderBaseFilePreview: workspaceFeature.renderBaseFilePreview,
+      sessionLoadToken: 4,
+      workspacePreviewController: {
+        renderBaseFilePreview(filePath, options) {
+          calls.push([filePath, options]);
+        },
+      },
+    };
+
+    workspaceFeature.scheduleBaseFilePreview.call(app, 'views/tasks.base', { source: 'first' });
+    workspaceFeature.scheduleBaseFilePreview.call(app, 'views/tasks.base', { source: 'latest' });
+
+    assert.equal(timers.size, 1);
+    timers.values().next().value();
+    assert.deepEqual(calls, [['views/tasks.base', { source: 'latest' }]]);
+  } finally {
+    globalThis.clearTimeout = originalClearTimeout;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});

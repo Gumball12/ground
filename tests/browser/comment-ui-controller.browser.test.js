@@ -387,6 +387,40 @@ describe('CommentUiController browser behavior', () => {
     expect(keys).toEqual([controller.getThreadGroups()[0].key]);
   });
 
+  it('reuses comment markers across layout refreshes and hover changes', () => {
+    const setup = createController();
+    controller = setup.controller;
+
+    const sourceLine = document.createElement('p');
+    sourceLine.dataset.sourceLine = '1';
+    sourceLine.dataset.sourceLineEnd = '1';
+    sourceLine.textContent = 'Line 1';
+    sourceLine.getBoundingClientRect = () => createRect({ left: 40, top: 40, width: 180, height: 24 });
+    setup.previewElement.appendChild(sourceLine);
+    controller.setThreads([{
+      anchor: { endLine: 1, quote: 'Line 1', startLine: 1 },
+      createdAt: 1,
+      createdByName: 'Alice',
+      id: 'thread-1',
+      messages: [{ body: 'First comment', createdAt: 2, id: 'message-1', reactions: [], userName: 'Alice' }],
+    }]);
+
+    const groupKey = controller.getThreadGroups()[0].key;
+    controller.hoveredPreviewGroupKeys = [groupKey];
+    controller.refreshLayout();
+    const editorBadge = controller.editorLayer.querySelector('.comment-editor-badge');
+    const previewBadge = controller.previewLayer.querySelector('.comment-preview-badge');
+
+    controller.refreshLayout();
+    controller.updateHoveredEditorGroups([groupKey]);
+    controller.updateHoveredPreviewGroups([groupKey]);
+
+    expect(controller.editorLayer.querySelector('.comment-editor-badge')).toBe(editorBadge);
+    expect(controller.previewLayer.querySelector('.comment-preview-badge')).toBe(previewBadge);
+    expect(editorBadge.classList.contains('is-hovered')).toBe(true);
+    expect(previewBadge.classList.contains('is-hovered')).toBe(true);
+  });
+
   it('updates preview rail CSS variables when comment markers need gutter space', () => {
     const setup = createController();
     controller = setup.controller;

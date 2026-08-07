@@ -423,6 +423,7 @@ describe('File explorer reveal behavior', () => {
       controller.setTree([{
         children: [
           { name: 'guide.md', path: 'docs/guide.md', type: 'file' },
+          { name: 'notes.md', path: 'docs/notes.md', type: 'file' },
         ],
         name: 'docs',
         path: 'docs',
@@ -430,8 +431,18 @@ describe('File explorer reveal behavior', () => {
       }], { reset: true });
 
       controller.setActiveFile('docs/guide.md');
+      const guideItem = document.querySelector('[data-path="docs/guide.md"]');
+      const directoryItem = document.querySelector('[data-path="docs"]');
 
-      expect(document.querySelector('.file-tree-file.active')?.dataset.path).toBe('docs/guide.md');
+      controller.setActiveFile('docs/notes.md');
+      controller.setThreadCounts(new Map([['docs/notes.md', 2]]));
+
+      expect(document.querySelector('[data-path="docs/guide.md"]')).toBe(guideItem);
+      expect(document.querySelector('[data-path="docs"]')).toBe(directoryItem);
+      expect(document.querySelector('.file-tree-file.active')?.dataset.path).toBe('docs/notes.md');
+      expect(document.querySelector('[data-path="docs/notes.md"] .file-tree-comment-count')?.textContent).toBe('2');
+      directoryItem.click();
+      expect(document.querySelector('[data-path="docs"]')).toBe(directoryItem);
       expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;

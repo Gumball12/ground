@@ -17,10 +17,17 @@ import {
   toRelativeRect,
 } from './comment-ui-shared.js';
 
+function setInteractionClasses(element, isActive, isHovered) {
+  element.classList.toggle('is-active', isActive);
+  element.classList.toggle('is-hovered', isHovered);
+  element.classList.toggle('is-passive', !isActive && !isHovered);
+}
+
 /** @this {any} */
 function refreshLayout() {
-  this.renderEditorLayer();
-  this.renderPreviewLayer();
+  const groups = this.getThreadGroups();
+  this.renderEditorLayer(groups);
+  this.renderPreviewLayer(groups);
   this.repositionActiveCard();
 }
 
@@ -96,20 +103,29 @@ function ensureEditorLayer() {
 }
 
 /** @this {any} */
-function renderEditorLayer() {
+function renderEditorLayer(groups = this.getThreadGroups()) {
   const layer = this.ensureEditorLayer();
-  layer.replaceChildren();
 
   if (!this.supported || !this.session) {
+    if (layer.childElementCount > 0) {
+      layer.replaceChildren();
+    }
     return;
   }
 
   const containerRect = this.editorContainer?.getBoundingClientRect?.();
   if (!containerRect) {
+    if (layer.childElementCount > 0) {
+      layer.replaceChildren();
+    }
     return;
   }
 
-  const groups = this.getThreadGroups();
+  const existingBadges = new Map(
+    Array.from(layer.querySelectorAll('.comment-editor-badge'))
+      .map((button) => [button.dataset.commentEditorGroupKey, button]),
+  );
+  const visibleGroupKeys = new Set();
   const occupiedTops = [];
   groups.forEach((group) => {
     const rect = this.session.getCommentAnchorClientRect?.(group.anchor);
@@ -122,59 +138,82 @@ function renderEditorLayer() {
       return;
     }
 
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ui-state-marker ui-state-marker--comment comment-editor-badge';
-    button.dataset.count = String(group.threads.length);
+    let button = existingBadges.get(group.key);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ui-state-marker ui-state-marker--comment comment-editor-badge';
+      button.dataset.commentEditorGroupKey = group.key;
+      button.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+      });
+      button.addEventListener('pointerenter', () => {
+        this.updateHoveredEditorGroups([button.dataset.commentEditorGroupKey]);
+      });
+      button.addEventListener('pointerleave', () => {
+        this.updateHoveredEditorGroups([]);
+      });
+      button.addEventListener('focusin', () => {
+        this.updateHoveredEditorGroups([button.dataset.commentEditorGroupKey]);
+      });
+      button.addEventListener('focusout', () => {
+        this.updateHoveredEditorGroups([]);
+      });
+      button.addEventListener('click', () => {
+        const currentGroup = button.commentGroup;
+        if (!currentGroup) {
+          return;
+        }
+        this.openThreadGroup(currentGroup, {
+          anchor: currentGroup.anchor,
+          origin: 'editor',
+          sourceRect: button.commentSourceRect,
+        });
+      });
+      layer.appendChild(button);
+    }
+
+    button.commentGroup = group;
+    button.commentSourceRect = rect;
+    if (button.dataset.count !== String(group.threads.length)) {
+      button.dataset.count = String(group.threads.length);
+      button.replaceChildren(createCommentMarkerContent(group.threads.length));
+    }
     const isActive = this.activeCard?.groupKey === group.key;
     const isHovered = this.hoveredEditorGroupKeys.includes(group.key);
-    button.classList.toggle('is-active', isActive);
-    button.classList.toggle('is-hovered', isHovered);
-    button.classList.toggle('is-passive', !isActive && !isHovered);
+    setInteractionClasses(button, isActive, isHovered);
     button.setAttribute('aria-label', `${group.threads.length} comment thread${group.threads.length === 1 ? '' : 's'}`);
-    button.appendChild(createCommentMarkerContent(group.threads.length));
     const top = Math.max(relativeRect.top, 8);
     button.style.top = `${top}px`;
     button.style.left = `${Math.max(containerRect.width - 36, 8)}px`;
     button.title = `${group.threads.length} comment${group.threads.length === 1 ? '' : 's'}`;
-    button.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-    });
-    button.addEventListener('pointerenter', () => {
-      this.updateHoveredEditorGroups([group.key]);
-    });
-    button.addEventListener('pointerleave', () => {
-      this.updateHoveredEditorGroups([]);
-    });
-    button.addEventListener('focusin', () => {
-      this.updateHoveredEditorGroups([group.key]);
-    });
-    button.addEventListener('focusout', () => {
-      this.updateHoveredEditorGroups([]);
-    });
-    button.addEventListener('click', () => {
-      this.openThreadGroup(group, {
-        anchor: group.anchor,
-        origin: 'editor',
-        sourceRect: rect,
-      });
-    });
-    layer.appendChild(button);
+    visibleGroupKeys.add(group.key);
     occupiedTops.push(top);
   });
 
+  existingBadges.forEach((button, groupKey) => {
+    if (!visibleGroupKeys.has(groupKey)) {
+      button.remove();
+    }
+  });
+
+  let button = layer.querySelector('.comment-selection-chip');
+
   if (!this.committedSelectionAnchor || this.activeCard?.mode === 'create') {
+    button?.remove();
     return;
   }
 
   const rect = this.session.getCommentAnchorClientRect?.(this.committedSelectionAnchor);
   const chipRect = this.session.getSelectionChipClientRect?.(this.committedSelectionAnchor) ?? rect;
   if (!chipRect) {
+    button?.remove();
     return;
   }
 
   const relativeRect = toRelativeRect(chipRect, containerRect);
   if (relativeRect.bottom < 0 || relativeRect.top > containerRect.height) {
+    button?.remove();
     return;
   }
 
@@ -186,18 +225,20 @@ function renderEditorLayer() {
       Math.max(containerRect.height - COMMENT_CONTROL_SLOT_HEIGHT, 8),
     );
   }
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'ui-selection-pill ui-selection-pill--comment comment-selection-chip';
-  button.textContent = 'Comment';
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ui-selection-pill ui-selection-pill--comment comment-selection-chip';
+    button.textContent = 'Comment';
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openComposerForSelection('editor', button.getBoundingClientRect());
+    });
+    layer.appendChild(button);
+  }
   button.style.top = `${chipTop}px`;
   button.style.right = `${COMMENT_SELECTION_CHIP_GAP}px`;
-  button.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    this.openComposerForSelection('editor', button.getBoundingClientRect());
-  });
-  layer.appendChild(button);
 }
 
 /** @this {any} */
@@ -217,41 +258,130 @@ function ensurePreviewLayer() {
 }
 
 /** @this {any} */
-function renderPreviewLayer() {
+function syncPreviewSelectionButton(previewRect) {
+  let button = this.previewLayer?.querySelector('.comment-preview-selection-chip');
+  const previewSelection = this.activeCard?.mode !== 'create' ? this.previewSelection : null;
+  if (!previewSelection) {
+    button?.remove();
+    return;
+  }
+
+  const selectionRect = createRectFromRects(Array.from(previewSelection.range?.getClientRects?.() ?? []))
+    || previewSelection.rect;
+  if (!selectionRect) {
+    button?.remove();
+    return;
+  }
+
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ui-chip-button ui-chip-button--comment comment-preview-selection-chip';
+    button.textContent = 'Comment';
+    button.setAttribute('aria-label', 'Comment on selected preview text');
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener('click', () => {
+      this.openComposerForSelection(
+        'preview',
+        button.getBoundingClientRect(),
+        button.previewSelection,
+      );
+    });
+    this.previewLayer?.appendChild(button);
+  }
+
+  button.previewSelection = previewSelection;
+  button.style.left = `${clamp(
+    selectionRect.left - previewRect.left,
+    8,
+    Math.max(this.previewElement.clientWidth - 88, 8),
+  )}px`;
+  button.style.top = `${clamp(
+    selectionRect.bottom - previewRect.top + 8,
+    8,
+    Math.max(this.previewElement.clientHeight - COMMENT_CONTROL_SLOT_HEIGHT, 8),
+  )}px`;
+}
+
+/** @this {any} */
+function renderPreviewLayer(groups = this.getThreadGroups()) {
   this.ensurePreviewLayer();
-  this.previewLayer?.replaceChildren();
-  this.previewHighlightLayer?.replaceChildren();
 
   if (!this.supported || !this.previewElement) {
+    if (this.previewLayer?.childElementCount > 0) {
+      this.previewLayer.replaceChildren();
+    }
+    if (this.previewHighlightLayer?.childElementCount > 0) {
+      this.previewHighlightLayer.replaceChildren();
+    }
     this.previewHoverRegions = [];
     this.syncPreviewRailLayout(0);
     return;
   }
 
   const previewRect = this.previewElement.getBoundingClientRect();
+  const targetContext = {
+    diagramShells: Array.from(this.previewElement.querySelectorAll('.mermaid-shell, .plantuml-shell')),
+    sourceBlocks: Array.from(this.previewElement.querySelectorAll('[data-source-line]'))
+      .filter((element) => isLeafSourceBlock(element)),
+  };
+  const existingHighlights = new Map(
+    Array.from(this.previewHighlightLayer?.querySelectorAll('[data-comment-preview-highlight-key]') ?? [])
+      .map((highlight) => [highlight.dataset.commentPreviewHighlightKey, highlight]),
+  );
+  const visibleHighlightKeys = new Set();
+  const renderHighlight = ({ groupKey = '', isActive, isHovered, key, rect }) => {
+    let highlight = existingHighlights.get(key);
+    if (!highlight) {
+      highlight = document.createElement('div');
+      highlight.className = 'comment-preview-highlight';
+      highlight.dataset.commentPreviewHighlightKey = key;
+      this.previewHighlightLayer?.appendChild(highlight);
+    }
+    if (groupKey) {
+      highlight.dataset.commentPreviewGroupKey = groupKey;
+      highlight.dataset.commentPreviewGroupKeys = groupKey;
+    } else {
+      delete highlight.dataset.commentPreviewGroupKey;
+      delete highlight.dataset.commentPreviewGroupKeys;
+    }
+    setInteractionClasses(highlight, isActive, isHovered);
+    highlight.style.left = `${rect.left - previewRect.left}px`;
+    highlight.style.top = `${rect.top - previewRect.top}px`;
+    highlight.style.width = `${rect.width}px`;
+    highlight.style.height = `${rect.height}px`;
+    visibleHighlightKeys.add(key);
+  };
+
   if (this.activeCard?.mode === 'create' && this.activeCard.origin === 'preview') {
     const selectionRects = Array.from(this.activeCard.previewRange?.getClientRects?.() ?? []);
     const highlightRects = selectionRects.length > 0
       ? selectionRects
-      : [this.resolvePreviewTarget(this.activeCard.anchor)?.bubbleRect].filter(Boolean);
-    highlightRects.forEach((rect) => {
-      const highlight = document.createElement('div');
-      highlight.className = 'comment-preview-highlight is-active';
-      highlight.style.left = `${rect.left - previewRect.left}px`;
-      highlight.style.top = `${rect.top - previewRect.top}px`;
-      highlight.style.width = `${rect.width}px`;
-      highlight.style.height = `${rect.height}px`;
-      this.previewHighlightLayer?.appendChild(highlight);
+      : [this.resolvePreviewTarget(this.activeCard.anchor, targetContext)?.bubbleRect].filter(Boolean);
+    highlightRects.forEach((rect, index) => {
+      renderHighlight({
+        isActive: true,
+        isHovered: false,
+        key: `selection:${index}`,
+        rect,
+      });
     });
   }
 
-  const groups = this.getThreadGroups();
+  const existingBubbles = new Map(
+    Array.from(this.previewLayer?.querySelectorAll('.comment-preview-badge') ?? [])
+      .map((bubble) => [bubble.dataset.commentPreviewGroupKey, bubble]),
+  );
+  const visibleBubbleKeys = new Set();
   const occupiedTops = [];
   const hoverRegions = [];
   const showPassiveMarkers = this.shouldRenderPassivePreviewMarkers();
   const previewBubbles = [];
   groups.forEach((group) => {
-    const target = this.resolvePreviewTarget(group.anchor);
+    const target = this.resolvePreviewTarget(group.anchor, targetContext);
     if (!target?.bubbleRect) {
       return;
     }
@@ -265,32 +395,51 @@ function renderPreviewLayer() {
     const isHovered = this.hoveredPreviewGroupKeys.includes(group.key);
     const isEmphasized = isActive || isHovered;
 
-    target.highlightRects?.forEach((rect) => {
-      const highlight = document.createElement('div');
-      highlight.className = 'comment-preview-highlight';
-      highlight.classList.toggle('is-active', isActive);
-      highlight.classList.toggle('is-hovered', isHovered);
-      highlight.classList.toggle('is-passive', !isEmphasized);
-      highlight.style.left = `${rect.left - previewRect.left}px`;
-      highlight.style.top = `${rect.top - previewRect.top}px`;
-      highlight.style.width = `${rect.width}px`;
-      highlight.style.height = `${rect.height}px`;
-      this.previewHighlightLayer?.appendChild(highlight);
+    target.highlightRects?.forEach((rect, index) => {
+      renderHighlight({
+        groupKey: group.key,
+        isActive,
+        isHovered,
+        key: `${group.key}:highlight:${index}`,
+        rect,
+      });
     });
 
     if (!showPassiveMarkers && !isEmphasized) {
       return;
     }
 
-    const bubble = document.createElement('button');
-    bubble.type = 'button';
-    bubble.className = 'ui-state-marker ui-state-marker--comment comment-preview-badge';
+    let bubble = existingBubbles.get(group.key);
+    if (!bubble) {
+      bubble = document.createElement('button');
+      bubble.type = 'button';
+      bubble.className = 'ui-state-marker ui-state-marker--comment comment-preview-badge';
+      bubble.dataset.commentPreviewGroupKey = group.key;
+      bubble.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+      });
+      bubble.addEventListener('click', () => {
+        const currentGroup = bubble.commentGroup;
+        if (!currentGroup) {
+          return;
+        }
+        this.openThreadGroup(currentGroup, {
+          anchor: currentGroup.anchor,
+          origin: 'preview',
+          sourceRect: bubble.getBoundingClientRect(),
+        });
+      });
+      this.previewLayer?.appendChild(bubble);
+    }
+
+    bubble.commentGroup = group;
     bubble.dataset.commentPreviewGroupKeys = group.key;
-    bubble.classList.toggle('is-active', isActive);
-    bubble.classList.toggle('is-hovered', isHovered);
-    bubble.classList.toggle('is-passive', !isEmphasized);
+    setInteractionClasses(bubble, isActive, isHovered);
     bubble.setAttribute('aria-label', `${group.threads.length} comment thread${group.threads.length === 1 ? '' : 's'}`);
-    bubble.appendChild(createCommentMarkerContent(group.threads.length));
+    if (bubble.dataset.count !== String(group.threads.length)) {
+      bubble.dataset.count = String(group.threads.length);
+      bubble.replaceChildren(createCommentMarkerContent(group.threads.length));
+    }
     let bubbleTop = clamp(
       target.bubbleRect.top - previewRect.top,
       6,
@@ -305,52 +454,23 @@ function renderPreviewLayer() {
     }
     bubble.style.top = `${bubbleTop}px`;
     bubble.title = `${group.threads.length} comment${group.threads.length === 1 ? '' : 's'}`;
-    bubble.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-    });
-    bubble.addEventListener('click', () => {
-      this.openThreadGroup(group, {
-        anchor: group.anchor,
-        origin: 'preview',
-        sourceRect: bubble.getBoundingClientRect(),
-      });
-    });
-    this.previewLayer?.appendChild(bubble);
+    visibleBubbleKeys.add(group.key);
     occupiedTops.push(bubbleTop);
     previewBubbles.push(bubble);
   });
 
-  if (this.previewSelection && this.activeCard?.mode !== 'create') {
-    const previewSelection = this.previewSelection;
-    const selectionRect = createRectFromRects(Array.from(previewSelection.range?.getClientRects?.() ?? []))
-      || previewSelection.rect;
-    if (selectionRect) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'ui-chip-button ui-chip-button--comment comment-preview-selection-chip';
-      button.textContent = 'Comment';
-      button.setAttribute('aria-label', 'Comment on selected preview text');
-      button.style.left = `${clamp(
-        selectionRect.left - previewRect.left,
-        8,
-        Math.max(this.previewElement.clientWidth - 88, 8),
-      )}px`;
-      button.style.top = `${clamp(
-        selectionRect.bottom - previewRect.top + 8,
-        8,
-        Math.max(this.previewElement.clientHeight - COMMENT_CONTROL_SLOT_HEIGHT, 8),
-      )}px`;
-      button.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      button.addEventListener('click', () => {
-        this.openComposerForSelection('preview', button.getBoundingClientRect(), previewSelection);
-      });
-      this.previewLayer?.appendChild(button);
-    }
-  }
+  syncPreviewSelectionButton.call(this, previewRect);
 
+  existingHighlights.forEach((highlight, key) => {
+    if (!visibleHighlightKeys.has(key)) {
+      highlight.remove();
+    }
+  });
+  existingBubbles.forEach((bubble, groupKey) => {
+    if (!visibleBubbleKeys.has(groupKey)) {
+      bubble.remove();
+    }
+  });
   this.previewHoverRegions = hoverRegions;
   const maxBubbleWidth = previewBubbles.reduce(
     (maxWidth, bubble) => Math.max(maxWidth, bubble.offsetWidth || COMMENT_PREVIEW_BADGE_MIN_WIDTH),
@@ -373,23 +493,27 @@ function clearPreviewSelection() {
 }
 
 /** @this {any} */
-function resolvePreviewTarget(anchor) {
+function resolvePreviewTarget(anchor, { diagramShells = null, sourceBlocks = null } = {}) {
   if (!this.previewElement || !anchor) {
     return null;
   }
 
-  const diagramShell = Array.from(this.previewElement.querySelectorAll('.mermaid-shell, .plantuml-shell'))
+  const diagramShell = (diagramShells ?? Array.from(
+    this.previewElement.querySelectorAll('.mermaid-shell, .plantuml-shell'),
+  ))
     .find((element) => overlapsAnchorRange(element, anchor));
   if (diagramShell) {
+    const rect = diagramShell.getBoundingClientRect();
     return {
-      bubbleRect: diagramShell.getBoundingClientRect(),
+      bubbleRect: rect,
       highlightRects: [],
-      hoverRects: [diagramShell.getBoundingClientRect()],
+      hoverRects: [rect],
     };
   }
 
-  const candidates = Array.from(this.previewElement.querySelectorAll('[data-source-line]'))
-    .filter((element) => isLeafSourceBlock(element) && overlapsAnchorRange(element, anchor));
+  const candidates = (sourceBlocks ?? Array.from(this.previewElement.querySelectorAll('[data-source-line]'))
+    .filter((element) => isLeafSourceBlock(element)))
+    .filter((element) => overlapsAnchorRange(element, anchor));
 
   if (anchor.kind === 'text' && anchor.quote) {
     const matches = candidates
@@ -411,10 +535,11 @@ function resolvePreviewTarget(anchor) {
     return null;
   }
 
+  const rect = fallback.getBoundingClientRect();
   return {
-    bubbleRect: fallback.getBoundingClientRect(),
+    bubbleRect: rect,
     highlightRects: [],
-    hoverRects: [fallback.getBoundingClientRect()],
+    hoverRects: [rect],
   };
 }
 
@@ -425,6 +550,9 @@ function getPreviewGroupKeysForTarget(target) {
   }
 
   const keyCarrier = target.closest?.('[data-comment-preview-group-keys]');
+  if (keyCarrier?.dataset?.commentPreviewGroupKey) {
+    return [keyCarrier.dataset.commentPreviewGroupKey];
+  }
   return serializeGroupKeys(
     String(keyCarrier?.dataset?.commentPreviewGroupKeys ?? '')
       .split(/\s+/)
@@ -460,7 +588,11 @@ function updateHoveredPreviewGroups(nextKeys = []) {
 
   this.hoveredPreviewGroupKeys = normalizedKeys;
   this.hoveredPreviewGroupKeysSignature = signature;
-  this.scheduleLayoutRefresh();
+  if (this.shouldRenderPassivePreviewMarkers()) {
+    this.syncHoveredCommentClasses();
+  } else {
+    this.scheduleLayoutRefresh();
+  }
 }
 
 /** @this {any} */
@@ -473,7 +605,32 @@ function updateHoveredEditorGroups(nextKeys = []) {
 
   this.hoveredEditorGroupKeys = normalizedKeys;
   this.hoveredEditorGroupKeysSignature = signature;
-  this.scheduleLayoutRefresh();
+  this.syncHoveredCommentClasses();
+}
+
+/** @this {any} */
+function syncHoveredCommentClasses() {
+  this.editorLayer?.querySelectorAll('.comment-editor-badge').forEach((button) => {
+    const groupKey = button.dataset.commentEditorGroupKey;
+    setInteractionClasses(
+      button,
+      this.activeCard?.groupKey === groupKey,
+      this.hoveredEditorGroupKeys.includes(groupKey),
+    );
+  });
+
+  const previewElements = [
+    ...Array.from(this.previewLayer?.querySelectorAll('[data-comment-preview-group-key]') ?? []),
+    ...Array.from(this.previewHighlightLayer?.querySelectorAll('[data-comment-preview-group-key]') ?? []),
+  ];
+  previewElements.forEach((element) => {
+    const groupKey = element.dataset.commentPreviewGroupKey;
+    setInteractionClasses(
+      element,
+      this.activeCard?.groupKey === groupKey,
+      this.hoveredPreviewGroupKeys.includes(groupKey),
+    );
+  });
 }
 
 /** @this {any} */
@@ -499,6 +656,7 @@ export const commentUiLayoutMethods = {
   resolvePreviewTarget,
   scheduleLayoutRefresh,
   shouldRenderPassivePreviewMarkers,
+  syncHoveredCommentClasses,
   syncHoveredPreviewGroupsFromTarget,
   syncPreviewRailLayout,
   updateHoveredEditorGroups,

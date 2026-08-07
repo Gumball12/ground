@@ -113,6 +113,7 @@ export class CollabMdAppShell {
     this.vaultApiClient = vaultApiClient;
     this._session = null;
     this._hasPromptedForDisplayName = false;
+    this._basePreviewRenderTimer = null;
     this._backlinkRefreshTimer = null;
     this._pendingPreviewLayoutSync = false;
     this._previewHydrationPaused = false;
@@ -213,12 +214,9 @@ export class CollabMdAppShell {
           renderVersion: stats?.renderVersion ?? 0,
         });
         this.videoEmbed.reconcileEmbeds(this.elements.previewContent);
-        this.videoEmbed.syncLayout();
         this.basesPreview.reconcileEmbeds(this.elements.previewContent);
         this.drawioEmbed.reconcileEmbeds(this.elements.previewContent);
-        this.drawioEmbed.syncLayout();
         this.excalidrawEmbed.reconcileEmbeds(this.elements.previewContent, { isLargeDocument: stats.isLargeDocument });
-        this.excalidrawEmbed.syncLayout();
         this.scrollSyncController.setLargeDocumentMode(stats.isLargeDocument);
         this.syncPreviewHeadingLinkButtons();
         this.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true });
@@ -237,9 +235,6 @@ export class CollabMdAppShell {
         this.refreshCommentUiLayout();
       },
       onRenderComplete: () => {
-        this.videoEmbed.syncLayout();
-        this.drawioEmbed.syncLayout();
-        this.excalidrawEmbed.syncLayout();
         this.applyPendingPreviewRouteAnchor({ allowExpired: true, behavior: 'auto', clearMissing: true });
         this.schedulePreviewLayoutSync({ delayMs: 0 });
         this.refreshCommentUiLayout();
@@ -383,6 +378,8 @@ export class CollabMdAppShell {
       loadEditorSessionClass: () => this.loadEditorSessionClass(),
       loadBacklinks: (filePath) => this.backlinksPanel.load(filePath),
       onBeforeFileOpen: () => {
+        clearTimeout(this._basePreviewRenderTimer);
+        this._basePreviewRenderTimer = null;
         this.session = null;
         this.commentUi.attachSession(null);
         this.layoutController.reset();
@@ -396,7 +393,7 @@ export class CollabMdAppShell {
       onContentChange: ({ isBase, isMermaid, isPlantUml }) => {
         this.handleCommentEditorContentChange();
         if (isBase) {
-          void this.renderBaseFilePreview(this.currentFilePath, {
+          this.scheduleBaseFilePreview(this.currentFilePath, {
             source: this.session?.getText?.() ?? '',
           });
           return;

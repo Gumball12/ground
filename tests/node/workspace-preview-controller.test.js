@@ -379,7 +379,6 @@ test('WorkspacePreviewController delegates standalone base preview rendering', a
     ['class-remove', 'is-plantuml-file-preview'],
     ['class-add', 'is-base-file-preview'],
     ['normalize-preview', true],
-    ['replace-children', 0],
     ['render-standalone', 'views/tasks.base', true, 'filters:\n  and: []\n'],
     ['outline-close'],
     ['set-large-document-mode', false],

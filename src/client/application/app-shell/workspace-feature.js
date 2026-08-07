@@ -137,8 +137,22 @@ export const workspaceFeature = {
     this.workspacePreviewController.renderImageFilePreview(filePath);
   },
 
-  renderBaseFilePreview(filePath) {
-    return this.workspacePreviewController.renderBaseFilePreview(filePath);
+  renderBaseFilePreview(filePath, options) {
+    clearTimeout(this._basePreviewRenderTimer);
+    this._basePreviewRenderTimer = null;
+    return this.workspacePreviewController.renderBaseFilePreview(filePath, options);
+  },
+
+  scheduleBaseFilePreview(filePath, options) {
+    const loadToken = this.sessionLoadToken;
+    clearTimeout(this._basePreviewRenderTimer);
+    this._basePreviewRenderTimer = setTimeout(() => {
+      this._basePreviewRenderTimer = null;
+      if (filePath !== this.currentFilePath || loadToken !== this.sessionLoadToken) {
+        return;
+      }
+      void this.renderBaseFilePreview(filePath, options);
+    }, 180);
   },
 
   renderTextFilePreview(payload) {

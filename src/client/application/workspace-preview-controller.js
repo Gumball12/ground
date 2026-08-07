@@ -253,7 +253,6 @@ export class WorkspacePreviewController {
     this.previewRenderer.normalizePreviewChildren(renderHost);
 
     if (renderHost) {
-      renderHost.replaceChildren();
       renderHost.style.minHeight = '';
     }
 

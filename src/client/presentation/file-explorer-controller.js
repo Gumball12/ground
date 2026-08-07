@@ -31,7 +31,12 @@ export class FileExplorerController {
       },
       onDirectoryToggle: (pathValue) => {
         this.state.toggleDirectory(pathValue);
-        this.renderTree();
+        if (!this.view.rerenderDirectoryBranch(pathValue, this.state.tree, {
+          activeFilePath: this.state.activeFilePath,
+          expandedDirs: this.state.expandedDirs,
+        })) {
+          this.renderTree();
+        }
       },
       onEntryDrop: (payload) => this.actionController.moveEntryByDrop(payload),
       onFileContextMenu: (event, payload) => {
@@ -96,15 +101,25 @@ export class FileExplorerController {
   }
 
   setActiveFile(filePath) {
+    const expandedDirectoryCount = this.state.expandedDirs.size;
     this.state.setActiveFile(filePath);
-    this.renderTree();
+    if (this.state.searchQuery) {
+      this.view.setActiveFile(filePath);
+      return;
+    }
+    if (
+      this.state.expandedDirs.size !== expandedDirectoryCount
+      || !this.view.setActiveFile(filePath)
+    ) {
+      this.renderTree();
+    }
   }
 
   setThreadCounts(threadCounts = new Map()) {
     this.threadCounts = threadCounts instanceof Map
       ? new Map(threadCounts)
       : new Map(Object.entries(threadCounts ?? {}));
-    this.renderTree();
+    this.view.setThreadCounts(this.threadCounts);
   }
 
   revealFile(filePath, { clearSearch = false } = {}) {

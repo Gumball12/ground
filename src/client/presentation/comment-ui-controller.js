@@ -89,9 +89,13 @@ export class CommentUiController {
       if (this.activeCard?.mode === 'create' && this.activeCard.origin === 'preview') {
         return;
       }
-      this.previewSelection = this.supported && this.fileKind === 'markdown'
+      const previewSelection = this.supported && this.fileKind === 'markdown'
         ? createPreviewSelection(window.getSelection(), this.previewElement, this.session?.getText?.() ?? '')
         : null;
+      if (!previewSelection && !this.previewSelection) {
+        return;
+      }
+      this.previewSelection = previewSelection;
       this.scheduleLayoutRefresh();
     };
     this.handleCommentSelectionButtonPointerDown = (event) => {

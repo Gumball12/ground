@@ -474,6 +474,23 @@ test('presenceFeature does not suggest following when only the local user is onl
   });
 });
 
+test('presenceFeature leaves the hidden participant list untouched', () => {
+  withFakeDocument(() => {
+    const { context, presencePanelList } = createPresenceContext({
+      globalUsers: [
+        { clientId: 'local', color: '#111111', currentFile: 'README.md', isLocal: true, name: 'Owner' },
+      ],
+      presencePanelOpen: false,
+    });
+    const existingRow = new FakeElement('article');
+    presencePanelList.appendChild(existingRow);
+
+    context.renderPresencePanel();
+
+    assert.deepEqual(presencePanelList.children, [existingRow]);
+  });
+});
+
 test('presenceFeature renders an overflow trigger that opens the full participant panel', () => {
   withFakeDocument(() => {
     const { context, presencePanel, presencePanelList, userAvatars } = createPresenceContext({

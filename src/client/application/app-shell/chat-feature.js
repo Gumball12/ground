@@ -107,6 +107,10 @@ export const chatFeature = {
       return;
     }
 
+    if (!this.chatIsOpen) {
+      return;
+    }
+
     list.replaceChildren();
 
     if (this.chatMessages.length === 0) {
@@ -124,9 +128,7 @@ export const chatFeature = {
     });
     list.appendChild(fragment);
 
-    if (this.chatIsOpen) {
-      this.scrollChatToBottom();
-    }
+    this.scrollChatToBottom();
   },
 
   createChatMessageElement(message) {

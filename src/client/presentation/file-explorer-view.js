@@ -52,6 +52,7 @@ export class FileExplorerView {
     this.searchInput = document.getElementById('fileSearchInput');
     this.renderedDirectoryWrappers = new Map();
     this.renderedChildContainers = new Map();
+    this.renderedFileItems = new Map();
     this.lastRenderMode = 'tree';
     this.longPressTimer = 0;
     this.longPressContext = null;
@@ -121,9 +122,42 @@ export class FileExplorerView {
   }
 
   revealFile(filePath) {
-    const fileItem = Array.from(this.treeContainer?.querySelectorAll('.file-tree-file') ?? [])
-      .find((element) => element.dataset.path === filePath);
-    fileItem?.scrollIntoView({ block: 'nearest' });
+    this.renderedFileItems.get(filePath)?.scrollIntoView({ block: 'nearest' });
+  }
+
+  setActiveFile(filePath) {
+    this.treeContainer?.querySelector('.file-tree-file.active')?.classList.remove('active');
+    if (!filePath) {
+      return true;
+    }
+
+    const fileItem = this.renderedFileItems.get(filePath);
+    fileItem?.classList.add('active');
+    return Boolean(fileItem);
+  }
+
+  setThreadCounts(threadCounts) {
+    this.threadCounts = threadCounts instanceof Map ? threadCounts : new Map();
+    this.renderedFileItems.forEach((button, filePath) => {
+      const threadCount = Number(this.threadCounts.get(filePath) ?? 0) || 0;
+      let badge = button.querySelector('.file-tree-comment-count');
+      button.classList.toggle('has-comments', threadCount > 0);
+
+      if (threadCount <= 0) {
+        delete button.dataset.threadCount;
+        badge?.remove();
+        return;
+      }
+
+      button.dataset.threadCount = String(threadCount);
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'file-tree-comment-count';
+        button.appendChild(badge);
+      }
+      badge.textContent = String(threadCount);
+      badge.setAttribute('aria-label', `${threadCount} open comment thread${threadCount === 1 ? '' : 's'}`);
+    });
   }
 
   render({ activeFilePath, changedPaths = null, expandedDirs, reset = false, searchMatches, searchQuery, showFileExtensions = false, threadCounts = new Map(), tree }) {
@@ -250,6 +284,7 @@ export class FileExplorerView {
   resetTreeIndexes() {
     this.renderedDirectoryWrappers.clear();
     this.renderedChildContainers.clear();
+    this.renderedFileItems.clear();
   }
 
   renderNodes(nodes, container, { activeFilePath, depth, expandedDirs }) {
@@ -410,6 +445,11 @@ export class FileExplorerView {
         this.renderedChildContainers.delete(pathValue);
       }
     });
+    Array.from(this.renderedFileItems.keys()).forEach((pathValue) => {
+      if (pathValue.startsWith(prefix)) {
+        this.renderedFileItems.delete(pathValue);
+      }
+    });
   }
 
   createFileItem({ activeFilePath, depth, filePath, fileType = 'file', name }) {
@@ -477,6 +517,7 @@ export class FileExplorerView {
       this.onFileContextMenu?.(this.createLongPressEvent(button), { filePath, type: 'file' });
     });
 
+    this.renderedFileItems.set(filePath, button);
     return button;
   }
 

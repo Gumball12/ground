@@ -61,10 +61,14 @@ function renderDrawer() {
   }
 
   this.commentsDrawer.classList.toggle('hidden', !this.supported || !this.drawerOpen);
+  if (!this.supported || !this.drawerOpen) {
+    return;
+  }
+
   this.commentsDrawerList.replaceChildren();
   const groups = this.getThreadGroups();
   this.commentsDrawerEmpty?.classList.toggle('hidden', groups.length > 0);
-  if (!this.supported || groups.length === 0) {
+  if (groups.length === 0) {
     return;
   }
 
