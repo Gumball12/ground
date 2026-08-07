@@ -20,7 +20,14 @@ import {
   syntaxHighlighting,
 } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
-import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search';
+import {
+  findNext,
+  getSearchQuery,
+  highlightSelectionMatches,
+  openSearchPanel,
+  searchKeymap,
+  searchPanelOpen,
+} from '@codemirror/search';
 import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import {
@@ -54,10 +61,82 @@ const REMOTE_UPDATE_FLASH_DURATION_MS = 1350;
 const REMOTE_UPDATE_CARET_MAX_LENGTH = 160;
 const RECENT_LOCAL_INPUT_WINDOW_MS = 900;
 const TASK_LIST_MARKER_PATTERN = /^(\s*(?:>\s*)*(?:[-+*]|\d+[.)])\s+\[)( |x|X)(\])(\s.*)?$/;
+
+function openSearchPanelPreservingViewport(view) {
+  const scrollTop = view.scrollDOM.scrollTop;
+  const selection = view.state.selection;
+  const applied = openSearchPanel(view);
+
+  if (applied) {
+    requestAnimationFrame(() => {
+      if (view.dom.isConnected && view.state.selection.eq(selection)) {
+        view.scrollDOM.scrollTop = scrollTop;
+      }
+    });
+  }
+
+  return applied;
+}
+
+function getSearchQueryKey(query) {
+  return JSON.stringify([query.search, query.caseSensitive, query.regexp, query.wholeWord]);
+}
+
+function createSearchNavigationListener() {
+  let lastQueryKey = '';
+  let panelWasOpen = false;
+  let pendingFrame = 0;
+
+  return EditorView.updateListener.of((update) => {
+    const panelOpen = searchPanelOpen(update.state);
+    const query = getSearchQuery(update.state);
+    const queryKey = getSearchQueryKey(query);
+    const shouldReveal = panelOpen
+      && query.valid
+      && (!panelWasOpen || queryKey !== lastQueryKey);
+
+    panelWasOpen = panelOpen;
+    lastQueryKey = queryKey;
+
+    if (!shouldReveal) {
+      return;
+    }
+
+    if (pendingFrame) {
+      cancelAnimationFrame(pendingFrame);
+    }
+
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = 0;
+      if (!update.view.dom.isConnected) {
+        return;
+      }
+
+      const currentQuery = getSearchQuery(update.view.state);
+      if (
+        !searchPanelOpen(update.view.state)
+        || !currentQuery.valid
+        || getSearchQueryKey(currentQuery) !== queryKey
+      ) {
+        return;
+      }
+
+      const searchInput = update.view.dom.querySelector('.cm-search input[name="search"]');
+      const inputSelection = searchInput === update.view.root.activeElement && searchInput
+        ? { end: searchInput.selectionEnd, start: searchInput.selectionStart }
+        : null;
+      findNext(update.view);
+      if (inputSelection && searchInput?.setSelectionRange) {
+        searchInput.setSelectionRange(inputSelection.start, inputSelection.end);
+      }
+    });
+  });
+}
+
 const EDITOR_COMMANDS = Object.freeze({
   indentLess,
   indentMore,
-  openSearch: openSearchPanel,
+  openSearch: openSearchPanelPreservingViewport,
   redo,
   undo,
 });
@@ -398,11 +477,16 @@ export class EditorViewAdapter {
       crosshairCursor(),
       highlightActiveLine(),
       highlightSelectionMatches(),
+      createSearchNavigationListener(),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
         ...historyKeymap,
-        ...searchKeymap,
+        ...searchKeymap.map((binding) => (
+          binding.run === openSearchPanel
+            ? { ...binding, run: openSearchPanelPreservingViewport }
+            : binding
+        )),
         ...foldKeymap,
         indentWithTab,
       ]),

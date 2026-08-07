@@ -14,6 +14,7 @@ import {
   appendEditorContent,
   restoreReadmeTestDocument,
   restoreVaultFileFromTemplate,
+  stubPlantUmlRender,
 } from './helpers/app-fixture.js';
 
 async function applyBlockToolbarAction(page, action) {
@@ -132,6 +133,32 @@ test('renders markdown preview when a file is opened', async ({ page }) => {
 
   await expect(page.locator('#previewContent')).toContainText('My Vault');
   await expect(page.locator('#previewContent')).toContainText('Welcome to the test vault');
+});
+
+test('reveals the first find match in a long PlantUML document', async ({ page }) => {
+  await page.setViewportSize({ width: 1172, height: 1044 });
+  await stubPlantUmlRender(page);
+  await openFile(page, 'sample-plantuml.puml');
+
+  const content = [
+    '@startuml',
+    'needle near the top',
+    ...Array.from({ length: 478 }, (_, index) => `note over Foo: Filler line ${index + 1}`),
+    '@enduml',
+  ].join('\n');
+  await replaceEditorContent(page, content);
+  await expect(page.locator('#previewContent .plantuml-frame')).toBeVisible();
+  await page.locator('.cm-content').press('Meta+Alt+g');
+  await page.locator('.cm-dialog input').fill('254');
+  await page.locator('.cm-dialog input').press('Enter');
+
+  await page.locator('.cm-content').press('Meta+f');
+  const searchInput = page.locator('.cm-search .cm-textfield').first();
+  await expect(searchInput).toBeVisible();
+  await searchInput.fill('');
+  await searchInput.type('needle near the top');
+
+  await expect(page.locator('.cm-searchMatch-selected').first()).toBeVisible();
 });
 
 test('frontmatter preview can be collapsed and stays collapsed across rerenders', async ({ page }) => {
