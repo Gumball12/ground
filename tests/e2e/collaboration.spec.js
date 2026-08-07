@@ -1120,7 +1120,8 @@ test('creates and syncs a line comment across collaborators', async ({ browser }
 
   await expect(pageA.locator('#commentsToggle')).toContainText('1');
   await expect(pageB.locator('#commentsToggle')).toContainText('1');
-  await expect(pageB.locator('#previewContent .comment-preview-badge')).toHaveCount(1);
+  await expect(pageB.locator('.comment-editor-badge')).toHaveCount(1);
+  await expect(pageB.locator('#previewContent .comment-preview-badge')).toHaveCount(0);
 
   await pageB.locator('#commentsToggle').click();
   await expect(pageB.locator('#commentsDrawer')).toBeVisible();
@@ -1132,7 +1133,7 @@ test('creates and syncs a line comment across collaborators', async ({ browser }
   await pageB.close();
 });
 
-test('renders icon-based thread markers with counts for grouped comments', async ({ page }) => {
+test('renders icon-based editor thread markers with counts for grouped comments', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
   await replaceEditorContent(page, README_TEST_DOCUMENT);
@@ -1150,12 +1151,10 @@ test('renders icon-based thread markers with counts for grouped comments', async
   });
 
   const editorBadge = page.locator('.comment-editor-badge[data-count="2"]').first();
-  const previewBadge = page.locator('#previewContent .comment-preview-badge[aria-label="2 comment threads"]').first();
 
   await expect(editorBadge.locator('.comment-marker-icon')).toBeVisible();
   await expect(editorBadge.locator('.comment-marker-count')).toHaveText('2');
-  await expect(previewBadge.locator('.comment-marker-icon')).toBeVisible();
-  await expect(previewBadge.locator('.comment-marker-count')).toHaveText('2');
+  await expect(page.locator('#previewContent .comment-preview-badge')).toHaveCount(0);
 });
 
 test('hides editor thread markers when their anchor scrolls out of view', async ({ page }) => {
@@ -1223,74 +1222,6 @@ test('scrolls the editor and preview to a comment selected from the drawer', asy
   })).toBe(true);
 });
 
-test('aligns preview thread markers to a fixed right rail', async ({ page }) => {
-  await clearReadmeCollaborationSidecars();
-  await openFile(page, 'README.md');
-  await replaceEditorContent(page, README_TEST_DOCUMENT);
-
-  await createComment(page, {
-    body: 'Anchor the intro in the rail.',
-    targetText: 'Welcome to the test vault',
-    useInlineChip: true,
-  });
-  await createComment(page, {
-    body: 'Anchor the links header in the rail.',
-    targetText: 'Links',
-    useInlineChip: true,
-  });
-
-  const badges = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]');
-  await expect(badges).toHaveCount(2);
-
-  const [firstBox, secondBox, contentBox] = await Promise.all([
-    badges.nth(0).boundingBox(),
-    badges.nth(1).boundingBox(),
-    page.locator('#previewContent').boundingBox(),
-  ]);
-
-  expect(firstBox).toBeTruthy();
-  expect(secondBox).toBeTruthy();
-  expect(contentBox).toBeTruthy();
-  expect(Math.abs((firstBox?.x ?? 0) - (secondBox?.x ?? 0))).toBeLessThanOrEqual(2);
-
-  const firstRightInset = ((contentBox?.x ?? 0) + (contentBox?.width ?? 0)) - ((firstBox?.x ?? 0) + (firstBox?.width ?? 0));
-  const secondRightInset = ((contentBox?.x ?? 0) + (contentBox?.width ?? 0)) - ((secondBox?.x ?? 0) + (secondBox?.width ?? 0));
-  expect(firstRightInset).toBeGreaterThanOrEqual(4);
-  expect(firstRightInset).toBeLessThanOrEqual(24);
-  expect(secondRightInset).toBeGreaterThanOrEqual(4);
-  expect(secondRightInset).toBeLessThanOrEqual(24);
-});
-
-test('stacks nearby preview thread markers without overlap in the right rail', async ({ page }) => {
-  await clearReadmeCollaborationSidecars();
-  await openFile(page, 'README.md');
-  await replaceEditorContent(page, README_TEST_DOCUMENT);
-
-  await createComment(page, {
-    body: 'First sentence comment.',
-    targetText: 'Welcome to the test vault',
-    useInlineChip: true,
-  });
-  await createComment(page, {
-    body: 'Second sentence comment.',
-    targetText: 'This is the top-level readme.',
-    useInlineChip: true,
-  });
-
-  const badges = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]');
-  await expect(badges).toHaveCount(2);
-
-  const [firstBox, secondBox] = await Promise.all([
-    badges.nth(0).boundingBox(),
-    badges.nth(1).boundingBox(),
-  ]);
-
-  expect(firstBox).toBeTruthy();
-  expect(secondBox).toBeTruthy();
-  expect(Math.abs((firstBox?.x ?? 0) - (secondBox?.x ?? 0))).toBeLessThanOrEqual(2);
-  expect(Math.abs((firstBox?.y ?? 0) - (secondBox?.y ?? 0))).toBeGreaterThanOrEqual(24);
-});
-
 test('keeps reply action aligned by using an active Reply toggle state', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
@@ -1303,7 +1234,7 @@ test('keeps reply action aligned by using an active Reply toggle state', async (
     targetText: 'Welcome to the test vault. This is the top-level readme.',
   });
 
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   const replyButton = page.locator('.comment-thread-card-action').filter({ hasText: 'Reply' }).first();
 
   await expect(replyButton).toHaveText('Reply');
@@ -1313,7 +1244,7 @@ test('keeps reply action aligned by using an active Reply toggle state', async (
   await expect(page.locator('.comment-reply-form')).toBeVisible();
 });
 
-test('creates a selected-text comment and surfaces it in the preview bubble card', async ({ page }) => {
+test('creates a selected-text comment and surfaces it through the editor marker', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
   await replaceEditorContent(page, README_TEST_DOCUMENT);
@@ -1326,12 +1257,12 @@ test('creates a selected-text comment and surfaces it in the preview bubble card
   });
 
   await expect(page.locator('#previewContent .comment-preview-highlight')).toHaveCount(1);
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   await expect(page.locator('.comment-card')).toContainText('Welcome to the test vault');
   await expect(page.locator('.comment-card')).toContainText('This phrase should stay visible in preview.');
 });
 
-test('promotes preview markers and highlights on hover and active thread selection', async ({ page }) => {
+test('promotes preview highlights on hover and active editor thread selection', async ({ page }) => {
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
   await replaceEditorContent(page, README_TEST_DOCUMENT);
@@ -1342,67 +1273,17 @@ test('promotes preview markers and highlights on hover and active thread selecti
     useInlineChip: true,
   });
 
-  const badge = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first();
+  const badge = page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first();
   const highlight = page.locator('#previewContent .comment-preview-highlight').first();
   await expect(badge).toHaveClass(/is-passive/);
   await expect(highlight).toHaveClass(/is-passive/);
 
   await hoverPreviewQuotedText(page, 'Welcome to the test vault');
-  await expect(badge).toHaveClass(/is-hovered/);
   await expect(highlight).toHaveClass(/is-hovered/);
 
   await badge.click();
   await expect(badge).toHaveClass(/is-active/);
   await expect(highlight).toHaveClass(/is-active/);
-});
-
-test('uses matching passive and hover states for editor and preview markers', async ({ page }) => {
-  await clearReadmeCollaborationSidecars();
-  await openFile(page, 'README.md');
-  await replaceEditorContent(page, README_TEST_DOCUMENT);
-
-  await createComment(page, {
-    body: 'State parity check.',
-    targetText: 'Welcome to the test vault',
-    useInlineChip: true,
-  });
-
-  const editorBadge = page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first();
-  const previewBadge = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first();
-
-  await expect(editorBadge).toHaveClass(/is-passive/);
-  await expect(previewBadge).toHaveClass(/is-passive/);
-
-  await editorBadge.hover();
-  await expect(editorBadge).toHaveClass(/is-hovered/);
-
-  await hoverPreviewQuotedText(page, 'Welcome to the test vault');
-  await expect(previewBadge).toHaveClass(/is-hovered/);
-});
-
-test('only promotes the hovered preview marker when a paragraph has multiple comment anchors', async ({ page }) => {
-  await clearReadmeCollaborationSidecars();
-  await openFile(page, 'README.md');
-  await replaceEditorContent(page, README_TEST_DOCUMENT);
-
-  await createComment(page, {
-    body: 'First anchored phrase.',
-    targetText: 'Welcome',
-    useInlineChip: true,
-  });
-  await createComment(page, {
-    body: 'Second anchored phrase.',
-    targetText: 'readme',
-    useInlineChip: true,
-  });
-
-  const badges = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]');
-  await expect(badges).toHaveCount(2);
-  await expect(page.locator('#previewContent .comment-preview-badge.is-hovered')).toHaveCount(0);
-
-  await hoverPreviewQuotedText(page, 'Welcome');
-
-  await expect(page.locator('#previewContent .comment-preview-badge.is-hovered')).toHaveCount(1);
 });
 
 test('renders multiline markdown comments with fenced code blocks in the thread card', async ({ page }) => {
@@ -1416,7 +1297,7 @@ test('renders multiline markdown comments with fenced code blocks in the thread 
     useInlineChip: true,
   });
 
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
 
   await expect(page.locator('.comment-message-card-body')).toContainText('First line');
   await expect(page.locator('.comment-message-card-body')).toContainText('Second line');
@@ -1435,7 +1316,7 @@ test('shows wrapped excerpts and the latest comment preview in the comments draw
     body: 'Initial comment',
     targetText: 'Welcome to the test vault. This is the top-level readme.',
   });
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   await page.locator('.comment-thread-card-action').filter({ hasText: 'Reply' }).first().click();
   await page.locator('.comment-card-input').last().fill('Latest reply with\n\n- bullet one\n- bullet two');
   await page.locator('.comment-reply-form').getByRole('button', { name: 'Reply' }).click();
@@ -1553,7 +1434,7 @@ test('keeps the refreshed comment card within a narrow viewport', async ({ page 
   });
 
   await hoverPreviewQuotedText(page, 'Welcome to the test vault');
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   await expect(page.locator('.comment-card-scroll')).toBeVisible();
   await expect.poll(async () => (
     page.locator('.comment-card-scroll').evaluate((element) => getComputedStyle(element).overflowY)
@@ -1567,7 +1448,7 @@ test('keeps the refreshed comment card within a narrow viewport', async ({ page 
   expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(900);
 });
 
-test('hides passive preview markers in narrow split layouts while keeping comments accessible', async ({ page }) => {
+test('hides preview comment markers in narrow split layouts while keeping comments accessible', async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 780 });
   await clearReadmeCollaborationSidecars();
   await openFile(page, 'README.md');
@@ -1582,9 +1463,6 @@ test('hides passive preview markers in narrow split layouts while keeping commen
 
   const previewBadge = page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]');
   await expect(previewBadge).toHaveCount(0);
-
-  await hoverPreviewQuotedText(page, 'Welcome to the test vault');
-  await expect(previewBadge).toHaveCount(1);
 
   await page.locator('#commentsToggle').click();
   await expect(page.locator('#commentsDrawer')).toBeVisible();
@@ -1602,7 +1480,7 @@ test('toggles a preset emoji reaction on a comment message', async ({ page }) =>
     useInlineChip: true,
   });
 
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   await page.locator('.comment-reaction-quick-add').filter({ hasText: '👍' }).first().click();
 
   const chip = page.locator('.comment-reaction-chip').filter({ hasText: '👍' }).first();
@@ -1625,7 +1503,7 @@ test('supports reacting to reply messages through the extended reaction picker',
     useInlineChip: true,
   });
 
-  await page.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+  await page.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
   await page.locator('.comment-thread-card-action').filter({ hasText: 'Reply' }).first().click();
   await page.locator('.comment-card-input').last().fill('Reply with reaction');
   await page.locator('.comment-reply-form').getByRole('button', { name: 'Reply' }).click();
@@ -1660,7 +1538,7 @@ test('syncs reaction counts across collaborators while keeping active state loca
   });
 
   const openThread = async (targetPage) => {
-    await targetPage.locator('#previewContent .comment-preview-badge[aria-label="1 comment thread"]').first().click();
+    await targetPage.locator('.comment-editor-badge[aria-label="1 comment thread"]').first().click();
     await expect(targetPage.locator('.comment-card')).toBeVisible();
   };
 
@@ -1691,7 +1569,8 @@ test('supports comments for Mermaid and PlantUML files', async ({ page }) => {
     collapseSelection: true,
     targetText: 'flowchart TD',
   });
-  await expect(page.locator('#previewContent .comment-preview-badge')).toHaveCount(1);
+  await expect(page.locator('.comment-editor-badge')).toHaveCount(1);
+  await expect(page.locator('#previewContent .comment-preview-badge')).toHaveCount(0);
 
   await openFile(page, 'sample-plantuml.puml');
   await expect(page.locator('#commentSelectionBtn')).toBeVisible();
@@ -1700,7 +1579,8 @@ test('supports comments for Mermaid and PlantUML files', async ({ page }) => {
     collapseSelection: true,
     targetText: '@startuml',
   });
-  await expect(page.locator('#previewContent .comment-preview-badge')).toHaveCount(1);
+  await expect(page.locator('.comment-editor-badge')).toHaveCount(1);
+  await expect(page.locator('#previewContent .comment-preview-badge')).toHaveCount(0);
 });
 
 test('does not render comment UI controls for Excalidraw', async ({ page }) => {

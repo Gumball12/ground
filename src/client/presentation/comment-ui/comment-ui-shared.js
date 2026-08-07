@@ -13,10 +13,6 @@ export const COMMENT_CARD_WIDTH = 520;
 export const COMMENT_SELECTION_REVEAL_DELAY_MS = 150;
 export const COMMENT_SELECTION_CHIP_GAP = 12;
 export const COMMENT_CONTROL_SLOT_HEIGHT = 36;
-export const COMMENT_PREVIEW_BADGE_MIN_WIDTH = 28;
-export const COMMENT_PREVIEW_RAIL_SLOT_HEIGHT = 30;
-export const COMMENT_PREVIEW_RAIL_MIN_WIDTH = 400;
-export const COMMENT_PREVIEW_RAIL_BREAKPOINT = 769;
 export const COMMENT_REACTION_PRESET_EMOJIS = Object.freeze(['👍', '❤️', '🎉', '👀', '🚀']);
 export const COMMENT_REACTION_MORE_EMOJIS = Object.freeze(['😂', '🔥', '✅', '🙏', '💡', '🤔', '👏', '😄', '🎯', '🙌']);
 

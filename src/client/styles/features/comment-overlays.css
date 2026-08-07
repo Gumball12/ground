@@ -9,10 +9,6 @@
   pointer-events: none;
 }
 
-.comment-preview-badge {
-  right: calc(var(--preview-comment-rail-inset) - var(--preview-comment-rail-offset, 0px));
-}
-
 .comment-marker-icon {
   display: inline-flex;
   width: 12px;

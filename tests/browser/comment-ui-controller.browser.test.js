@@ -49,7 +49,6 @@ function createController({ onNavigateToLine = () => {}, sourceText = '' } = {})
   Object.defineProperty(previewElement, 'clientWidth', { configurable: true, value: 400 });
   Object.defineProperty(previewContainer, 'clientWidth', { configurable: true, value: 520 });
   previewElement.style.paddingRight = '20px';
-  previewElement.style.setProperty('--preview-comment-rail-inset', '16px');
 
   const controller = new CommentUiController({
     commentSelectionButton,
@@ -413,7 +412,7 @@ describe('CommentUiController browser behavior', () => {
     expect(keys).toEqual([controller.getThreadGroups()[0].key]);
   });
 
-  it('reuses comment markers across layout refreshes and hover changes', () => {
+  it('keeps comment markers in the editor and out of the preview', () => {
     const setup = createController();
     controller = setup.controller;
 
@@ -435,27 +434,14 @@ describe('CommentUiController browser behavior', () => {
     controller.hoveredPreviewGroupKeys = [groupKey];
     controller.refreshLayout();
     const editorBadge = controller.editorLayer.querySelector('.comment-editor-badge');
-    const previewBadge = controller.previewLayer.querySelector('.comment-preview-badge');
 
     controller.refreshLayout();
     controller.updateHoveredEditorGroups([groupKey]);
     controller.updateHoveredPreviewGroups([groupKey]);
 
     expect(controller.editorLayer.querySelector('.comment-editor-badge')).toBe(editorBadge);
-    expect(controller.previewLayer.querySelector('.comment-preview-badge')).toBe(previewBadge);
+    expect(controller.previewLayer.querySelector('.comment-preview-badge')).toBeNull();
     expect(editorBadge.classList.contains('is-hovered')).toBe(true);
-    expect(previewBadge.classList.contains('is-hovered')).toBe(true);
-  });
-
-  it('updates preview rail CSS variables when comment markers need gutter space', () => {
-    const setup = createController();
-    controller = setup.controller;
-
-    const didChange = controller.syncPreviewRailLayout(140);
-
-    expect(didChange).toBe(true);
-    expect(setup.previewElement.style.getPropertyValue('--preview-comment-rail-reserved')).toBe('36px');
-    expect(setup.previewElement.style.getPropertyValue('--preview-comment-rail-offset')).toBe('100px');
   });
 });
 

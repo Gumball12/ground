@@ -155,7 +155,6 @@
   --preview-floating-comments-width: var(--panel-comments-width);
   --preview-floating-outline-width: var(--panel-outline-width);
   --preview-content-max-width: var(--preview-content-width);
-  --preview-comment-rail-inset: 10px;
   position: relative;
   display: flex;
   flex: 1;
@@ -173,14 +172,12 @@
 }
 
 .preview-content {
-  --preview-comment-rail-reserved: 0px;
-  --preview-comment-rail-offset: 0px;
   position: relative;
   min-width: 0;
   max-width: var(--preview-content-max-width);
   margin: 0 auto;
   overflow: visible;
-  padding: var(--space-6) calc(var(--space-6) + var(--preview-comment-rail-reserved)) var(--space-12) var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-12);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-sm);

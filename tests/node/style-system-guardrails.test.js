@@ -17,8 +17,6 @@ const ALLOWED_RUNTIME_CSS_VARIABLES = new Set([
   '--app-viewport-offset-top',
   '--bases-card-swatch',
   '--depth',
-  '--preview-comment-rail-offset',
-  '--preview-comment-rail-reserved',
 ]);
 
 async function collectFiles(dirPath, pattern) {

@@ -1,9 +1,5 @@
 import {
   COMMENT_CONTROL_SLOT_HEIGHT,
-  COMMENT_PREVIEW_BADGE_MIN_WIDTH,
-  COMMENT_PREVIEW_RAIL_BREAKPOINT,
-  COMMENT_PREVIEW_RAIL_MIN_WIDTH,
-  COMMENT_PREVIEW_RAIL_SLOT_HEIGHT,
   COMMENT_SELECTION_CHIP_GAP,
   clamp,
   createCommentMarkerContent,
@@ -32,51 +28,6 @@ function refreshLayout() {
 }
 
 /** @this {any} */
-function syncPreviewRailLayout(maxBubbleWidth = 0) {
-  if (!this.previewElement) {
-    return false;
-  }
-
-  const shouldShowRail = this.supported && maxBubbleWidth > 0;
-  const nextReserved = 0;
-  const nextOffset = 0;
-  let reserved = nextReserved;
-  let offset = nextOffset;
-
-  if (shouldShowRail) {
-    const previewStyle = getComputedStyle(this.previewElement);
-    const currentReserved = Number.parseFloat(
-      previewStyle.getPropertyValue('--preview-comment-rail-reserved'),
-    ) || 0;
-    const currentPaddingRight = Number.parseFloat(previewStyle.paddingRight) || 0;
-    const railInset = Number.parseFloat(
-      previewStyle.getPropertyValue('--preview-comment-rail-inset'),
-    ) || 0;
-    const basePaddingRight = Math.max(currentPaddingRight - currentReserved, 0);
-    const requiredRail = Math.max(maxBubbleWidth + railInset - basePaddingRight, 0);
-    const previewContainerRect = this.previewContainer?.getBoundingClientRect();
-    const previewRect = this.previewElement.getBoundingClientRect();
-    const availableRightGutter = previewContainerRect
-      ? Math.max(previewContainerRect.right - previewRect.right, 0)
-      : 0;
-
-    offset = Math.min(availableRightGutter, requiredRail);
-    reserved = Math.max(requiredRail - offset, 0);
-  }
-
-  const nextReservedValue = `${Math.ceil(reserved)}px`;
-  const nextOffsetValue = `${Math.floor(offset)}px`;
-  const didChange = this.previewElement.style.getPropertyValue('--preview-comment-rail-reserved') !== nextReservedValue
-    || this.previewElement.style.getPropertyValue('--preview-comment-rail-offset') !== nextOffsetValue;
-
-  if (didChange) {
-    this.previewElement.style.setProperty('--preview-comment-rail-reserved', nextReservedValue);
-    this.previewElement.style.setProperty('--preview-comment-rail-offset', nextOffsetValue);
-  }
-
-  return didChange;
-}
-
 /** @this {any} */
 function scheduleLayoutRefresh() {
   if (this.layoutFrame) {
@@ -318,7 +269,6 @@ function renderPreviewLayer(groups = this.getThreadGroups()) {
       this.previewHighlightLayer.replaceChildren();
     }
     this.previewHoverRegions = [];
-    this.syncPreviewRailLayout(0);
     return;
   }
 
@@ -371,15 +321,7 @@ function renderPreviewLayer(groups = this.getThreadGroups()) {
     });
   }
 
-  const existingBubbles = new Map(
-    Array.from(this.previewLayer?.querySelectorAll('.comment-preview-badge') ?? [])
-      .map((bubble) => [bubble.dataset.commentPreviewGroupKey, bubble]),
-  );
-  const visibleBubbleKeys = new Set();
-  const occupiedTops = [];
   const hoverRegions = [];
-  const showPassiveMarkers = this.shouldRenderPassivePreviewMarkers();
-  const previewBubbles = [];
   groups.forEach((group) => {
     const target = this.resolvePreviewTarget(group.anchor, targetContext);
     if (!target?.bubbleRect) {
@@ -393,7 +335,6 @@ function renderPreviewLayer(groups = this.getThreadGroups()) {
 
     const isActive = this.activeCard?.groupKey === group.key;
     const isHovered = this.hoveredPreviewGroupKeys.includes(group.key);
-    const isEmphasized = isActive || isHovered;
 
     target.highlightRects?.forEach((rect, index) => {
       renderHighlight({
@@ -404,59 +345,6 @@ function renderPreviewLayer(groups = this.getThreadGroups()) {
         rect,
       });
     });
-
-    if (!showPassiveMarkers && !isEmphasized) {
-      return;
-    }
-
-    let bubble = existingBubbles.get(group.key);
-    if (!bubble) {
-      bubble = document.createElement('button');
-      bubble.type = 'button';
-      bubble.className = 'ui-state-marker ui-state-marker--comment comment-preview-badge';
-      bubble.dataset.commentPreviewGroupKey = group.key;
-      bubble.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-      });
-      bubble.addEventListener('click', () => {
-        const currentGroup = bubble.commentGroup;
-        if (!currentGroup) {
-          return;
-        }
-        this.openThreadGroup(currentGroup, {
-          anchor: currentGroup.anchor,
-          origin: 'preview',
-          sourceRect: bubble.getBoundingClientRect(),
-        });
-      });
-      this.previewLayer?.appendChild(bubble);
-    }
-
-    bubble.commentGroup = group;
-    bubble.dataset.commentPreviewGroupKeys = group.key;
-    setInteractionClasses(bubble, isActive, isHovered);
-    bubble.setAttribute('aria-label', `${group.threads.length} comment thread${group.threads.length === 1 ? '' : 's'}`);
-    if (bubble.dataset.count !== String(group.threads.length)) {
-      bubble.dataset.count = String(group.threads.length);
-      bubble.replaceChildren(createCommentMarkerContent(group.threads.length));
-    }
-    let bubbleTop = clamp(
-      target.bubbleRect.top - previewRect.top,
-      6,
-      Math.max(this.previewElement.clientHeight - COMMENT_PREVIEW_RAIL_SLOT_HEIGHT, 6),
-    );
-    while (occupiedTops.some((top) => Math.abs(top - bubbleTop) < (COMMENT_PREVIEW_RAIL_SLOT_HEIGHT - 4))) {
-      bubbleTop = clamp(
-        bubbleTop + COMMENT_PREVIEW_RAIL_SLOT_HEIGHT,
-        6,
-        Math.max(this.previewElement.clientHeight - COMMENT_PREVIEW_RAIL_SLOT_HEIGHT, 6),
-      );
-    }
-    bubble.style.top = `${bubbleTop}px`;
-    bubble.title = `${group.threads.length} comment${group.threads.length === 1 ? '' : 's'}`;
-    visibleBubbleKeys.add(group.key);
-    occupiedTops.push(bubbleTop);
-    previewBubbles.push(bubble);
   });
 
   syncPreviewSelectionButton.call(this, previewRect);
@@ -466,19 +354,7 @@ function renderPreviewLayer(groups = this.getThreadGroups()) {
       highlight.remove();
     }
   });
-  existingBubbles.forEach((bubble, groupKey) => {
-    if (!visibleBubbleKeys.has(groupKey)) {
-      bubble.remove();
-    }
-  });
   this.previewHoverRegions = hoverRegions;
-  const maxBubbleWidth = previewBubbles.reduce(
-    (maxWidth, bubble) => Math.max(maxWidth, bubble.offsetWidth || COMMENT_PREVIEW_BADGE_MIN_WIDTH),
-    0,
-  );
-  if (this.syncPreviewRailLayout(maxBubbleWidth)) {
-    this.scheduleLayoutRefresh();
-  }
   if (this.lastPreviewPointerPosition) {
     this.updateHoveredPreviewGroups(
       this.getPreviewGroupKeysAtPoint(this.lastPreviewPointerPosition.x, this.lastPreviewPointerPosition.y),
@@ -588,11 +464,7 @@ function updateHoveredPreviewGroups(nextKeys = []) {
 
   this.hoveredPreviewGroupKeys = normalizedKeys;
   this.hoveredPreviewGroupKeysSignature = signature;
-  if (this.shouldRenderPassivePreviewMarkers()) {
-    this.syncHoveredCommentClasses();
-  } else {
-    this.scheduleLayoutRefresh();
-  }
+  this.syncHoveredCommentClasses();
 }
 
 /** @this {any} */
@@ -639,11 +511,6 @@ function syncHoveredPreviewGroupsFromTarget(target) {
 }
 
 /** @this {any} */
-function shouldRenderPassivePreviewMarkers() {
-  const previewWidth = this.previewContainer?.clientWidth ?? this.previewElement?.clientWidth ?? 0;
-  return window.innerWidth >= COMMENT_PREVIEW_RAIL_BREAKPOINT && previewWidth >= COMMENT_PREVIEW_RAIL_MIN_WIDTH;
-}
-
 export const commentUiLayoutMethods = {
   clearPreviewSelection,
   ensureEditorLayer,
@@ -655,10 +522,8 @@ export const commentUiLayoutMethods = {
   renderPreviewLayer,
   resolvePreviewTarget,
   scheduleLayoutRefresh,
-  shouldRenderPassivePreviewMarkers,
   syncHoveredCommentClasses,
   syncHoveredPreviewGroupsFromTarget,
-  syncPreviewRailLayout,
   updateHoveredEditorGroups,
   updateHoveredPreviewGroups,
 };
