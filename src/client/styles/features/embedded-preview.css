@@ -94,11 +94,6 @@
   max-width: none;
 }
 
-.preview-content .mermaid-frame svg,
-.mermaid-maximized-root .mermaid-frame svg {
-  display: block;
-}
-
 .preview-content .mermaid-frame :is(text, tspan, foreignObject),
 .mermaid-maximized-root .mermaid-frame :is(text, tspan, foreignObject) {
   cursor: text;
@@ -174,16 +169,6 @@ body.mermaid-maximized-open::before {
 .preview-content .plantuml-tool-btn,
 .plantuml-maximized-root .plantuml-tool-btn {
   flex-shrink: 0;
-}
-
-.preview-content .plantuml-frame,
-.plantuml-maximized-root .plantuml-frame {
-  max-width: 100%;
-}
-
-.preview-content .plantuml-frame svg,
-.plantuml-maximized-root .plantuml-frame svg {
-  display: block;
 }
 
 .preview-content .plantuml-frame :is(text, tspan, foreignObject),

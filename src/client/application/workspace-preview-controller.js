@@ -363,8 +363,6 @@ export class WorkspacePreviewController {
         return;
       }
 
-      this.previewRenderer.scheduleActiveMermaidRefit();
-      this.previewRenderer.scheduleActivePlantUmlRefit();
       this.videoEmbed?.syncLayout();
       this.drawioEmbed.syncLayout();
       this.excalidrawEmbed.syncLayout();

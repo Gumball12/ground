@@ -91,8 +91,8 @@ export class PreviewRenderer {
     };
 
     this.handleWindowResize = () => {
-      this.mermaidHydrator.scheduleActiveRefit();
-      this.plantUmlHydrator.scheduleActiveRefit();
+      this.scheduleActiveMermaidRefit();
+      this.scheduleActivePlantUmlRefit();
     };
 
     this.diagramChrome = new DiagramChrome({

@@ -10,7 +10,7 @@ import {
 import { clamp } from '../domain/vault-utils.js';
 import { downloadBlob } from '../browser-utils.js';
 
-export const DIAGRAM_CHROME_ZOOM = Object.freeze({
+const DIAGRAM_CHROME_ZOOM = Object.freeze({
   animationDurationMs: 160,
   default: 1,
   max: 3,
@@ -81,7 +81,6 @@ export class DiagramChrome {
     this.shellControllers = new WeakMap();
     this.shellViewStates = new WeakMap();
     this.shellRefits = new WeakMap();
-    this.resizeFrameId = null;
   }
 
   destroy() {
@@ -90,10 +89,6 @@ export class DiagramChrome {
     this.resizeObservers.clear();
     this.maximizedRoots.forEach((root) => root.remove());
     this.maximizedRoots.clear();
-    if (this.resizeFrameId) {
-      this.window.cancelAnimationFrame(this.resizeFrameId);
-      this.resizeFrameId = null;
-    }
     this.activeMaximizedShell = null;
   }
 
@@ -187,17 +182,6 @@ export class DiagramChrome {
     });
   }
 
-  scheduleActiveRefitOnNextFrame() {
-    if (this.resizeFrameId) {
-      this.window.cancelAnimationFrame(this.resizeFrameId);
-    }
-
-    this.resizeFrameId = this.window.requestAnimationFrame(() => {
-      this.resizeFrameId = null;
-      this.scheduleActiveRefit();
-    });
-  }
-
   ensureMaximizedRoot(kind) {
     const config = getKindConfig(kind);
     const existing = this.maximizedRoots.get(kind);
@@ -283,12 +267,11 @@ export class DiagramChrome {
     const toolbar = this.document.createElement('div');
     toolbar.className = config.toolbarClassName;
     const leftGroup = this.document.createElement('div');
-    leftGroup.className = 'diagram-preview-toolbar-group diagram-preview-toolbar-group--zoom';
+    leftGroup.className = 'diagram-preview-toolbar-group';
     const rightGroup = this.document.createElement('div');
     rightGroup.className = 'diagram-preview-toolbar-group diagram-preview-toolbar-group--actions';
 
-    const decreaseButton = this.createButton(kind, '-', 'Zoom out');
-    decreaseButton.textContent = '−';
+    const decreaseButton = this.createButton(kind, '−', 'Zoom out');
     const increaseButton = this.createButton(kind, '+', 'Zoom in');
     const resetButton = this.createButton(kind, '', 'Reset zoom', { icon: 'fit' });
     const copyButton = this.createButton(kind, '', 'Copy image', { icon: 'copy' });
@@ -471,11 +454,9 @@ export class DiagramChrome {
     }
 
     let currentZoom = zoomPolicy.default;
-    let defaultZoom = 1;
     let zoomAnimationFrameId = null;
     let zoomAnimationTarget = null;
     let resetZoomFrameId = null;
-    let layoutFrameId = null;
     let replacementFrameId = null;
     let hasManualZoom = Boolean(
       previousViewState?.hasManualZoom
@@ -487,8 +468,6 @@ export class DiagramChrome {
     let lastAutoFitViewportWidth = hasInitialViewport ? previousViewportWidth : 0;
     let shouldForceScheduledReset = false;
 
-    diagramElement.style.display = 'block';
-    diagramElement.style.margin = '0 auto';
     diagramElement.style.maxWidth = 'none';
 
     const calculateDefaultZoom = () => {
@@ -514,16 +493,13 @@ export class DiagramChrome {
       decreaseButton.disabled = currentZoom <= zoomPolicy.min;
       increaseButton.disabled = currentZoom >= zoomPolicy.max;
 
-      diagramElement.style.margin = '0 auto';
     };
 
-    // ponytail: size from the current viewport for the first paint; hidden shells refit later.
     const initialZoom = hasRestorableViewState
       ? clamp(previousViewState.zoom, zoomPolicy.min, zoomPolicy.max)
       : hasInitialViewport
       ? clamp(previousViewportWidth / baseWidth, zoomPolicy.min, zoomPolicy.fitMax)
       : zoomPolicy.default;
-    applyZoom(initialZoom);
 
     const getViewportCenter = () => ({
       x: frame.scrollLeft + (frame.clientWidth / 2),
@@ -583,15 +559,10 @@ export class DiagramChrome {
       animateZoomTo((zoomAnimationTarget ?? currentZoom) + delta);
     };
 
-    const resetZoomToFit = ({ animate = false } = {}) => {
-      defaultZoom = calculateDefaultZoom();
+    const resetZoomToFit = () => {
+      const defaultZoom = calculateDefaultZoom();
       hasManualZoom = false;
       lastAutoFitViewportWidth = getFrameViewportSize(frame).width;
-
-      if (animate && Math.abs(defaultZoom - currentZoom) > 0.001) {
-        animateZoomTo(defaultZoom);
-        return;
-      }
 
       if (zoomAnimationFrameId) {
         this.window.cancelAnimationFrame(zoomAnimationFrameId);
@@ -609,33 +580,25 @@ export class DiagramChrome {
       if (resetZoomFrameId) {
         this.window.cancelAnimationFrame(resetZoomFrameId);
       }
-      if (layoutFrameId) {
-        this.window.cancelAnimationFrame(layoutFrameId);
-      }
 
       resetZoomFrameId = this.window.requestAnimationFrame(() => {
-        layoutFrameId = this.window.requestAnimationFrame(() => {
-          layoutFrameId = this.window.requestAnimationFrame(() => {
-            layoutFrameId = null;
-            resetZoomFrameId = null;
-            if (!shell.isConnected) {
-              return;
-            }
+        resetZoomFrameId = null;
+        if (!shell.isConnected) {
+          return;
+        }
 
-            const shouldForce = shouldForceScheduledReset;
-            shouldForceScheduledReset = false;
-            const viewportWidth = getFrameViewportSize(frame).width;
-            const viewportChanged = Math.abs(viewportWidth - lastAutoFitViewportWidth) > 1;
-            if (!shouldForce && hasManualZoom) {
-              return;
-            }
-            if (!shouldForce && viewportWidth > 0 && lastAutoFitViewportWidth > 0 && !viewportChanged) {
-              return;
-            }
+        const shouldForce = shouldForceScheduledReset;
+        shouldForceScheduledReset = false;
+        const viewportWidth = getFrameViewportSize(frame).width;
+        const viewportChanged = Math.abs(viewportWidth - lastAutoFitViewportWidth) > 1;
+        if (!shouldForce && hasManualZoom) {
+          return;
+        }
+        if (!shouldForce && viewportWidth > 0 && lastAutoFitViewportWidth > 0 && !viewportChanged) {
+          return;
+        }
 
-            resetZoomToFit();
-          });
-        });
+        resetZoomToFit();
       });
     };
 
@@ -733,9 +696,6 @@ export class DiagramChrome {
         }
         if (resetZoomFrameId) {
           this.window.cancelAnimationFrame(resetZoomFrameId);
-        }
-        if (layoutFrameId) {
-          this.window.cancelAnimationFrame(layoutFrameId);
         }
         if (replacementFrameId) {
           this.window.cancelAnimationFrame(replacementFrameId);

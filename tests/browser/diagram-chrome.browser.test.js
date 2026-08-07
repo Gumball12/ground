@@ -125,7 +125,6 @@ describe('DiagramChrome', () => {
       text.dispatchEvent(pointerDown);
 
       expect(pointerDown.defaultPrevented).toBe(false);
-      expect(frame.classList.contains('is-pannable')).toBe(false);
     }
   });
 

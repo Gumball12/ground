@@ -1521,8 +1521,6 @@ test('preserves manual standalone PlantUML zoom after preview layout sync runs',
   await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
   await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
   await expect(page.locator('#previewContent .plantuml-zoom-label')).not.toHaveText(initialLabel || '');
-
-  await expect(page.locator('#previewContent .plantuml-zoom-label')).not.toHaveText(initialLabel || '');
 });
 
 test('refits standalone PlantUML diagrams on maximize, resize, and restore', async ({ page }) => {
@@ -1653,8 +1651,6 @@ test('preserves manual Mermaid zoom after preview layout sync runs', async ({ pa
   await page.locator('#previewContent .mermaid-zoom-btn[aria-label="Zoom in"]').click();
   await page.locator('#previewContent .mermaid-zoom-btn[aria-label="Zoom in"]').click();
   await expect(page.locator('#previewContent .mermaid-zoom-label')).not.toHaveText(initialLabel || '');
-
-  await expect(page.locator('#previewContent .mermaid-zoom-label')).not.toHaveText(initialLabel || '');
 });
 
 test('renders embedded Mermaid files from markdown docs', async ({ page }) => {
@@ -1725,8 +1721,6 @@ test('preserves manual embedded PlantUML zoom after preview layout sync runs', a
   const initialLabel = await page.locator('#previewContent .plantuml-zoom-label').textContent();
   await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
   await page.locator('#previewContent .plantuml-tool-btn[aria-label="Zoom in"]').click();
-  await expect(page.locator('#previewContent .plantuml-zoom-label')).not.toHaveText(initialLabel || '');
-
   await expect(page.locator('#previewContent .plantuml-zoom-label')).not.toHaveText(initialLabel || '');
 });
 

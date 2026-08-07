@@ -32,16 +32,10 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
       shellClassName: 'mermaid-shell',
       sourceClassName: 'mermaid-source',
     });
-    this.renderer = renderer;
     this.currentTheme = document.documentElement?.dataset.theme === 'light' ? 'light' : 'dark';
     this.diagramChrome = renderer.diagramChrome;
     this.loader = null;
     this.runtime = null;
-  }
-
-  destroy() {
-    this.cancelHydration();
-    this.clearPreservedShells();
   }
 
   cancelHydration({ preserveActiveShell = false } = {}) {
@@ -360,10 +354,4 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
     shell._diagramRenderedSource = renderedSource;
   }
 
-  scheduleActiveRefit() {
-    this.diagramChrome?.scheduleActiveRefit?.({
-      kind: 'mermaid',
-      root: this.renderer.previewElement,
-    });
-  }
 }

@@ -25,7 +25,7 @@ A collaborator's interaction with **Editable Vault Content** where they open, vi
 _Avoid_: Edit, autosave, no-op write, format-on-open
 
 **Diagram Chrome**:
-The shared browser interaction surface around rendered Mermaid and PlantUML diagrams, including toolbar controls, zooming, fitting, panning, maximizing, restoring, copying, downloading, resize handling, and preservation across preview render commits. Diagram Chrome excludes the diagram rendering implementation itself; Mermaid and PlantUML rendering remain separate diagram adapters.
+The shared browser interaction surface around rendered Mermaid and PlantUML diagrams, including toolbar controls, zooming, fitting, native scrolling, maximizing, restoring, copying, downloading, resize handling, and preservation across preview render commits. Diagram Chrome excludes the diagram rendering implementation itself; Mermaid and PlantUML rendering remain separate diagram adapters.
 _Avoid_: Diagram renderer, preview compiler, diagram source
 
 **Vault Mutation**:

@@ -32,16 +32,10 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
       shellClassName: 'plantuml-shell',
       sourceClassName: 'plantuml-source',
     });
-    this.renderer = renderer;
     this.diagramChrome = renderer.diagramChrome;
     this.renderClient = renderClient;
     this.svgCache = new Map();
     this.svgInflightRequests = new Map();
-  }
-
-  destroy() {
-    this.cancelHydration();
-    this.clearPreservedShells();
   }
 
   cancelHydration({ preserveActiveShell = false } = {}) {
@@ -49,10 +43,6 @@ export class PlantUmlPreviewHydrator extends DiagramPreviewHydrator {
     if (!preserveActiveShell) {
       this.diagramChrome?.cancelActiveShell?.('plantuml');
     }
-  }
-
-  scheduleActiveRefit() {
-    this.diagramChrome?.scheduleActiveRefitOnNextFrame?.();
   }
 
   handleReconcile({ restoredMaximizedShell }) {

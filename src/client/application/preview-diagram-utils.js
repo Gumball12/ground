@@ -62,10 +62,8 @@ export function normalizeMermaidSvg(svg) {
 export function getFrameViewportSize(frame) {
   const styles = window.getComputedStyle(frame);
   const paddingX = Number.parseFloat(styles.paddingLeft || '0') + Number.parseFloat(styles.paddingRight || '0');
-  const paddingY = Number.parseFloat(styles.paddingTop || '0') + Number.parseFloat(styles.paddingBottom || '0');
 
   return {
-    height: Math.max(frame.clientHeight - paddingY, 0),
     width: Math.max(frame.clientWidth - paddingX, 0),
   };
 }
