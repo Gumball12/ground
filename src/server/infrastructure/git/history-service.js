@@ -1,6 +1,7 @@
 import { createRequestError as createGitRequestError } from '../http/http-errors.js';
 import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { normalizeRelativeGitPath } from './path-utils.js';
+import { getImageMimeType } from './image-mime.js';
 import {
   countPatchLines,
   parseGitLogHeader,
@@ -308,6 +309,7 @@ export class GitHistoryService {
 
       if (metaOnly) {
         const metaResponse = {
+          baseRef: meta.baseRef,
           commit: meta.commit,
           files: meta.files,
           isGitRepo: true,
@@ -335,6 +337,7 @@ export class GitHistoryService {
         && (fileSummary.additions + fileSummary.deletions) > this.maxInitialPatchLines
       ) {
         const guardedResponse = {
+          baseRef: meta.baseRef,
           commit: meta.commit,
           files: [{
             ...baseFile,
@@ -396,6 +399,7 @@ export class GitHistoryService {
         };
 
       const response = {
+        baseRef: meta.baseRef,
         commit: meta.commit,
         files: [detailedFile],
         isGitRepo: true,
@@ -460,6 +464,46 @@ export class GitHistoryService {
     });
   }
 
+  async getFileAttachment({ hash, path } = {}) {
+    const isGitRepo = await this.commandRunner.isGitRepo();
+    const normalizedHash = this.normalizeAttachmentRef(hash);
+    const normalizedPath = normalizeRelativeGitPath(path);
+
+    if (!isGitRepo) {
+      throw createGitRequestError(404, 'Git repository not found');
+    }
+
+    if (!isImageAttachmentFilePath(normalizedPath)) {
+      throw createGitRequestError(400, 'Unsupported image attachment path');
+    }
+
+    const cacheKey = JSON.stringify({
+      hash: normalizedHash,
+      path: normalizedPath,
+      type: 'file-attachment',
+    });
+    const cached = getCachedValue(this.commitCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    return this.runRequest(cacheKey, async () => {
+      let content;
+      try {
+        content = await this.commandRunner.execGitBuffer(['cat-file', 'blob', `${normalizedHash}:${normalizedPath}`]);
+      } catch {
+        throw createGitRequestError(404, 'Commit image not found');
+      }
+
+      return setCachedValue(this.commitCache, cacheKey, {
+        content,
+        hash: normalizedHash,
+        mimeType: getImageMimeType(normalizedPath),
+        path: normalizedPath,
+      }, this.responseCacheTtlMs);
+    });
+  }
+
   async runRequest(key, callback) {
     if (this.pendingRequests.has(key)) {
       return this.pendingRequests.get(key);
@@ -492,6 +536,14 @@ export class GitHistoryService {
       throw createGitRequestError(400, 'Invalid commit hash');
     }
     return normalizedHash;
+  }
+
+  normalizeAttachmentRef(hash) {
+    const normalizedHash = String(hash ?? '').trim();
+    if (normalizedHash === 'HEAD') {
+      return normalizedHash;
+    }
+    return this.normalizeCommitHash(normalizedHash);
   }
 
   parseHistoryChunk(chunk) {
@@ -588,6 +640,7 @@ export class GitHistoryService {
         authoredAt: chunk.authoredAt,
         deletions: Number(numstatEntry?.deletions || 0),
         filesChanged: 1,
+        fileKind: getVaultFileKind(nameStatusEntry?.path),
         hash: chunk.hash,
         isMergeCommit: chunk.isMergeCommit,
         oldPath: nameStatusEntry?.oldPath ?? null,
@@ -679,6 +732,7 @@ export class GitHistoryService {
       const numstatEntry = numstatEntries[index];
       return {
         ...entry,
+        fileKind: getVaultFileKind(entry.path),
         stats: numstatEntry
           ? {
             additions: numstatEntry.additions,

@@ -650,6 +650,17 @@ test('HTTP server exposes git status and diff endpoints for git-backed vaults', 
   assert.equal(commitDiffResponse.statusCode, 200);
   assert.match(commitDiffResponse.body, /"hunks":\[/);
 
+  const diagramBytes = await createImageBuffer('png');
+  await writeFile(join(app.vaultDir, 'diagram.png'), diagramBytes);
+  await execFile('git', ['add', 'diagram.png'], { cwd: app.vaultDir, env: gitEnv });
+  await execFile('git', ['commit', '-m', 'Add diagram'], { cwd: app.vaultDir, env: gitEnv });
+  const imageCommitHash = String((await execFile('git', ['rev-parse', 'HEAD'], { cwd: app.vaultDir, env: gitEnv })).stdout).trim();
+  const imageResponse = await httpRequest(`${app.baseUrl}/api/git/file-attachment?hash=${imageCommitHash}&path=diagram.png`);
+  assert.equal(imageResponse.statusCode, 200);
+  assert.equal(imageResponse.headers['content-type'], 'image/png');
+  assert.equal(imageResponse.headers['content-disposition'], 'inline; filename="diagram.png"; filename*=UTF-8\'\'diagram.png');
+  assert.deepEqual(imageResponse.bodyBuffer, diagramBytes);
+
   const stageResponse = await httpRequest(`${app.baseUrl}/api/git/stage`, {
     body: JSON.stringify({ path: 'test.md' }),
     headers: {

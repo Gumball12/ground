@@ -2,11 +2,17 @@ import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { mapWithConcurrency } from '../../shared/async-utils.js';
 import { createEmptyStats } from './responses.js';
 import { splitContentLines } from './parsers.js';
+import { getImageMimeType } from './image-mime.js';
 
 async function countFileLines(filePath) {
+  if (isImageAttachmentFilePath(filePath)) {
+    return 0;
+  }
+
   return new Promise((resolve, reject) => {
     const stream = createReadStream(filePath, { encoding: 'utf8' });
     let lineCount = 0;
@@ -36,6 +42,7 @@ function buildSyntheticAddedFileDiff(pathValue, content) {
   const normalizedContent = String(content ?? '').replace(/\r\n/g, '\n');
   const file = {
     code: 'U',
+    fileKind: getVaultFileKind(pathValue),
     hunks: [],
     isBinary: false,
     oldPath: null,
@@ -89,7 +96,27 @@ export class GitUntrackedFileService {
   async buildSyntheticDiffs(files = []) {
     const results = await mapWithConcurrency(files, 2, async (file) => {
       try {
-        const content = await readFile(join(this.vaultDir, file.path), 'utf8');
+        const absolutePath = join(this.vaultDir, file.path);
+        if (isImageAttachmentFilePath(file.path)) {
+          const content = await readFile(absolutePath);
+          return {
+            ...file,
+            binaryMessage: 'Binary image file',
+            byteLength: content.byteLength,
+            code: file.code || 'U',
+            fileKind: 'image',
+            hunks: [],
+            isBinary: true,
+            mimeType: getImageMimeType(file.path),
+            oldPath: file.oldPath ?? null,
+            path: file.path,
+            stats: createEmptyStats(),
+            status: file.status || 'untracked',
+            synthetic: true,
+          };
+        }
+
+        const content = await readFile(absolutePath, 'utf8');
         return buildSyntheticAddedFileDiff(file.path, content);
       } catch {
         return null;

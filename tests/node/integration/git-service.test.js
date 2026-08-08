@@ -165,6 +165,49 @@ test('GitService reports sections and diffs for staged, unstaged, and untracked 
   assert.equal(metaDiff.files.every((file) => !('hunks' in file)), true);
 });
 
+test('GitService keeps untracked images binary and serves historical image blobs', async (t) => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'collabmd-git-service-images-'));
+  t.after(async () => {
+    await rm(repoDir, { force: true, recursive: true });
+  });
+
+  await runGit(repoDir, ['init']);
+  await runGit(repoDir, ['config', 'user.email', 'tests@example.com']);
+  await runGit(repoDir, ['config', 'user.name', 'CollabMD Tests']);
+
+  const imageBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Zt9kAAAAASUVORK5CYII=',
+    'base64',
+  );
+  await writeFile(join(repoDir, 'diagram.png'), imageBytes);
+  await runGit(repoDir, ['add', 'diagram.png']);
+  await runGit(repoDir, ['commit', '-m', 'Add diagram']);
+  const headHash = await runGitOutput(repoDir, ['rev-parse', 'HEAD']);
+
+  const gitService = new GitService({ vaultDir: repoDir });
+  await writeFile(join(repoDir, 'untracked.png'), imageBytes);
+
+  const diff = await gitService.getDiff({ path: 'untracked.png', scope: 'working-tree' });
+  assert.equal(diff.files[0].fileKind, 'image');
+  assert.equal(diff.files[0].isBinary, true);
+  assert.equal(diff.files[0].hunks.length, 0);
+  assert.equal(diff.files[0].stats.additions, 0);
+  assert.equal(diff.files[0].byteLength, imageBytes.byteLength);
+
+  const historicalAttachment = await gitService.getFileAttachment({
+    hash: headHash,
+    path: 'diagram.png',
+  });
+  assert.equal(historicalAttachment.mimeType, 'image/png');
+  assert.deepEqual(historicalAttachment.content, imageBytes);
+
+  const headAttachment = await gitService.getFileAttachment({
+    hash: 'HEAD',
+    path: 'diagram.png',
+  });
+  assert.deepEqual(headAttachment.content, imageBytes);
+});
+
 test('GitService normalizes git paths that include spaces', async (t) => {
   const repoDir = await mkdtemp(join(tmpdir(), 'collabmd-git-service-paths-'));
   t.after(async () => {
@@ -795,6 +838,11 @@ test('GitService returns historical file snapshots for text vault files', async 
   await assert.rejects(
     gitService.getFileSnapshot({ hash: rootHash, path: 'missing.md' }),
     (error) => error?.statusCode === 404,
+  );
+
+  await assert.rejects(
+    gitService.getFileSnapshot({ hash: 'HEAD', path: 'tracked.md' }),
+    (error) => error?.statusCode === 400,
   );
 });
 

@@ -381,6 +381,7 @@ export class CollabMdAppShell {
       wikiLinkAutoCreate: this.runtimeConfig.wikiLinkAutoCreate !== false,
     });
     this.gitDiffView = new GitDiffViewController({
+      getTheme: () => this.themeController.getTheme(),
       gitApiClient: this.gitApiClient,
       onBackToHistory: ({ historyFilePath } = {}) => {
         if (historyFilePath) {
@@ -394,6 +395,7 @@ export class CollabMdAppShell {
       onStageFile: (filePath, { scope }) => this.stageGitFile(filePath, { scope }),
       onUnstageFile: (filePath, { scope }) => this.unstageGitFile(filePath, { scope }),
       toastController: this.toastController,
+      vaultApiClient: this.vaultApiClient,
     });
     this.fileHistoryView = new FileHistoryViewController({
       diffRenderer: this.gitDiffView,

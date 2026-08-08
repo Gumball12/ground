@@ -70,6 +70,23 @@ export class GitService {
 
         return String(result.stdout ?? '');
       },
+      async execGitBuffer(args, { env = null } = {}) {
+        const result = await gitExecFile('git', ['-c', 'core.quotepath=false', ...args], {
+          cwd: vaultDir,
+          encoding: null,
+          env: {
+            ...process.env,
+            ...(commandEnv ?? {}),
+            ...(env ?? {}),
+          },
+          maxBuffer: 5 * 1024 * 1024,
+          timeout: 10_000,
+        });
+
+        return Buffer.isBuffer(result.stdout)
+          ? result.stdout
+          : Buffer.from(result.stdout ?? '');
+      },
     };
     this.untrackedFileService = new GitUntrackedFileService({ vaultDir });
     this.statusService = new GitStatusService({
@@ -291,6 +308,10 @@ export class GitService {
 
   async getFileSnapshot({ hash, path } = {}) {
     return this.historyService.getFileSnapshot({ hash, path });
+  }
+
+  async getFileAttachment({ hash, path } = {}) {
+    return this.historyService.getFileAttachment({ hash, path });
   }
 
   async pathExistsAtRef(ref, path) {

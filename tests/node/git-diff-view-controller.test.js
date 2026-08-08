@@ -462,3 +462,103 @@ test('GitDiffViewController diff mode toggle ignores inactive file history liste
   assert.match(harness.elements.diffContent.innerHTML, /diff-split-row/);
   assert.doesNotMatch(harness.elements.diffContent.innerHTML, /No file selected\./);
 });
+
+test('GitDiffViewController renders binary image diffs as a before and after comparison', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+  installWindowStub(t);
+
+  const controller = new GitDiffViewController({
+    gitApiClient: {
+      getFileAttachmentUrl: ({ hash, path }) => `/api/git/file-attachment?hash=${hash}&path=${path}`,
+    },
+  });
+  controller.isActive = true;
+  controller.data = {
+    files: [{
+      byteLength: 128,
+      fileKind: 'image',
+      hunks: [],
+      isBinary: true,
+      path: 'assets/diagram.webp',
+      status: 'untracked',
+      stats: { additions: 0, deletions: 0 },
+    }],
+    summary: { additions: 0, deletions: 0, filesChanged: 1 },
+  };
+  controller.render();
+
+  assert.match(harness.elements.diffContent.innerHTML, /diff-media-grid/);
+  assert.match(harness.elements.diffContent.innerHTML, /Image comparison/);
+  assert.match(harness.elements.diffContent.innerHTML, /attachment\?path=assets%2Fdiagram.webp/);
+  assert.doesNotMatch(harness.elements.diffContent.innerHTML, /RIFF/);
+});
+
+test('GitDiffViewController renders Excalidraw changes as scene summary plus readable JSON', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+
+  const controller = new GitDiffViewController();
+  const scene = JSON.stringify({
+    appState: { viewBackgroundColor: '#ffffff' },
+    elements: [{ id: 'rectangle-1', type: 'rectangle', x: 24, y: 32, width: 180, height: 90 }],
+    files: {},
+    type: 'excalidraw',
+    version: 2,
+  });
+  const markup = controller.renderExcalidrawDiff({
+    fileKind: 'excalidraw',
+    hunks: [{
+      lines: [{ content: scene, newLine: 1, oldLine: null, type: 'addition' }],
+    }],
+    path: 'test.excalidraw',
+    status: 'untracked',
+  });
+
+  assert.match(markup, /Excalidraw scene changes/);
+  assert.match(markup, /diff-scene-stat--add/);
+  assert.match(markup, /\+1/);
+  assert.match(markup, /Structured scene/);
+  assert.match(markup, /rectangle-1/);
+  assert.match(markup, /diff-excalidraw-preview/);
+});
+
+test('GitDiffViewController renders draw.io changes as visual panes plus XML fallback', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+
+  const controller = new GitDiffViewController();
+  const before = [
+    '<mxfile>',
+    '  <diagram>',
+    '    <mxGraphModel><root>',
+    '      <mxCell id="0" />',
+    '      <mxCell id="1" parent="0" />',
+    '      <mxCell id="shape-1" value="Before" vertex="1" parent="1" />',
+    '    </root></mxGraphModel>',
+    '  </diagram>',
+    '</mxfile>',
+  ].join('\n');
+  const after = before
+    .replace('value="Before"', 'value="After"')
+    .replace('    </root>', '      <mxCell id="shape-2" value="New" vertex="1" parent="1" />\n    </root>');
+  const markup = controller.renderDrawioDiff({
+    fileKind: 'drawio',
+    hunks: [{
+      lines: [
+        { content: before, newLine: null, oldLine: 1, type: 'deletion' },
+        { content: after, newLine: 1, oldLine: null, type: 'addition' },
+      ],
+    }],
+    path: 'test.drawio',
+    status: 'modified',
+  });
+
+  assert.match(markup, /draw\.io diagram changes/);
+  assert.match(markup, /diff-drawio-grid/);
+  assert.match(markup, /\+1/);
+  assert.match(markup, /~1/);
+  assert.match(markup, /XML source/);
+  assert.match(markup, /diff-drawio-preview/);
+  assert.match(markup, /shape-2/);
+});

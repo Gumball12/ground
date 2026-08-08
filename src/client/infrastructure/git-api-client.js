@@ -74,6 +74,11 @@ export class GitApiClient {
     return parseApiResponse(response, 'Failed to load historical file preview');
   }
 
+  getFileAttachmentUrl({ hash, path } = {}) {
+    const params = createSearchParams({ hash, path });
+    return resolveApiUrl(`/git/file-attachment?${params.toString()}`);
+  }
+
   async stageFile({ path, requestId = null } = {}) {
     return this.#postJson('/git/stage', { path }, { requestId, fallbackError: 'Failed to stage file' });
   }

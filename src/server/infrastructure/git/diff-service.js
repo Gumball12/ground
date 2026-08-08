@@ -1,5 +1,6 @@
 import { countPatchLines, parseNumstatOutput, parseUnifiedDiff } from './parsers.js';
 import { createEmptyStats } from './responses.js';
+import { getVaultFileKind } from '../../../domain/file-kind.js';
 
 function createSectionMap(sections = []) {
   return new Map(sections.map((section) => [section.key, section]));
@@ -33,6 +34,7 @@ function mergeScopedFile(existingFile, nextFile, scope) {
     return {
       ...nextFile,
       ...nextFlags,
+      fileKind: nextFile.fileKind || getVaultFileKind(nextFile.path),
       scope,
       stats: createEmptyStats(),
     };
@@ -44,6 +46,7 @@ function mergeScopedFile(existingFile, nextFile, scope) {
     return {
       ...existingFile,
       ...nextFile,
+      fileKind: existingFile.fileKind || getVaultFileKind(nextFile.path),
       hasStagedChanges: existingFile.hasStagedChanges || nextFlags.hasStagedChanges,
       hasUntrackedChanges: existingFile.hasUntrackedChanges || nextFlags.hasUntrackedChanges,
       hasWorkingTreeChanges: existingFile.hasWorkingTreeChanges || nextFlags.hasWorkingTreeChanges,
@@ -54,6 +57,7 @@ function mergeScopedFile(existingFile, nextFile, scope) {
 
   return {
     ...existingFile,
+    fileKind: existingFile.fileKind || getVaultFileKind(nextFile.path),
     hasStagedChanges: existingFile.hasStagedChanges || nextFlags.hasStagedChanges,
     hasUntrackedChanges: existingFile.hasUntrackedChanges || nextFlags.hasUntrackedChanges,
     hasWorkingTreeChanges: existingFile.hasWorkingTreeChanges || nextFlags.hasWorkingTreeChanges,
@@ -372,6 +376,7 @@ export class GitDiffService {
       return {
         ...file,
         ...detail,
+        fileKind: file.fileKind || detail.fileKind || getVaultFileKind(file.path),
         canLoadFullPatch: false,
         patchLineCount,
         tooLarge: false,

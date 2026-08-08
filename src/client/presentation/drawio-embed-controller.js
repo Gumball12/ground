@@ -1,6 +1,7 @@
 import { createDrawioLeaseRoomName } from '../../domain/drawio-room.js';
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveAppUrl } from '../domain/runtime-paths.js';
+import { renderDrawioViewer } from './drawio-viewer.js';
 import {
   cancelIdleRender,
   isNearViewport,
@@ -8,62 +9,6 @@ import {
 } from '../browser-utils.js';
 
 const HYDRATE_VIEWPORT_MARGIN_PX = 360;
-const DRAWIO_VIEWER_SCRIPT_URL = 'https://viewer.diagrams.net/js/viewer-static.min.js';
-
-let drawioViewerLoadPromise = null;
-
-function ensureDrawioViewerLoaded() {
-  if (window.GraphViewer?.processElements) {
-    return Promise.resolve(window.GraphViewer);
-  }
-
-  if (drawioViewerLoadPromise) {
-    return drawioViewerLoadPromise;
-  }
-
-  drawioViewerLoadPromise = new Promise((resolve, reject) => {
-    const existingScript = document.querySelector('script[data-collabmd-drawio-viewer]');
-    const script = existingScript instanceof HTMLScriptElement
-      ? existingScript
-      : document.createElement('script');
-
-    const cleanup = () => {
-      script.removeEventListener('error', handleError);
-      script.removeEventListener('load', handleLoad);
-    };
-
-    const handleError = () => {
-      cleanup();
-      drawioViewerLoadPromise = null;
-      reject(new Error('Failed to load draw.io viewer'));
-    };
-
-    const handleLoad = () => {
-      cleanup();
-      if (!window.GraphViewer?.processElements) {
-        drawioViewerLoadPromise = null;
-        reject(new Error('draw.io viewer did not initialize'));
-        return;
-      }
-
-      resolve(window.GraphViewer);
-    };
-
-    script.addEventListener('error', handleError, { once: true });
-    script.addEventListener('load', handleLoad, { once: true });
-
-    if (!existingScript) {
-      script.src = DRAWIO_VIEWER_SCRIPT_URL;
-      script.async = true;
-      script.dataset.collabmdDrawioViewer = 'true';
-      document.head.append(script);
-    } else if (window.GraphViewer?.processElements) {
-      handleLoad();
-    }
-  });
-
-  return drawioViewerLoadPromise;
-}
 
 export class DrawioEmbedController {
   constructor({
@@ -350,59 +295,21 @@ export class DrawioEmbedController {
   }
 
   async renderViewerEntry(entry) {
-    const [{ content }, viewer] = await Promise.all([
-      this.vaultApiClient.readFile(entry.filePath),
-      ensureDrawioViewerLoaded(),
-    ]);
+    const { content } = await this.vaultApiClient.readFile(entry.filePath);
 
     if (!entry.wrapper?.isConnected || !entry.viewerElement?.isConnected) {
       return;
     }
 
     const theme = this.getTheme?.() === 'light' ? 'light' : 'dark';
-    const graphElement = document.createElement('div');
-    graphElement.className = 'mxgraph drawio-viewer-frame';
-    graphElement.dataset.action = 'open-file';
-    graphElement.dataset.filePath = entry.filePath;
-    graphElement.setAttribute('role', 'button');
-    graphElement.setAttribute('tabindex', '0');
-    graphElement.setAttribute('aria-label', `Open ${entry.label.replace(/\.drawio$/i, '')}`);
-    graphElement.addEventListener('click', (event) => {
-      event.preventDefault();
-      this.onOpenFile?.(entry.filePath);
-    });
-    graphElement.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') {
-        return;
-      }
-
-      event.preventDefault();
-      this.onOpenFile?.(entry.filePath);
-    });
-    graphElement.dataset.mxgraph = JSON.stringify({
-      'check-visible-state': false,
-      center: true,
-      border: 0,
-      'dark-mode': theme,
-      editable: false,
-      fit: 1,
-      lightbox: false,
-      nav: false,
-      resize: false,
-      tooltips: false,
-      xml: String(content ?? ''),
-    });
-
     const viewerHost = entry.wrapper.querySelector('.drawio-viewer-shell') ?? entry.viewerElement;
-    viewerHost.replaceChildren(graphElement);
-    entry.viewerElement = graphElement;
-
-    if (typeof viewer.createViewerForElement === 'function') {
-      viewer.createViewerForElement(graphElement);
-      return;
-    }
-
-    viewer.processElements();
+    entry.viewerElement = await renderDrawioViewer(viewerHost, {
+      ariaLabel: `Open ${entry.label.replace(/\.drawio$/i, '')}`,
+      className: 'mxgraph drawio-viewer-frame',
+      onActivate: () => this.onOpenFile?.(entry.filePath),
+      source: String(content ?? ''),
+      theme,
+    });
   }
 
   buildIframeUrl(entry) {

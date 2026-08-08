@@ -1,0 +1,309 @@
+/* ===== DIFF / SPECIAL FILES ===== */
+
+.diff-special {
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+.diff-special-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.diff-special-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-primary);
+  font-size: var(--text-meta);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.diff-special-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-ui-sm);
+  font-weight: 700;
+}
+
+.diff-special-note,
+.diff-special-footnote {
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+}
+
+.diff-special-note {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+.diff-special-footnote {
+  margin: var(--space-3) 0 0;
+}
+
+.diff-media-grid,
+.diff-excalidraw-grid,
+.diff-drawio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.diff-media-pane,
+.diff-excalidraw-pane,
+.diff-drawio-pane {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-offset);
+}
+
+.diff-media-pane-header,
+.diff-excalidraw-pane-header,
+.diff-drawio-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.diff-media-pane-label {
+  color: var(--color-text);
+  font-size: var(--text-label);
+  font-weight: 700;
+}
+
+.diff-media-pane-meta {
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-media-canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  padding: var(--space-4);
+  background-color: var(--color-surface);
+  background-image: linear-gradient(45deg, color-mix(in oklab, var(--color-text) 5%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in oklab, var(--color-text) 5%, transparent) 75%), linear-gradient(45deg, color-mix(in oklab, var(--color-text) 5%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in oklab, var(--color-text) 5%, transparent) 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.diff-media-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.diff-media-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
+.diff-media-empty-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--color-divider);
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  font-size: var(--text-title-md);
+}
+
+.diff-file-header-kind {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+
+.diff-scene-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.diff-scene-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-offset);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+
+.diff-scene-stat strong {
+  font-size: var(--text-ui-sm);
+}
+
+.diff-scene-stat--add strong {
+  color: var(--diff-add-text);
+}
+
+.diff-scene-stat--update strong {
+  color: var(--color-primary);
+}
+
+.diff-scene-stat--remove strong {
+  color: var(--diff-del-text);
+}
+
+.diff-excalidraw-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: var(--space-3);
+  background: var(--surface-embed-canvas);
+}
+
+.diff-excalidraw-preview svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+
+.diff-excalidraw-preview-loading,
+.diff-excalidraw-preview--empty,
+.diff-excalidraw-preview.is-error {
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+}
+
+.diff-excalidraw-preview.is-error {
+  background: var(--color-surface-offset);
+}
+
+.diff-excalidraw-source {
+  border-top: 1px solid var(--color-divider);
+}
+
+.diff-excalidraw-source summary {
+  padding: 8px var(--space-3);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.diff-excalidraw-source summary:hover {
+  color: var(--color-text);
+}
+
+.diff-excalidraw-source pre {
+  max-height: 300px;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border-top: 1px solid var(--color-divider);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.diff-excalidraw-diff .diff-load-full-btn {
+  margin-top: var(--space-3);
+}
+
+.diff-drawio-preview {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 280px;
+  overflow: hidden;
+  background: var(--surface-embed-canvas);
+}
+
+.diff-drawio-preview .drawio-viewer-frame {
+  min-height: 280px;
+  cursor: default;
+}
+
+.diff-drawio-preview-loading,
+.diff-drawio-preview--empty,
+.diff-drawio-preview.is-error {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: var(--color-text-faint);
+  font-size: var(--text-meta);
+}
+
+.diff-drawio-preview.is-error {
+  background: var(--color-surface-offset);
+}
+
+.diff-drawio-source {
+  border-top: 1px solid var(--color-divider);
+}
+
+.diff-drawio-source summary {
+  padding: 8px var(--space-3);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.diff-drawio-source summary:hover {
+  color: var(--color-text);
+}
+
+.diff-drawio-source pre {
+  max-height: 300px;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border-top: 1px solid var(--color-divider);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+@media (max-width: 768px) {
+  .diff-media-grid,
+  .diff-excalidraw-grid,
+  .diff-drawio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-special-header {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .diff-media-canvas {
+    min-height: 220px;
+  }
+}

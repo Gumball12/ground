@@ -1,6 +1,283 @@
 import { escapeHtml } from '../domain/vault-utils.js';
 import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
+import { resolveApiUrl } from '../domain/runtime-paths.js';
+import { renderDrawioViewer } from './drawio-viewer.js';
 import { buttonClassNames } from './components/ui/button.js';
+import { getVaultFileKind } from '../../domain/file-kind.js';
+
+const IMAGE_MIME_LABELS = Object.freeze({
+  '.gif': 'GIF',
+  '.jpeg': 'JPEG',
+  '.jpg': 'JPEG',
+  '.png': 'PNG',
+  '.svg': 'SVG',
+  '.webp': 'WebP',
+});
+
+function getDiffFileKind(file = null) {
+  return file?.fileKind || getVaultFileKind(file?.path) || null;
+}
+
+function getImageFormat(filePath = '') {
+  const normalizedPath = String(filePath ?? '').toLowerCase();
+  const extension = Object.keys(IMAGE_MIME_LABELS).find((candidate) => normalizedPath.endsWith(candidate));
+  return extension ? IMAGE_MIME_LABELS[extension] : 'Image';
+}
+
+function parseExcalidrawScene(rawSource = '') {
+  try {
+    const parsed = JSON.parse(String(rawSource ?? ''));
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.elements)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function pickExcalidrawSceneSource(lines = []) {
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const joinedSource = lines.join('\n');
+  if (parseExcalidrawScene(joinedSource)) {
+    return joinedSource;
+  }
+
+  return lines.find((line) => parseExcalidrawScene(line)) ?? null;
+}
+
+function getExcalidrawSceneSources(detail = {}) {
+  const beforeLines = [];
+  const afterLines = [];
+
+  for (const hunk of detail.hunks ?? []) {
+    for (const line of hunk.lines ?? []) {
+      if (line.type === 'context') {
+        beforeLines.push(line.content);
+        afterLines.push(line.content);
+      } else if (line.type === 'deletion') {
+        beforeLines.push(line.content);
+      } else if (line.type === 'addition') {
+        afterLines.push(line.content);
+      }
+    }
+  }
+
+  const beforeSource = pickExcalidrawSceneSource(beforeLines);
+  const afterSource = pickExcalidrawSceneSource(afterLines);
+  const isAdded = detail.status === 'added' || detail.status === 'untracked';
+  const isDeleted = detail.status === 'deleted';
+
+  return {
+    after: isDeleted ? null : parseExcalidrawScene(afterSource),
+    before: isAdded ? null : parseExcalidrawScene(beforeSource),
+    afterSource: isDeleted ? '' : afterSource || '',
+    beforeSource: isAdded ? '' : beforeSource || '',
+  };
+}
+
+function getVisibleSceneElements(scene = null) {
+  return Array.isArray(scene?.elements)
+    ? scene.elements.filter((element) => element && !element.isDeleted)
+    : [];
+}
+
+function sceneElementSignature(element) {
+  if (!element || typeof element !== 'object') {
+    return '';
+  }
+
+  const copy = { ...element };
+  delete copy.version;
+  delete copy.versionNonce;
+  return JSON.stringify(copy);
+}
+
+function summarizeExcalidrawChange(beforeScene, afterScene) {
+  if (!beforeScene && !afterScene) {
+    return null;
+  }
+
+  const beforeById = new Map(getVisibleSceneElements(beforeScene).map((element) => [element.id, element]));
+  const afterById = new Map(getVisibleSceneElements(afterScene).map((element) => [element.id, element]));
+  let added = 0;
+  let removed = 0;
+  let updated = 0;
+
+  for (const [id, element] of afterById) {
+    if (!beforeById.has(id)) {
+      added += 1;
+    } else if (sceneElementSignature(beforeById.get(id)) !== sceneElementSignature(element)) {
+      updated += 1;
+    }
+  }
+
+  for (const id of beforeById.keys()) {
+    if (!afterById.has(id)) {
+      removed += 1;
+    }
+  }
+
+  return {
+    added,
+    afterCount: afterById.size,
+    beforeCount: beforeById.size,
+    removed,
+    updated,
+  };
+}
+
+function formatByteLength(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return '';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function hasDrawioSourceRoot(source) {
+  return /<(?:mxfile|mxGraphModel|diagram)\b/iu.test(String(source ?? ''));
+}
+
+function formatDrawioSource(source) {
+  return String(source ?? '')
+    .replace(/>\s*</gu, '>\n<')
+    .trim();
+}
+
+function pickDrawioSource(lines = []) {
+  if (lines.length === 0) {
+    return '';
+  }
+
+  const joinedSource = lines.join('\n');
+  if (hasDrawioSourceRoot(joinedSource)) {
+    return joinedSource;
+  }
+
+  return lines.find((line) => hasDrawioSourceRoot(line)) ?? '';
+}
+
+function getDrawioSourcePair(detail = {}) {
+  const beforeLines = [];
+  const afterLines = [];
+
+  for (const hunk of detail.hunks ?? []) {
+    for (const line of hunk.lines ?? []) {
+      if (line.type === 'context') {
+        beforeLines.push(line.content);
+        afterLines.push(line.content);
+      } else if (line.type === 'deletion') {
+        beforeLines.push(line.content);
+      } else if (line.type === 'addition') {
+        afterLines.push(line.content);
+      }
+    }
+  }
+
+  const beforeSource = typeof detail.drawioBeforeSource === 'string'
+    ? detail.drawioBeforeSource
+    : pickDrawioSource(beforeLines);
+  const afterSource = typeof detail.drawioAfterSource === 'string'
+    ? detail.drawioAfterSource
+    : pickDrawioSource(afterLines);
+  const isAdded = detail.status === 'added' || detail.status === 'untracked';
+  const isDeleted = detail.status === 'deleted';
+
+  return {
+    after: isDeleted ? '' : afterSource,
+    before: isAdded ? '' : beforeSource,
+  };
+}
+
+function decodeXmlAttribute(value) {
+  return String(value ?? '')
+    .replace(/&quot;/gu, '"')
+    .replace(/&apos;/gu, "'")
+    .replace(/&amp;/gu, '&')
+    .replace(/&lt;/gu, '<')
+    .replace(/&gt;/gu, '>');
+}
+
+function getDrawioCellMap(source) {
+  const cells = new Map();
+  const cellPattern = /<mxCell\b([^>]*?)(?:\/|>([\s\S]*?)<\/mxCell\s*)>/giu;
+  let match;
+
+  while ((match = cellPattern.exec(String(source ?? ''))) !== null) {
+    const idMatch = match[1].match(/\bid\s*=\s*(['"])(.*?)\1/iu);
+    const id = decodeXmlAttribute(idMatch?.[2] || '');
+    if (!id || id === '0' || id === '1') {
+      continue;
+    }
+
+    const signature = `${match[1]}${match[2] || ''}`.replace(/\s+/gu, ' ').trim();
+    cells.set(id, signature);
+  }
+
+  return cells;
+}
+
+function isEmptyDrawioModel(source) {
+  return /<mxGraphModel\b/iu.test(String(source ?? '')) && getDrawioCellMap(source).size === 0;
+}
+
+function summarizeDrawioChange(beforeSource, afterSource) {
+  if (!beforeSource && !afterSource) {
+    return null;
+  }
+
+  const beforeCells = getDrawioCellMap(beforeSource);
+  const afterCells = getDrawioCellMap(afterSource);
+  const cellBased = beforeCells.size > 0 || afterCells.size > 0;
+  let added = 0;
+  let removed = 0;
+  let updated = 0;
+
+  if (cellBased) {
+    for (const [id, signature] of afterCells) {
+      if (!beforeCells.has(id)) {
+        added += 1;
+      } else if (beforeCells.get(id) !== signature) {
+        updated += 1;
+      }
+    }
+
+    for (const id of beforeCells.keys()) {
+      if (!afterCells.has(id)) {
+        removed += 1;
+      }
+    }
+
+    if (beforeSource !== afterSource && added === 0 && removed === 0 && updated === 0) {
+      updated = 1;
+    }
+  } else {
+    const hasBefore = Boolean(beforeSource);
+    const hasAfter = Boolean(afterSource);
+    added = !hasBefore && hasAfter ? 1 : 0;
+    removed = hasBefore && !hasAfter ? 1 : 0;
+    updated = hasBefore && hasAfter && beforeSource !== afterSource ? 1 : 0;
+  }
+
+  return {
+    added,
+    afterCount: afterCells.size,
+    beforeCount: beforeCells.size,
+    cellBased,
+    removed,
+    updated,
+  };
+}
 
 function createSectionId(pathValue) {
   return `diff-section-${encodeURIComponent(String(pathValue ?? '')).replace(/%/g, '_')}`;
@@ -136,6 +413,7 @@ function renderSplitRow(leftLine, rightLine) {
 
 export class GitDiffViewController {
   constructor({
+    getTheme = () => 'dark',
     gitApiClient = null,
     onBackToHistory = null,
     onCommitStaged = null,
@@ -143,7 +421,9 @@ export class GitDiffViewController {
     onStageFile = null,
     onUnstageFile = null,
     toastController = null,
+    vaultApiClient = null,
   } = {}) {
+    this.getTheme = getTheme;
     this.gitApiClient = gitApiClient;
     this.onBackToHistory = onBackToHistory;
     this.onCommitStaged = onCommitStaged;
@@ -151,6 +431,7 @@ export class GitDiffViewController {
     this.onStageFile = onStageFile;
     this.onUnstageFile = onUnstageFile;
     this.toastController = toastController;
+    this.vaultApiClient = vaultApiClient;
     this.page = document.getElementById('diff-page');
     this.content = document.getElementById('diffContent');
     this.scrollContainer = document.getElementById('diffScroll');
@@ -180,8 +461,13 @@ export class GitDiffViewController {
     this.loadingFiles = new Set();
     this.collapsedFiles = new Set();
     this.fileLoadPromises = new Map();
+    this.excalidrawPreviewPayloads = new Map();
+    this.excalidrawPreviewCounter = 0;
+    this.drawioPreviewPayloads = new Map();
+    this.drawioPreviewCounter = 0;
     this.requestScope = 'all';
     this.commitHash = null;
+    this.commitBaseRef = null;
     this.commitMeta = null;
     this.historyFilePath = null;
     this.pendingAction = null;
@@ -330,8 +616,11 @@ export class GitDiffViewController {
     this.loadingFiles.clear();
     this.collapsedFiles.clear();
     this.fileLoadPromises.clear();
+    this.excalidrawPreviewPayloads.clear();
+    this.drawioPreviewPayloads.clear();
     this.requestScope = 'all';
     this.commitHash = null;
+    this.commitBaseRef = null;
     this.commitMeta = null;
     this.historyFilePath = null;
     this.pendingAction = null;
@@ -343,6 +632,7 @@ export class GitDiffViewController {
     this.source = 'workspace';
     this.layoutMode = 'focused';
     this.commitHash = null;
+    this.commitBaseRef = null;
     this.commitMeta = null;
     this.historyFilePath = null;
     this.activeFilePath = filePath;
@@ -351,6 +641,8 @@ export class GitDiffViewController {
     this.loadingFiles.clear();
     this.collapsedFiles.clear();
     this.fileLoadPromises.clear();
+    this.excalidrawPreviewPayloads.clear();
+    this.drawioPreviewPayloads.clear();
     this.requestScope = scope;
     this.renderLoading('Loading diff summary...');
 
@@ -392,6 +684,7 @@ export class GitDiffViewController {
     this.source = 'commit';
     this.layoutMode = 'stacked';
     this.commitHash = String(hash ?? '').trim() || null;
+    this.commitBaseRef = null;
     this.commitMeta = null;
     this.historyFilePath = String(historyFilePath ?? '').trim() || null;
     this.activeFilePath = path || null;
@@ -400,6 +693,8 @@ export class GitDiffViewController {
     this.loadingFiles.clear();
     this.collapsedFiles.clear();
     this.fileLoadPromises.clear();
+    this.excalidrawPreviewPayloads.clear();
+    this.drawioPreviewPayloads.clear();
     this.requestScope = 'all';
     this.renderLoading('Loading commit summary...');
 
@@ -410,6 +705,7 @@ export class GitDiffViewController {
       });
       this.data = data;
       this.commitMeta = data.commit ?? null;
+      this.commitBaseRef = data.baseRef || null;
       const initialIndex = path
         ? Math.max(0, data.files.findIndex((file) => file.path === path))
         : 0;
@@ -547,12 +843,408 @@ export class GitDiffViewController {
     `;
   }
 
+  getGitImageUrl(hash, filePath) {
+    if (!hash || !filePath) {
+      return '';
+    }
+
+    if (typeof this.gitApiClient?.getFileAttachmentUrl === 'function') {
+      return this.gitApiClient.getFileAttachmentUrl({ hash, path: filePath });
+    }
+
+    return resolveApiUrl(`/git/file-attachment?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(filePath)}`);
+  }
+
+  getCurrentImageUrl(filePath) {
+    if (!filePath) {
+      return '';
+    }
+
+    return resolveApiUrl(`/attachment?path=${encodeURIComponent(filePath)}`);
+  }
+
+  getImageDiffSources(file) {
+    const isAdded = file.status === 'added' || file.status === 'untracked';
+    const isDeleted = file.status === 'deleted';
+    const oldPath = file.oldPath || file.path;
+    const newPath = file.path;
+
+    if (this.source === 'commit') {
+      return {
+        after: isDeleted ? '' : this.getGitImageUrl(this.commitHash, newPath),
+        before: isAdded ? '' : this.getGitImageUrl(this.commitBaseRef, oldPath),
+      };
+    }
+
+    return {
+      after: isDeleted ? '' : this.getCurrentImageUrl(newPath),
+      before: isAdded ? '' : this.getGitImageUrl('HEAD', oldPath),
+    };
+  }
+
+  renderImagePane({ file, label, source, emptyLabel }) {
+    const imageMarkup = source
+      ? `<img class="diff-media-image" src="${escapeHtml(source)}" alt="${escapeHtml(`${label} ${file.path}`)}" loading="lazy" decoding="async">`
+      : `<div class="diff-media-empty"><span class="diff-media-empty-icon" aria-hidden="true">—</span><span>${escapeHtml(emptyLabel)}</span></div>`;
+
+    return `
+      <div class="diff-media-pane">
+        <div class="diff-media-pane-header">
+          <span class="diff-media-pane-label">${escapeHtml(label)}</span>
+          <span class="diff-media-pane-meta">${escapeHtml(getImageFormat(file.path))}</span>
+        </div>
+        <div class="diff-media-canvas">${imageMarkup}</div>
+      </div>
+    `;
+  }
+
+  renderImageDiff(file) {
+    const sources = this.getImageDiffSources(file);
+    const sizeLabel = formatByteLength(file.byteLength);
+    return `
+      <section class="diff-special diff-media-diff" aria-label="Image diff">
+        <div class="diff-special-header">
+          <div>
+            <span class="diff-special-eyebrow">Binary preview</span>
+            <h2 class="diff-special-title">Image comparison</h2>
+          </div>
+          <span class="diff-special-note">${escapeHtml(getImageFormat(file.path))}${sizeLabel ? ` · ${escapeHtml(sizeLabel)}` : ''}</span>
+        </div>
+        <div class="diff-media-grid">
+          ${this.renderImagePane({
+            emptyLabel: 'No previous image',
+            file,
+            label: 'Before',
+            source: sources.before,
+          })}
+          ${this.renderImagePane({
+            emptyLabel: 'No image in this revision',
+            file,
+            label: 'After',
+            source: sources.after,
+          })}
+        </div>
+        <p class="diff-special-footnote">Image bytes are shown as a visual comparison instead of a text patch.</p>
+      </section>
+    `;
+  }
+
+  registerExcalidrawPreview(scene) {
+    if (!scene) {
+      return '';
+    }
+
+    this.excalidrawPreviewCounter += 1;
+    const id = `diff-excalidraw-preview-${this.excalidrawPreviewCounter.toString(36)}`;
+    this.excalidrawPreviewPayloads.set(id, scene);
+    return id;
+  }
+
+  renderExcalidrawPane({ label, scene, source, emptyLabel }) {
+    const previewId = this.registerExcalidrawPreview(scene);
+    const previewMarkup = scene
+      ? `
+        <div class="diff-excalidraw-preview" data-diff-excalidraw-preview="${escapeHtml(previewId)}">
+          <span class="diff-excalidraw-preview-loading">Rendering diagram…</span>
+        </div>
+      `
+      : `<div class="diff-excalidraw-preview diff-excalidraw-preview--empty"><span>${escapeHtml(emptyLabel)}</span></div>`;
+    const sourceMarkup = source
+      ? `
+        <details class="diff-excalidraw-source">
+          <summary>Structured scene</summary>
+          <pre>${escapeHtml(source)}</pre>
+        </details>
+      `
+      : '';
+
+    return `
+      <div class="diff-excalidraw-pane">
+        <div class="diff-excalidraw-pane-header">
+          <span class="diff-media-pane-label">${escapeHtml(label)}</span>
+          <span class="diff-media-pane-meta">${scene ? `${getVisibleSceneElements(scene).length} elements` : '—'}</span>
+        </div>
+        ${previewMarkup}
+        ${sourceMarkup}
+      </div>
+    `;
+  }
+
+  renderExcalidrawDiff(file) {
+    const scenes = getExcalidrawSceneSources(file);
+    const changeSummary = summarizeExcalidrawChange(scenes.before, scenes.after);
+    const stats = changeSummary ?? {
+      added: 0,
+      afterCount: 0,
+      beforeCount: 0,
+      removed: 0,
+      updated: 0,
+    };
+    const hasSceneData = Boolean(scenes.before || scenes.after);
+    const loadButton = file.tooLarge && file.canLoadFullPatch
+      ? `<button class="${buttonClassNames({ variant: 'secondary', extra: 'diff-load-full-btn' })}" type="button" data-load-full-diff data-diff-file-path="${escapeHtml(file.path)}">Load full diff</button>`
+      : '';
+
+    return `
+      <section class="diff-special diff-excalidraw-diff" aria-label="Excalidraw diff">
+        <div class="diff-special-header">
+          <div>
+            <span class="diff-special-eyebrow">Diagram-aware preview</span>
+            <h2 class="diff-special-title">Excalidraw scene changes</h2>
+          </div>
+          <span class="diff-special-note">${hasSceneData ? `${stats.afterCount} visible elements` : 'Scene preview unavailable'}</span>
+        </div>
+        <div class="diff-scene-summary" aria-label="Scene change summary">
+          <span class="diff-scene-stat diff-scene-stat--add"><strong>+${stats.added}</strong><span>added</span></span>
+          <span class="diff-scene-stat diff-scene-stat--update"><strong>~${stats.updated}</strong><span>updated</span></span>
+          <span class="diff-scene-stat diff-scene-stat--remove"><strong>-${stats.removed}</strong><span>removed</span></span>
+        </div>
+        <div class="diff-excalidraw-grid">
+          ${this.renderExcalidrawPane({
+            emptyLabel: 'No previous scene',
+            label: 'Before',
+            scene: scenes.before,
+            source: scenes.beforeSource ? JSON.stringify(scenes.before || parseExcalidrawScene(scenes.beforeSource), null, 2) : '',
+          })}
+          ${this.renderExcalidrawPane({
+            emptyLabel: file.tooLarge ? 'Load the full diff to preview this scene' : 'No scene in this revision',
+            label: 'After',
+            scene: scenes.after,
+            source: scenes.afterSource ? JSON.stringify(scenes.after || parseExcalidrawScene(scenes.afterSource), null, 2) : '',
+          })}
+        </div>
+        ${loadButton}
+        <p class="diff-special-footnote">The preview compares drawable elements by id; expand “Structured scene” when you need the underlying JSON.</p>
+      </section>
+    `;
+  }
+
+  async readDrawioSource({ hash = null, path = null, current = false } = {}) {
+    if (!path) {
+      return '';
+    }
+
+    try {
+      if (current) {
+        const response = await this.vaultApiClient?.readFile?.(path);
+        return typeof response?.content === 'string' ? response.content : '';
+      }
+
+      if (!hash || typeof this.gitApiClient?.readFileSnapshot !== 'function') {
+        return '';
+      }
+
+      const response = await this.gitApiClient.readFileSnapshot({ hash, path });
+      return typeof response?.content === 'string' ? response.content : '';
+    } catch {
+      return '';
+    }
+  }
+
+  async enrichDrawioDetail(detail) {
+    const sources = getDrawioSourcePair(detail);
+    let beforeSource = sources.before;
+    let afterSource = sources.after;
+    const isAdded = detail.status === 'added' || detail.status === 'untracked';
+    const isDeleted = detail.status === 'deleted';
+    const beforePath = detail.oldPath || detail.path;
+    const afterPath = detail.path;
+
+    if (!isAdded && !hasDrawioSourceRoot(beforeSource)) {
+      beforeSource = await this.readDrawioSource({
+        current: false,
+        hash: this.source === 'commit' ? this.commitBaseRef : 'HEAD',
+        path: beforePath,
+      });
+    }
+
+    if (!isDeleted && !hasDrawioSourceRoot(afterSource)) {
+      afterSource = await this.readDrawioSource({
+        current: this.source !== 'commit',
+        hash: this.source === 'commit' ? this.commitHash : null,
+        path: afterPath,
+      });
+    }
+
+    return {
+      ...detail,
+      drawioAfterSource: afterSource,
+      drawioBeforeSource: beforeSource,
+    };
+  }
+
+  registerDrawioPreview(source) {
+    if (!source) {
+      return '';
+    }
+
+    this.drawioPreviewCounter += 1;
+    const id = `diff-drawio-preview-${this.drawioPreviewCounter.toString(36)}`;
+    this.drawioPreviewPayloads.set(id, source);
+    return id;
+  }
+
+  renderDrawioPane({ emptyLabel, label, source }) {
+    const isEmptyModel = isEmptyDrawioModel(source);
+    const previewId = isEmptyModel ? '' : this.registerDrawioPreview(source);
+    const previewMarkup = source && !isEmptyModel
+      ? `
+        <div class="diff-drawio-preview" data-diff-drawio-preview="${escapeHtml(previewId)}">
+          <span class="diff-drawio-preview-loading">Rendering draw.io preview…</span>
+        </div>
+      `
+      : `<div class="diff-drawio-preview diff-drawio-preview--empty"><span>${escapeHtml(isEmptyModel ? 'No drawable cells' : emptyLabel)}</span></div>`;
+    const sourceMarkup = source
+      ? `
+        <details class="diff-drawio-source">
+          <summary>XML source</summary>
+          <pre>${escapeHtml(formatDrawioSource(source))}</pre>
+        </details>
+      `
+      : '';
+
+    return `
+      <div class="diff-drawio-pane">
+        <div class="diff-drawio-pane-header">
+          <span class="diff-media-pane-label">${escapeHtml(label)}</span>
+          <span class="diff-media-pane-meta">draw.io</span>
+        </div>
+        ${previewMarkup}
+        ${sourceMarkup}
+      </div>
+    `;
+  }
+
+  renderDrawioDiff(file) {
+    const sources = getDrawioSourcePair(file);
+    const changeSummary = summarizeDrawioChange(sources.before, sources.after);
+    const stats = changeSummary ?? {
+      added: 0,
+      afterCount: 0,
+      beforeCount: 0,
+      cellBased: false,
+      removed: 0,
+      updated: 0,
+    };
+    const hasSource = Boolean(sources.before || sources.after);
+    const countLabel = !hasSource
+      ? 'Preview unavailable'
+      : stats.cellBased
+        ? `${stats.afterCount} drawable cells`
+        : 'Source-level comparison';
+    const loadButton = file.tooLarge && file.canLoadFullPatch
+      ? `<button class="${buttonClassNames({ variant: 'secondary', extra: 'diff-load-full-btn' })}" type="button" data-load-full-diff data-diff-file-path="${escapeHtml(file.path)}">Load full diff</button>`
+      : '';
+
+    return `
+      <section class="diff-special diff-drawio-diff" aria-label="draw.io diff">
+        <div class="diff-special-header">
+          <div>
+            <span class="diff-special-eyebrow">Diagram-aware preview</span>
+            <h2 class="diff-special-title">draw.io diagram changes</h2>
+          </div>
+          <span class="diff-special-note">${escapeHtml(countLabel)}</span>
+        </div>
+        <div class="diff-scene-summary" aria-label="draw.io change summary">
+          <span class="diff-scene-stat diff-scene-stat--add"><strong>+${stats.added}</strong><span>added</span></span>
+          <span class="diff-scene-stat diff-scene-stat--update"><strong>~${stats.updated}</strong><span>updated</span></span>
+          <span class="diff-scene-stat diff-scene-stat--remove"><strong>-${stats.removed}</strong><span>removed</span></span>
+        </div>
+        <div class="diff-drawio-grid">
+          ${this.renderDrawioPane({
+            emptyLabel: 'No previous diagram',
+            label: 'Before',
+            source: sources.before,
+          })}
+          ${this.renderDrawioPane({
+            emptyLabel: file.tooLarge ? 'Load the full diff to preview this diagram' : 'No diagram in this revision',
+            label: 'After',
+            source: sources.after,
+          })}
+        </div>
+        ${loadButton}
+        <p class="diff-special-footnote">Both revisions use the draw.io viewer; expand “XML source” when you need the underlying document.</p>
+      </section>
+    `;
+  }
+
+  async hydrateExcalidrawPreviews() {
+    if (this.excalidrawPreviewPayloads.size === 0 || !this.content) {
+      return;
+    }
+
+    let exportToSvg;
+    try {
+      ({ exportToSvg } = await import('@excalidraw/excalidraw'));
+    } catch (error) {
+      console.warn('[git-diff] Excalidraw preview renderer unavailable:', error);
+      return;
+    }
+
+    for (const [previewId, scene] of this.excalidrawPreviewPayloads) {
+      const preview = this.content.querySelector?.(`[data-diff-excalidraw-preview="${previewId}"]`);
+      if (!preview) {
+        continue;
+      }
+
+      try {
+        const svg = await exportToSvg({
+          appState: {
+            exportBackground: true,
+            exportWithDarkMode: false,
+            viewBackgroundColor: scene.appState?.viewBackgroundColor || '#ffffff',
+          },
+          elements: getVisibleSceneElements(scene),
+          exportPadding: 24,
+          files: scene.files || null,
+        });
+        preview.replaceChildren(svg);
+        preview.classList.add('is-ready');
+      } catch (error) {
+        console.warn('[git-diff] Failed to render Excalidraw scene preview:', error);
+        preview.textContent = 'Visual preview unavailable';
+        preview.classList.add('is-error');
+      }
+    }
+  }
+
+  async hydrateDrawioPreviews() {
+    if (this.drawioPreviewPayloads.size === 0 || !this.content) {
+      return;
+    }
+
+    for (const [previewId, source] of this.drawioPreviewPayloads) {
+      const preview = this.content.querySelector?.(`[data-diff-drawio-preview="${previewId}"]`);
+      if (!preview) {
+        continue;
+      }
+
+      try {
+        await renderDrawioViewer(preview, {
+          ariaLabel: 'draw.io diagram diff preview',
+          className: 'mxgraph drawio-viewer-frame diff-drawio-viewer-frame',
+          source,
+          theme: this.getTheme?.() === 'light' ? 'light' : 'dark',
+        });
+        preview.classList.add('is-ready');
+      } catch (error) {
+        console.warn('[git-diff] Failed to render draw.io diagram preview:', error);
+        preview.textContent = 'Visual preview unavailable';
+        preview.classList.add('is-error');
+      }
+    }
+  }
+
   renderFileHeader(file) {
+    const fileKind = getDiffFileKind(file);
+    const headerStats = fileKind === 'image'
+      ? `<span class="diff-file-header-kind">${escapeHtml(getImageFormat(file.path))} image</span>`
+      : `<span class="diff-file-header-stats"><span class="ui-stat-token ui-stat-token--add diff-stats-add">+${file.stats?.additions ?? 0}</span><span class="ui-stat-token ui-stat-token--del diff-stats-del">-${file.stats?.deletions ?? 0}</span></span>`;
     return `
       <div class="diff-file-header">
         <span class="diff-file-path">${escapeHtml(file.path)}</span>
         <span class="ui-status-badge ${badgeClass(file.status)}">${escapeHtml(file.status)}</span>
-        <span class="diff-file-header-stats"><span class="ui-stat-token ui-stat-token--add diff-stats-add">+${file.stats?.additions ?? 0}</span><span class="ui-stat-token ui-stat-token--del diff-stats-del">-${file.stats?.deletions ?? 0}</span></span>
+        ${headerStats}
       </div>
     `;
   }
@@ -600,6 +1292,19 @@ export class GitDiffViewController {
   renderDiffDetail(detail, index, { includeHeader = true } = {}) {
     if (!detail) {
       return '<div class="diff-empty-state">Select a file to load its diff.</div>';
+    }
+
+    const fileKind = getDiffFileKind(detail);
+    if (fileKind === 'image') {
+      return `${includeHeader ? this.renderFileHeader(detail) : ''}${this.renderImageDiff(detail)}`;
+    }
+
+    if (fileKind === 'excalidraw') {
+      return `${includeHeader ? this.renderFileHeader(detail) : ''}${this.renderExcalidrawDiff(detail)}`;
+    }
+
+    if (fileKind === 'drawio') {
+      return `${includeHeader ? this.renderFileHeader(detail) : ''}${this.renderDrawioDiff(detail)}`;
     }
 
     if (detail.tooLarge) {
@@ -1095,6 +1800,10 @@ export class GitDiffViewController {
           };
         }
 
+        if (getDiffFileKind(detail) === 'drawio') {
+          detail = await this.enrichDrawioDetail(detail);
+        }
+
         if (cacheKey) {
           this.fileCache.set(cacheKey, detail);
         }
@@ -1134,8 +1843,22 @@ export class GitDiffViewController {
     }
 
     if (this.stats) {
-      const additions = this.data?.summary?.additions ?? 0;
-      const deletions = this.data?.summary?.deletions ?? 0;
+      const imageLineStats = (this.data?.files ?? [])
+        .filter((file) => getDiffFileKind(file) === 'image')
+        .reduce((summary, file) => ({
+          additions: summary.additions + Number(file.stats?.additions || 0),
+          deletions: summary.deletions + Number(file.stats?.deletions || 0),
+        }), { additions: 0, deletions: 0 });
+      const files = this.data?.files ?? [];
+      const allFilesAreImages = files.length > 0 && files.every((file) => getDiffFileKind(file) === 'image');
+      const rawAdditions = Number(this.data?.summary?.additions ?? 0);
+      const rawDeletions = Number(this.data?.summary?.deletions ?? 0);
+      const additions = allFilesAreImages
+        ? 0
+        : Math.max(0, rawAdditions - imageLineStats.additions);
+      const deletions = allFilesAreImages
+        ? 0
+        : Math.max(0, rawDeletions - imageLineStats.deletions);
       this.stats.innerHTML = `
         <span class="ui-stat-token ui-stat-token--add diff-stats-add">+${additions}</span>
         <span class="ui-stat-token ui-stat-token--del diff-stats-del">-${deletions}</span>
@@ -1207,12 +1930,17 @@ export class GitDiffViewController {
       return;
     }
 
+    this.excalidrawPreviewPayloads.clear();
+    this.drawioPreviewPayloads.clear();
+
     if (this.source === 'commit') {
       this.content.innerHTML = `${this.renderCommitHeader()}${this.renderCommitBody()}`;
     } else {
       this.content.innerHTML = this.renderFocusedFileBody();
     }
     this.syncToolbar();
+    void this.hydrateExcalidrawPreviews();
+    void this.hydrateDrawioPreviews();
   }
 
   getToolbarTitle({ commitHash = null, filePath = null, path = null, scope = 'all', source = 'workspace' } = {}) {

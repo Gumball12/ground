@@ -1,5 +1,12 @@
+import { basename } from 'node:path';
+
 import { handleApiError } from './http-request-helpers.js';
-import { jsonResponse } from './http-response.js';
+import {
+  createSafeAsciiFilename,
+  encodeContentDispositionFilename,
+  jsonResponse,
+  sendResponse,
+} from './http-response.js';
 
 function resolveDiffScope(requestUrl) {
   const scope = String(requestUrl.searchParams.get('scope') || '').trim().toLowerCase();
@@ -102,6 +109,29 @@ export function createGitApiQueryHandler({ gitService }) {
         }));
       } catch (error) {
         handleApiError(req, res, error, '[api] Failed to read git file snapshot:', 'Failed to read git file snapshot');
+      }
+      return true;
+    }
+
+    if (requestUrl.pathname === '/api/git/file-attachment' && req.method === 'GET') {
+      try {
+        const attachment = await gitService.getFileAttachment({
+          hash: requestUrl.searchParams.get('hash'),
+          path: requestUrl.searchParams.get('path'),
+        });
+        const fileName = basename(String(attachment.path || 'image'));
+        sendResponse(req, res, {
+          body: attachment.content,
+          headers: {
+            'Cache-Control': 'private, max-age=300, stale-while-revalidate=3600',
+            'Content-Disposition': `inline; filename="${createSafeAsciiFilename(fileName)}"; filename*=UTF-8''${encodeContentDispositionFilename(fileName)}`,
+            'Content-Type': attachment.mimeType || 'application/octet-stream',
+            'X-Content-Type-Options': 'nosniff',
+          },
+          statusCode: 200,
+        });
+      } catch (error) {
+        handleApiError(req, res, error, '[api] Failed to read git file attachment:', 'Failed to read git file attachment');
       }
       return true;
     }
