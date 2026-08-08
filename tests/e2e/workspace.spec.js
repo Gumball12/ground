@@ -259,6 +259,30 @@ test('keeps desktop secondary actions behind the toolbar overflow menu', async (
   await expect(page.locator('#themeToggleBtn [data-theme-toggle-state]')).toContainText(/Dark|Light/);
 });
 
+test('opens the quick switcher from the top toolbar search action', async ({ page }) => {
+  await openFile(page, 'README.md', { waitFor: 'preview' });
+
+  const searchButton = page.locator('#toolbarSearchBtn');
+  await expect(searchButton).toBeVisible();
+  await expect(searchButton).toContainText('Search');
+  await expect(searchButton.locator('kbd')).toHaveText('⌘K');
+  expect(await searchButton.evaluate((element) => element.parentElement?.id)).toBe('toolbarCenter');
+
+  const initialSearchBox = await searchButton.boundingBox();
+  await page.locator('#activeFileName').evaluate((element) => {
+    element.textContent = 'A deliberately long filename that should not move global actions';
+  });
+  const updatedSearchBox = await searchButton.boundingBox();
+  expect(initialSearchBox).not.toBeNull();
+  expect(updatedSearchBox).not.toBeNull();
+  expect(Math.abs((updatedSearchBox?.x ?? 0) - (initialSearchBox?.x ?? 0))).toBeLessThanOrEqual(1);
+
+  await searchButton.click();
+
+  await expect(page.locator('#quickSwitcher')).toHaveClass(/visible/);
+  await expect(page.locator('#quickSwitcherInput')).toBeFocused();
+});
+
 test('export docx uses the export page and posts the rendered snapshot html', async ({ page, context }) => {
   await restoreReadmeTestDocument(page);
   await openFile(page, 'README.md', { waitFor: 'preview' });

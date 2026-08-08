@@ -435,6 +435,26 @@ describe('uiFeature browser helpers', () => {
     expect(context.closeToolbarOverflowMenu).toHaveBeenCalledTimes(1);
   });
 
+  it('opens quick switcher from the top toolbar search action', () => {
+    document.body.innerHTML = '<button id="toolbar-search"></button>';
+
+    const context = {
+      elements: {
+        toolbarSearchButton: document.getElementById('toolbar-search'),
+      },
+      toggleQuickSwitcher: vi.fn(async () => {}),
+    };
+
+    Object.assign(context, uiFeatureShellMethods);
+    context.closeToolbarOverflowMenu = vi.fn();
+    context.bindEvents();
+
+    context.elements.toolbarSearchButton.click();
+
+    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(1);
+    expect(context.closeToolbarOverflowMenu).toHaveBeenCalledTimes(1);
+  });
+
   it('opens editor search from the mobile find button', () => {
     document.body.innerHTML = '<button id="editor-find"></button>';
 

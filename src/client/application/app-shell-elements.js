@@ -60,6 +60,7 @@ export function bindAppShellElements(doc = document) {
     presencePanelList: doc.getElementById('presencePanelList'),
     presencePanelStatus: doc.getElementById('presencePanelStatus'),
     searchFilesButton: doc.getElementById('searchFilesBtn'),
+    toolbarSearchButton: doc.getElementById('toolbarSearchBtn'),
     shareButton: doc.getElementById('shareBtn'),
     toastContainer: doc.getElementById('toastContainer'),
     toggleWrapButton: doc.getElementById('toggleWrapBtn'),
@@ -94,6 +95,7 @@ export function bindAppShellElements(doc = document) {
     toolbarDiffBadge: doc.getElementById('toolbarDiffBadge'),
     toolbarOverflowMenu: doc.getElementById('toolbarOverflowMenu'),
     toolbarOverflowToggle: doc.getElementById('toolbarOverflowToggle'),
+    toolbarViewToggle: doc.getElementById('toolbarViewToggle'),
     sidebarTabs: doc.getElementById('sidebarTabs'),
   };
 }

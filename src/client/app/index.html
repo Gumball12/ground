@@ -166,7 +166,24 @@
           </div>
 
           <div class="toolbar-center" id="toolbarCenter">
-            <div class="ui-segmented-control view-toggle" role="group" aria-label="View mode">
+            <button
+              class="ui-button ui-button--secondary ui-button--compact toolbar-search-trigger"
+              id="toolbarSearchBtn"
+              type="button"
+              aria-label="Search files and text"
+              aria-controls="quickSwitcher"
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Meta+K Control+K"
+              title="Search files and text (⌘K)"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span class="toolbar-search-label">Search</span>
+              <kbd class="toolbar-search-kbd">⌘K</kbd>
+            </button>
+            <div class="ui-segmented-control view-toggle" id="toolbarViewToggle" role="group" aria-label="View mode">
               <button class="ui-segmented-btn active view-btn" data-view="split" aria-label="Split view" aria-pressed="true" title="Split view">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="3" width="18" height="18" rx="2"></rect>

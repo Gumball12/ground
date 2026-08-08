@@ -49,6 +49,10 @@
   }
 
   .toolbar-center {
+    gap: 0;
+  }
+
+  .toolbar-center .view-toggle {
     display: none;
   }
 
@@ -77,6 +81,25 @@
   .toolbar-room-name {
     max-width: min(38vw, 140px);
     font-size: var(--text-xs);
+  }
+
+  .toolbar-search-trigger {
+    width: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .toolbar-search-trigger:hover {
+    border-color: transparent;
+    background: var(--color-surface-offset);
+  }
+
+  .toolbar-search-label,
+  .toolbar-search-kbd {
+    display: none;
   }
 
   .toolbar-badge {

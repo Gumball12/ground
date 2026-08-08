@@ -148,7 +148,7 @@ export const gitFeature = {
 
   syncMainChrome({ badgeLabel = '', mode, title = null } = {}) {
     const isSpecialMode = mode === 'diff' || mode === 'history' || mode === 'history-preview';
-    this.elements.toolbarCenter?.classList.toggle('hidden', isSpecialMode);
+    this.elements.toolbarViewToggle?.classList.toggle('hidden', isSpecialMode);
     this.elements.mobileViewToggle?.classList.toggle('hidden', isSpecialMode);
     this.elements.userCount?.classList.toggle('hidden', isSpecialMode);
     this.elements.toolbarDiffBadge?.classList.toggle('hidden', !badgeLabel);

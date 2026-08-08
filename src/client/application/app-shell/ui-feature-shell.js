@@ -149,15 +149,18 @@ function promptForVersionReload(payload = null) {
 
 /** @this {UiShellContext} */
 function bindToolbarEvents() {
+  const openQuickSwitcher = () => {
+    void this.toggleQuickSwitcher();
+    this.closeToolbarOverflowMenu?.();
+  };
+
   this.elements.shareButton?.addEventListener('click', () => {
     void this.copyCurrentLink();
     this.closeToolbarOverflowMenu?.();
   });
 
-  this.elements.searchFilesButton?.addEventListener('click', () => {
-    void this.toggleQuickSwitcher();
-    this.closeToolbarOverflowMenu?.();
-  });
+  this.elements.toolbarSearchButton?.addEventListener('click', openQuickSwitcher);
+  this.elements.searchFilesButton?.addEventListener('click', openQuickSwitcher);
 
   this.elements.exportDocxButton?.addEventListener('click', () => {
     void this.handleExportRequest?.('docx');
