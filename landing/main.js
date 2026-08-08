@@ -4,9 +4,47 @@
 
   /* ---------- Nav scrolled state ---------- */
   const nav = document.querySelector('.nav');
-  const onScroll = () => nav.classList.toggle('is-scrolled', window.scrollY > 24);
+  const menuToggle = document.querySelector('.nav-menu-toggle');
+  const navLinks = Array.from(document.querySelectorAll('.nav-links a'));
+  const navSections = navLinks
+    .map((link) => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  const setMenuOpen = (open) => {
+    nav.classList.toggle('is-menu-open', open);
+    menuToggle?.setAttribute('aria-expanded', String(open));
+    menuToggle?.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+  };
+
+  const updateActiveNav = () => {
+    const marker = window.scrollY + Math.min(window.innerHeight * 0.28, 220);
+    let activeId = '';
+    for (const section of navSections) {
+      if (section.offsetTop <= marker) activeId = section.id;
+    }
+    navLinks.forEach((link) => {
+      const active = link.getAttribute('href') === `#${activeId}`;
+      link.classList.toggle('is-active', active);
+      if (active) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+
+  const onScroll = () => {
+    nav.classList.toggle('is-scrolled', window.scrollY > 24);
+    updateActiveNav();
+  };
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', updateActiveNav);
+  menuToggle?.addEventListener('click', () => setMenuOpen(!nav.classList.contains('is-menu-open')));
+  navLinks.forEach((link) => link.addEventListener('click', () => setMenuOpen(false)));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && nav.classList.contains('is-menu-open')) {
+      setMenuOpen(false);
+      menuToggle?.focus();
+    }
+  });
 
   /* ---------- Scroll reveals ---------- */
   const revealEls = document.querySelectorAll('.reveal');
@@ -166,58 +204,4 @@
   });
   if (tabs.length && panels.length) document.documentElement.classList.add('tabs-ready');
 
-  /* ---------- Demo video controls ---------- */
-  const video = document.querySelector('.demo-frame video');
-  const videoToggle = document.querySelector('.demo-video-toggle');
-  if (video) {
-    let userPaused = reducedMotion;
-    video.controls = false;
-
-    const updateVideoToggle = () => {
-      if (!videoToggle) return;
-      const paused = video.paused;
-      videoToggle.classList.toggle('is-paused', paused);
-      videoToggle.setAttribute('aria-label', paused ? 'Play demo video' : 'Pause demo video');
-      const label = videoToggle.querySelector('.demo-video-label');
-      if (label) label.textContent = paused ? 'Play' : 'Pause';
-    };
-
-    if (reducedMotion) {
-      video.pause();
-    }
-
-    video.addEventListener('play', updateVideoToggle);
-    video.addEventListener('pause', updateVideoToggle);
-
-    videoToggle?.addEventListener('click', () => {
-      if (video.paused) {
-        userPaused = false;
-        video.play().catch(updateVideoToggle);
-      } else {
-        userPaused = true;
-        video.pause();
-      }
-    });
-
-    if ('IntersectionObserver' in window) {
-      const vio = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting && !userPaused) {
-              video.play().catch(updateVideoToggle);
-            } else {
-              video.pause();
-            }
-          }
-        },
-        { threshold: 0.15 },
-      );
-      vio.observe(video);
-    } else if (!reducedMotion) {
-      video.play().catch(updateVideoToggle);
-    }
-
-    document.documentElement.classList.add('video-ready');
-    updateVideoToggle();
-  }
 })();
