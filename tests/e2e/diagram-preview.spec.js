@@ -432,6 +432,60 @@ test('opens excalidraw files with a direct iframe preview', async ({ page }) => 
   expect(maximizedWidths.right).toBeLessThanOrEqual(maximizedWidths.innerWidth);
 });
 
+test('fits embedded excalidraw content on first load', async ({ page }) => {
+  await openHome(page);
+  await writeVaultFileAndResetCollab(page, {
+    path: 'viewport-fit.excalidraw',
+    content: JSON.stringify({
+      type: 'excalidraw',
+      version: 2,
+      source: 'collabmd',
+      appState: { gridSize: null, viewBackgroundColor: '#ffffff' },
+      elements: [{
+        id: 'viewport-fit',
+        type: 'rectangle',
+        x: 1000,
+        y: 1000,
+        width: 240,
+        height: 160,
+        angle: 0,
+        strokeColor: '#1f2937',
+        backgroundColor: '#f8fafc',
+        fillStyle: 'solid',
+        strokeWidth: 2,
+        strokeStyle: 'solid',
+        roughness: 0,
+        opacity: 100,
+        index: 'a0',
+        groupIds: [],
+        frameId: null,
+        roundness: { type: 3 },
+        seed: 1,
+        version: 1,
+        versionNonce: 1,
+        isDeleted: false,
+        boundElements: null,
+        updated: 1,
+        link: null,
+        locked: false,
+      }],
+      files: {},
+    }),
+  });
+  await writeVaultFileAndResetCollab(page, {
+    path: 'viewport-fit.md',
+    content: '# Viewport fit\n\n![[viewport-fit.excalidraw]]',
+  });
+  await page.goto('/?test=1#file=viewport-fit.md');
+  await expect(page.locator('#previewContent')).toBeVisible();
+
+  const iframe = page.locator('#previewContent .excalidraw-embed iframe').first();
+  await expect(iframe).toBeVisible();
+  const frame = page.frameLocator('#previewContent .excalidraw-embed iframe');
+  await expect(frame.locator('canvas')).toHaveCount(2);
+  await expect(frame.getByRole('button', { name: 'Scroll back to content' })).toHaveCount(0);
+});
+
 test('opens drawio files with a maximizable direct preview', async ({ page }) => {
   await openHome(page);
 

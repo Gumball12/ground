@@ -728,11 +728,10 @@ function scheduleViewportFit({
           suppressViewportBroadcast = true;
         }
 
-        excalidrawAPI.scrollToContent(latestElements, {
-          animate: false,
-          fitToViewport: true,
-          maxZoom: 2,
-          viewportZoomFactor: normalizedMode === 'preview' ? 0.92 : 0.88,
+        excalidrawAPI.setViewport({
+          target: latestElements,
+          animation: false,
+          fit: 'contain',
         });
 
         if (forcePreview) {
