@@ -652,8 +652,8 @@ test('quick switcher text search opens a grouped match at the matching line', as
       path: 'search/global-search-beta.md',
     },
     {
-      content: '{"type":"excalidraw","elements":[{"text":"Needle-E2E should stay ignored"}]}\n',
-      path: 'search/ignored-search-sketch.excalidraw',
+      content: '{"type":"excalidraw","elements":[{"text":"Needle-E2E appears in the sketch."}]}\n',
+      path: 'search/global-search-sketch.excalidraw',
     },
   ];
 
@@ -670,9 +670,11 @@ test('quick switcher text search opens a grouped match at the matching line', as
   const results = page.locator('#quickSwitcherResults');
   const alphaGroup = results.locator('.qs-text-group', { hasText: 'global-search-alpha' });
   const betaGroup = results.locator('.qs-text-group', { hasText: 'global-search-beta' });
+  const sketchGroup = results.locator('.qs-text-group', { hasText: 'global-search-sketch' });
   await expect(alphaGroup).toBeVisible();
   await expect(betaGroup).toBeVisible();
-  await expect(results).not.toContainText('ignored-search-sketch');
+  await expect(sketchGroup).toBeVisible();
+  await expect(sketchGroup.locator('.qs-text-item')).toContainText('Needle-E2E appears in the sketch.');
 
   await alphaGroup.locator('.qs-text-item', { hasText: 'Needle-E2E appears in alpha line.' }).click();
 

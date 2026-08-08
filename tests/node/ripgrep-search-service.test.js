@@ -166,8 +166,33 @@ test('RipgrepSearchService searches with safe rg args and handles no matches', a
   const maxCountIndex = calls[1].args.indexOf('--max-count');
   assert.equal(calls[1].args[maxCountIndex + 1], '6');
   assert.equal(calls[1].args.includes('*.drawio'), true);
-  assert.equal(calls[1].args.includes('*.excalidraw'), false);
+  assert.equal(calls[1].args.includes('*.excalidraw'), true);
   assert.equal(calls[1].args.includes('!node_modules/**'), true);
   assert.equal(calls[1].args.includes('!.obsidian/**'), true);
   assert.equal(calls[1].args.includes('!.trash/**'), true);
+});
+
+test('RipgrepSearchService passes search limits and cancellation to rg', async () => {
+  const calls = [];
+  const service = new RipgrepSearchService({
+    execFileImpl: async (command, args, options) => {
+      calls.push({ args, command, options });
+      if (args[0] === '--version') {
+        return { stdout: 'ripgrep 14.1.0\n' };
+      }
+      return { stdout: '' };
+    },
+    maxBufferBytes: 8 * 1024 * 1024,
+    maxFileSize: '5M',
+    vaultDir: '/tmp/vault',
+  });
+  const controller = new AbortController();
+
+  await service.initialize();
+  await service.search({ query: 'needle', signal: controller.signal });
+
+  assert.equal(calls[1].options.maxBuffer, 8 * 1024 * 1024);
+  assert.equal(calls[1].options.signal, controller.signal);
+  const maxFileSizeIndex = calls[1].args.indexOf('--max-filesize');
+  assert.equal(calls[1].args[maxFileSizeIndex + 1], '5M');
 });

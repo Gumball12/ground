@@ -1,4 +1,4 @@
-export const DEFAULT_SEARCH_DEBOUNCE_MS = 220;
+export const DEFAULT_SEARCH_DEBOUNCE_MS = 300;
 const TEXT_RESULT_LIMIT = 50;
 
 export function formatMatchCount(count = 0, { truncated = false } = {}) {

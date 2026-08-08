@@ -23,6 +23,7 @@ const TEXT_SEARCH_GLOBS = Object.freeze([
   '*.puml',
   '*.plantuml',
   '*.drawio',
+  '*.excalidraw',
 ]);
 
 function normalizePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -278,6 +279,7 @@ export class RipgrepSearchService {
   async search({
     limit = DEFAULT_MAX_FILES,
     query = '',
+    signal = null,
   } = {}) {
     const normalizedQuery = String(query ?? '').trim();
     const maxFiles = normalizePositiveInt(limit, this.maxFiles, {
@@ -310,6 +312,7 @@ export class RipgrepSearchService {
         cwd: this.vaultDir,
         encoding: 'utf8',
         maxBuffer: this.maxBufferBytes,
+        ...(signal ? { signal } : {}),
         timeout: this.timeoutMs,
       });
       const parsed = parseRipgrepJson(result.stdout, {

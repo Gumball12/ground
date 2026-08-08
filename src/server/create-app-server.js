@@ -89,6 +89,8 @@ export function createAppServer(config = loadConfig()) {
     vaultDir: config.vaultDir,
   });
   const searchService = new RipgrepSearchService({
+    maxBufferBytes: config.searchMaxBufferBytes,
+    maxFileSize: config.searchMaxFileSize,
     perfLoggingEnabled: config.perfLoggingEnabled,
     vaultDir: config.vaultDir,
   });

@@ -19,6 +19,49 @@ test('loadConfig enables perf logging from COLLABMD_PERF_LOGGING', () => {
   }
 });
 
+test('loadConfig configures global text search limits', () => {
+  const previousMaxFileSize = process.env.COLLABMD_SEARCH_MAX_FILE_SIZE;
+  const previousMaxBufferBytes = process.env.COLLABMD_SEARCH_MAX_BUFFER_BYTES;
+  process.env.COLLABMD_SEARCH_MAX_FILE_SIZE = '5m';
+  process.env.COLLABMD_SEARCH_MAX_BUFFER_BYTES = '8388608';
+
+  try {
+    const config = loadConfig({ vaultDir: process.cwd() });
+    assert.equal(config.searchMaxFileSize, '5M');
+    assert.equal(config.searchMaxBufferBytes, 8 * 1024 * 1024);
+  } finally {
+    if (previousMaxFileSize === undefined) {
+      delete process.env.COLLABMD_SEARCH_MAX_FILE_SIZE;
+    } else {
+      process.env.COLLABMD_SEARCH_MAX_FILE_SIZE = previousMaxFileSize;
+    }
+
+    if (previousMaxBufferBytes === undefined) {
+      delete process.env.COLLABMD_SEARCH_MAX_BUFFER_BYTES;
+    } else {
+      process.env.COLLABMD_SEARCH_MAX_BUFFER_BYTES = previousMaxBufferBytes;
+    }
+  }
+});
+
+test('loadConfig rejects invalid global text search file sizes', () => {
+  const previousMaxFileSize = process.env.COLLABMD_SEARCH_MAX_FILE_SIZE;
+  process.env.COLLABMD_SEARCH_MAX_FILE_SIZE = 'not-a-size';
+
+  try {
+    assert.throws(
+      () => loadConfig({ vaultDir: process.cwd() }),
+      /COLLABMD_SEARCH_MAX_FILE_SIZE must be a positive byte count/u,
+    );
+  } finally {
+    if (previousMaxFileSize === undefined) {
+      delete process.env.COLLABMD_SEARCH_MAX_FILE_SIZE;
+    } else {
+      process.env.COLLABMD_SEARCH_MAX_FILE_SIZE = previousMaxFileSize;
+    }
+  }
+});
+
 test('loadConfig enables wiki-link auto-create by default', () => {
   const previousValue = process.env.COLLABMD_WIKI_LINK_AUTO_CREATE;
   delete process.env.COLLABMD_WIKI_LINK_AUTO_CREATE;

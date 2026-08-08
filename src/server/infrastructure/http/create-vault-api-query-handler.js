@@ -19,6 +19,36 @@ const SVG_ATTACHMENT_CSP = "default-src 'none'; img-src 'self' data: blob:; styl
 const DEFAULT_MAX_ARCHIVE_ENTRIES = 10_000;
 const DEFAULT_MAX_DOWNLOAD_FILE_BYTES = 268_435_456;
 
+function createSearchCancellation(req, res) {
+  const controller = new AbortController();
+
+  const abort = () => {
+    if (controller.signal.aborted || res.writableEnded || res.writableFinished) {
+      return;
+    }
+
+    controller.abort();
+  };
+  const handleRequestClose = () => {
+    if (!req.complete) {
+      abort();
+    }
+  };
+
+  req.once('aborted', abort);
+  req.once('close', handleRequestClose);
+  res.once('close', abort);
+
+  return {
+    cleanup() {
+      req.off('aborted', abort);
+      req.off('close', handleRequestClose);
+      res.off('close', abort);
+    },
+    signal: controller.signal,
+  };
+}
+
 function createAttachmentHeaders(attachment) {
   const fileName = basename(String(attachment?.path ?? 'attachment'));
   const headers = {
@@ -418,13 +448,28 @@ async function handleSearch(req, res, requestUrl, { searchService }) {
     return;
   }
 
+  const cancellation = createSearchCancellation(req, res);
+
   try {
     const result = await searchService.search({
       limit: requestUrl.searchParams.get('limit') || '',
       query: requestUrl.searchParams.get('q') || '',
+      signal: cancellation.signal,
     });
+    if (cancellation.signal.aborted || res.destroyed || res.writableEnded) {
+      return;
+    }
+
     jsonResponse(req, res, 200, result);
   } catch (error) {
+    if (
+      cancellation.signal.aborted
+      || res.destroyed
+      || res.writableEnded
+    ) {
+      return;
+    }
+
     const statusCode = Number(error?.statusCode) || 500;
     console.error('[api] Failed to search vault:', error.message);
     jsonResponse(req, res, statusCode, {
@@ -435,6 +480,8 @@ async function handleSearch(req, res, requestUrl, { searchService }) {
         backend: 'ripgrep',
       },
     });
+  } finally {
+    cancellation.cleanup();
   }
 }
 

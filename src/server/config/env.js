@@ -13,9 +13,25 @@ import {
 import { loadBuildInfo } from './build-info.js';
 import { isPerfLoggingEnabled } from './perf-logging.js';
 
+const DEFAULT_SEARCH_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
+const DEFAULT_SEARCH_MAX_FILE_SIZE = '1M';
+
 function parsePositiveInt(rawValue, fallbackValue) {
   const parsed = Number.parseInt(rawValue ?? '', 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallbackValue;
+}
+
+function normalizeSearchMaxFileSize(rawValue, fallbackValue = DEFAULT_SEARCH_MAX_FILE_SIZE) {
+  const normalized = String(rawValue ?? '').trim();
+  if (!normalized) {
+    return fallbackValue;
+  }
+
+  if (!/^[1-9]\d*(?:[KMG])?$/iu.test(normalized)) {
+    throw new Error('COLLABMD_SEARCH_MAX_FILE_SIZE must be a positive byte count with an optional K, M, or G suffix.');
+  }
+
+  return normalized.toUpperCase();
 }
 
 function parseOptionalPositiveInt(rawValue, {
@@ -396,6 +412,13 @@ export function loadConfig(overrides = {}) {
     maxBaseQueryRows: parsePositiveInt(process.env.COLLABMD_MAX_BASE_QUERY_ROWS, 5_000),
     maxDownloadFileBytes: parsePositiveInt(process.env.COLLABMD_MAX_DOWNLOAD_FILE_BYTES, 268_435_456),
     maxInitialSyncBytes: parsePositiveInt(process.env.COLLABMD_MAX_INITIAL_SYNC_BYTES, 16_777_216),
+    searchMaxBufferBytes: parsePositiveInt(
+      overrides.searchMaxBufferBytes ?? process.env.COLLABMD_SEARCH_MAX_BUFFER_BYTES,
+      DEFAULT_SEARCH_MAX_BUFFER_BYTES,
+    ),
+    searchMaxFileSize: normalizeSearchMaxFileSize(
+      overrides.searchMaxFileSize ?? process.env.COLLABMD_SEARCH_MAX_FILE_SIZE,
+    ),
     perfLoggingEnabled: overrides.perfLoggingEnabled ?? isPerfLoggingEnabled(process.env.COLLABMD_PERF_LOGGING),
     port: parsePositiveInt(process.env.PORT, 1234),
     nodeEnv,

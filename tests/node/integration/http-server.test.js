@@ -233,11 +233,38 @@ test('HTTP server searches vault text with ripgrep-backed API', async (t) => {
   assert.equal(payload.search.backend, 'ripgrep');
   assert.equal(payload.files.some((entry) => entry.file === 'docs/guide.md'), true);
   assert.equal(payload.files.some((entry) => entry.file === 'diagram.drawio'), true);
-  assert.equal(payload.files.some((entry) => entry.file === 'sketch.excalidraw'), false);
+  assert.equal(payload.files.some((entry) => entry.file === 'sketch.excalidraw'), true);
+  assert.equal(payload.files.find((entry) => entry.file === 'sketch.excalidraw')?.kind, 'excalidraw');
 
   const guide = payload.files.find((entry) => entry.file === 'docs/guide.md');
   assert.equal(guide.snippets[0].line, 3);
   assert.match(guide.snippets[0].text, /needle/);
+});
+
+test('HTTP server cancels an in-flight text search when the client disconnects', async (t) => {
+  const app = await startTestServer({ fileWatcherEnabled: false });
+  t.after(() => app.close());
+
+  let searchSignal = null;
+  let searchAborted = false;
+  app.server.searchService.search = ({ signal }) => new Promise((resolve, reject) => {
+    searchSignal = signal;
+    signal.addEventListener('abort', () => {
+      searchAborted = true;
+      const error = new Error('search aborted');
+      error.code = 'ABORT_ERR';
+      error.name = 'AbortError';
+      reject(error);
+    }, { once: true });
+  });
+
+  const clientRequest = request(`${app.baseUrl}/api/search?q=needle`, () => {});
+  clientRequest.on('error', () => {});
+  clientRequest.end();
+
+  await waitForCondition(() => searchSignal !== null);
+  clientRequest.destroy();
+  await waitForCondition(() => searchAborted);
 });
 
 test('HTTP server reports unavailable global text search when ripgrep is missing', async (t) => {

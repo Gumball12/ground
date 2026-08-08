@@ -680,6 +680,8 @@ vite.config.mjs            Vite multi-page build and dev-server proxy config
 | `PLANTUML_SERVER_URL` | Upstream PlantUML server base URL used for server-side SVG rendering | `https://www.plantuml.com/plantuml` |
 | `COLLABMD_DRAWIO_BASE_URL` | diagrams.net base URL used for `.drawio` viewing and editing | `https://embed.diagrams.net` |
 | `COLLABMD_WIKI_LINK_AUTO_CREATE` | Create missing markdown files when clicking unresolved wiki-links; set to `false` to disable | `true` |
+| `COLLABMD_SEARCH_MAX_FILE_SIZE` | Maximum size of each file considered by global text search; supports bytes or `K`, `M`, and `G` suffixes | `1M` |
+| `COLLABMD_SEARCH_MAX_BUFFER_BYTES` | Maximum ripgrep output buffer for one global text search | `2097152` |
 | `COLLABMD_VAULT_DIR` | Vault directory path | CLI: current directory, server entrypoint: `data/vault`, Docker: `/data` |
 | `COLLABMD_GIT_ENABLED` | Enable or disable git integration in the UI and API | `true` |
 | `COLLABMD_GIT_REPO_URL` | Remote git repository used to bootstrap the vault checkout | |
