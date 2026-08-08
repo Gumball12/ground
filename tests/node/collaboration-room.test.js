@@ -700,6 +700,79 @@ test('CollaborationRoom hydrates and persists Excalidraw rooms regardless of ext
   assert.equal(backlinkUpdates, 0);
 });
 
+test('CollaborationRoom keeps Excalidraw comments in the collaboration sidecar', async () => {
+  const writes = [];
+  const diagramThread = {
+    anchorKind: 'diagram-element',
+    anchorPoint: { x: 140, y: 80 },
+    anchorQuote: 'Architecture node',
+    anchorSnapshot: {
+      height: 40,
+      text: 'Architecture node',
+      type: 'rectangle',
+      width: 80,
+      x: 100,
+      y: 60,
+    },
+    createdAt: 1,
+    createdByColor: '',
+    createdByName: 'Andes',
+    createdByPeerId: '',
+    elementId: 'shape-1',
+    id: 'thread-diagram',
+    messages: [{
+      body: 'Add the owner here',
+      createdAt: 1,
+      id: 'comment-diagram',
+      peerId: '',
+      reactions: [],
+      userColor: '',
+      userName: 'Andes',
+    }],
+    resolvedAt: null,
+    resolvedByColor: '',
+    resolvedByName: '',
+    resolvedByPeerId: '',
+  };
+  const scene = JSON.stringify({
+    appState: { gridSize: null, viewBackgroundColor: '#ffffff' },
+    elements: [{ id: 'shape-1', type: 'rectangle', x: 100, y: 60, width: 80, height: 40 }],
+    files: {},
+    source: 'collabmd',
+    type: 'excalidraw',
+    version: 2,
+  });
+  const room = new CollaborationRoom({
+    maxBufferedAmountBytes: 1024,
+    name: 'diagram-comments.excalidraw',
+    onEmpty: () => {},
+    vaultFileStore: {
+      async readCommentThreads() {
+        return [diagramThread];
+      },
+      async readEditableVaultContent() {
+        return scene;
+      },
+      async persistCollaborationState(path, payload) {
+        writes.push({ path, ...payload });
+        return { ok: true };
+      },
+    },
+  });
+
+  await room.hydrate();
+  assert.equal(room.doc.getArray('comments').length, 1);
+  assert.equal(room.doc.getArray('comments').get(0).get('elementId'), 'shape-1');
+
+  await room.persist();
+
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, 'diagram-comments.excalidraw');
+  assert.equal(writes[0].includeContent, false);
+  assert.deepEqual(writes[0].commentThreads, [diagramThread]);
+  assert.equal(JSON.parse(writes[0].content).comments, undefined);
+});
+
 test('CollaborationRoom keeps the latest excalidraw state available while final persist is still running', async () => {
   const initialScene = JSON.stringify({
     appState: { gridSize: null, viewBackgroundColor: '#ffffff' },

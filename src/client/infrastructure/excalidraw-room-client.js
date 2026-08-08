@@ -24,6 +24,10 @@ import {
   tryParseSceneJson,
 } from '../domain/excalidraw-scene.js';
 import { resolveWsBaseUrl } from '../domain/runtime-paths.js';
+import {
+  normalizeCommentQuote,
+} from '../../domain/comment-threads.js';
+import { CommentThreadStore } from './comment-thread-store.js';
 import { stopReconnectOnControlledClose } from './yjs-provider-reset-guard.js';
 
 const DEFAULT_EMPTY_SCENE_GUARD_MS = 250;
@@ -86,6 +90,35 @@ function shouldSyncElementToRoom(localElement, roomElement) {
   return localVersionNonce < roomVersionNonce;
 }
 
+function createDiagramCommentAnchor(element) {
+  const elementId = typeof element?.id === 'string' ? element.id.trim() : '';
+  const x = Number(element?.x);
+  const y = Number(element?.y);
+  const width = Number(element?.width);
+  const height = Number(element?.height);
+  if (!elementId || ![x, y, width, height].every(Number.isFinite)) {
+    return null;
+  }
+
+  return {
+    anchorKind: 'diagram-element',
+    anchorPoint: {
+      x: x + (width / 2),
+      y: y + (height / 2),
+    },
+    anchorQuote: normalizeCommentQuote(element.text),
+    anchorSnapshot: {
+      height,
+      text: normalizeCommentQuote(element.text),
+      type: typeof element.type === 'string' ? element.type : 'element',
+      width,
+      x,
+      y,
+    },
+    elementId,
+  };
+}
+
 export class ExcalidrawRoomClient {
   constructor({
     cancelAnimationFrameFn = (frameId) => cancelAnimationFrame(frameId),
@@ -94,6 +127,7 @@ export class ExcalidrawRoomClient {
     filePath = '',
     now = () => Date.now(),
     onCollaboratorsChange = () => {},
+    onCommentThreadsChange = () => {},
     onConnectionStateChange = () => {},
     onRemoteSceneJson = () => {},
     requestAnimationFrameFn = (callback) => requestAnimationFrame(callback),
@@ -111,6 +145,7 @@ export class ExcalidrawRoomClient {
     this.filePath = filePath;
     this.now = now;
     this.onCollaboratorsChange = onCollaboratorsChange;
+    this.onCommentThreadsChange = onCommentThreadsChange;
     this.onConnectionStateChange = onConnectionStateChange;
     this.onRemoteSceneJson = onRemoteSceneJson;
     this.requestAnimationFrameFn = requestAnimationFrameFn;
@@ -150,6 +185,15 @@ export class ExcalidrawRoomClient {
     this.hasAuthoritativeSync = false;
     this.applyingSharedSnapshotDepth = 0;
     this.suppressStructuredSceneUpdateDepth = 0;
+    this.commentThreadStore = new CommentThreadStore({
+      canWrite: () => this.canWriteToRoom,
+      createAnchor: createDiagramCommentAnchor,
+      getDoc: () => this.ydoc,
+      getEditorState: () => null,
+      getLocalUser: () => this.getLocalUser(),
+      onCommentsChange: (threads) => this.onCommentThreadsChange(threads),
+      resolveThread: (thread) => thread,
+    });
 
     this.handleAwarenessChange = () => {
       this.onCollaboratorsChange(buildCollaboratorsMap(this.awareness));
@@ -181,6 +225,25 @@ export class ExcalidrawRoomClient {
 
   getLocalUser() {
     return this.localUser;
+  }
+
+  getCommentThreads() {
+    return this.commentThreadStore.getCommentThreads();
+  }
+
+  createCommentThread({ body, element } = {}) {
+    return this.commentThreadStore.createCommentThread({
+      anchor: element,
+      body,
+    });
+  }
+
+  replyToCommentThread(threadId, body) {
+    return this.commentThreadStore.replyToCommentThread(threadId, body);
+  }
+
+  deleteCommentThread(threadId) {
+    return this.commentThreadStore.deleteCommentThread(threadId);
   }
 
   getConnectionState() {
@@ -292,6 +355,7 @@ export class ExcalidrawRoomClient {
       this.lastSceneJson = JSON.stringify(scene);
       this.hasAuthoritativeSync = true;
       this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE);
+      this.onCommentThreadsChange([]);
       return scene;
     }
 
@@ -383,6 +447,10 @@ export class ExcalidrawRoomClient {
     this.roomFiles.observeDeep(this.handleStructuredSceneUpdate);
     this.roomAppState.observe(this.handleStructuredSceneUpdate);
     this.structuredObserversAttached = true;
+    this.commentThreadStore.bind({
+      commentThreads: this.ydoc.getArray('comments'),
+      ydoc: this.ydoc,
+    });
     if (usedApiFallback && this.canWriteToRoom) {
       this.commitSceneJson(this.lastSceneJson, {
         origin: 'excalidraw-api-fallback',
@@ -892,6 +960,8 @@ export class ExcalidrawRoomClient {
       this.roomAppState?.unobserve(this.handleStructuredSceneUpdate);
       this.structuredObserversAttached = false;
     }
+
+    this.commentThreadStore.unbind();
 
     if (this.awareness) {
       this.awareness.off('change', this.handleAwarenessChange);

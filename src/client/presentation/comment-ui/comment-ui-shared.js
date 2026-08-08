@@ -51,6 +51,10 @@ export function areAnchorsEqual(left, right) {
 }
 
 export function formatAnchorLabel(anchor) {
+  if (getAnchorKind(anchor) === 'diagram-element') {
+    return 'Diagram element';
+  }
+
   const startLine = Number(anchor?.startLine || 0);
   const endLine = Number(anchor?.endLine || startLine);
   if (!Number.isFinite(startLine) || startLine <= 0) {

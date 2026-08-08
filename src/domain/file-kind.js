@@ -133,7 +133,10 @@ export function isVaultFilePath(filePath) {
 
 export function supportsCommentsForFilePath(filePath) {
   const kind = getVaultFileKind(filePath);
-  return kind === 'markdown' || kind === 'mermaid' || kind === 'plantuml';
+  return kind === 'markdown'
+    || kind === 'mermaid'
+    || kind === 'plantuml'
+    || kind === 'excalidraw';
 }
 
 export function supportsBacklinksForFilePath(filePath) {

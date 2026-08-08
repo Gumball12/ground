@@ -188,6 +188,141 @@ test('@excalidraw-smoke fallback, reconnect, and durable convergence obey author
   }
 });
 
+test('@excalidraw-comments keeps threads in the sidecar and syncs markers, replies, and resolve', async ({ browser }) => {
+  const context = await browser.newContext();
+  const pageA = await context.newPage();
+  const pageB = await context.newPage();
+  const filePath = 'diagram-comments.e2e.excalidraw';
+
+  try {
+    await prepareFile(pageA, filePath, createScene([
+      createElement('comment-target', { x: 100, y: 80 }),
+    ]));
+    await openDirectEditor(pageA, filePath);
+    await openDirectEditor(pageB, filePath);
+    await pageB.setViewportSize({ height: 720, width: 780 });
+    await waitForAuthority(pageA);
+    await waitForAuthority(pageB);
+    await expect(pageA.locator('.layer-ui__wrapper__top-right .default-sidebar-trigger')).toBeVisible();
+
+    await pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.selectElement('comment-target'));
+    await pageA.getByTestId('diagram-comments-toggle').click();
+    await expect(pageA.getByTestId('diagram-add-comment')).toBeEnabled();
+    await pageA.getByTestId('diagram-add-comment').click();
+    await pageA.locator('textarea[aria-label="Comment"]').fill('Add the owner here');
+    await pageA.getByRole('button', { name: 'Post comment' }).click();
+
+    await expect.poll(async () => pageB.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getCommentThreads().length
+    ))).toBe(1);
+    const threadId = await pageB.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getCommentThreads()[0].id
+    ));
+    const markerB = pageB.locator(`[data-comment-thread-id="${threadId}"]`);
+    await expect(markerB).toBeVisible();
+    await expect(markerB.locator('.diagram-comment-icon')).toBeVisible();
+    await expect(pageB.locator('.layer-ui__wrapper__top-right .default-sidebar-trigger')).toBeVisible();
+    await expect.poll(async () => pageB.getByTestId('diagram-comments-toggle').evaluate((element) => (
+      Boolean(element.closest('.layer-ui__wrapper__top-right'))
+    ))).toBe(true);
+    const markerBeforeZoom = await markerB.boundingBox();
+    await expect(pageB.getByTestId('diagram-add-comment')).toHaveCount(0);
+    await expect(pageB.getByTestId('diagram-comments-toggle')).toHaveAttribute('aria-expanded', 'false');
+
+    await expect(pageB.locator('.UserList')).toBeVisible();
+    await expect.poll(async () => pageB.evaluate(() => {
+      const toolbar = document.querySelector('.diagram-comments-toolbar')?.getBoundingClientRect();
+      const userList = document.querySelector('.UserList')?.getBoundingClientRect();
+      if (!toolbar || !userList) {
+        return null;
+      }
+
+      return !(
+        toolbar.right <= userList.left
+        || toolbar.left >= userList.right
+        || toolbar.bottom <= userList.top
+        || toolbar.top >= userList.bottom
+      );
+    })).toBe(false);
+
+    await pageB.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.selectElement('comment-target'));
+    await expect(pageB.locator('.diagram-comments-toolbar > button')).toHaveCount(2);
+    await expect(pageB.getByTestId('diagram-add-comment')).toBeEnabled();
+    await pageB.getByTestId('diagram-add-comment').click();
+    await expect(pageB.locator('textarea[aria-label="Comment"]')).toBeVisible();
+    await pageB.getByRole('button', { name: 'Cancel' }).click();
+    await pageB.getByTestId('diagram-comments-toggle').click();
+    await expect(pageB.getByTestId('diagram-add-comment')).toBeVisible();
+    await expect(pageB.getByTestId('diagram-add-comment')).toHaveAttribute('aria-label', 'Add comment');
+    await pageB.getByTestId('diagram-comments-toggle').click();
+    await expect.poll(async () => pageB.locator('.App-menu_top__left .properties-trigger').count()).toBeGreaterThan(0);
+    const markerFrameGeometry = await pageB.evaluate(() => {
+      const marker = document.querySelector('.diagram-comment-marker')?.getBoundingClientRect();
+      const bounds = window.__COLLABMD_EXCALIDRAW_TEST__.getElementBounds('comment-target');
+      const viewport = window.__COLLABMD_EXCALIDRAW_TEST__.getViewport();
+      return { marker, bounds, viewport };
+    });
+    expect(markerFrameGeometry.marker).not.toBeNull();
+    expect(markerFrameGeometry.bounds).not.toBeNull();
+    expect(markerFrameGeometry.viewport).not.toBeNull();
+    expect(markerFrameGeometry.marker.x + (markerFrameGeometry.marker.width / 2)).toBeCloseTo(
+      (markerFrameGeometry.bounds.x + markerFrameGeometry.bounds.width + markerFrameGeometry.viewport.scrollX)
+        * markerFrameGeometry.viewport.zoom
+        + markerFrameGeometry.viewport.offsetLeft,
+      0,
+    );
+    expect(markerFrameGeometry.marker.y + (markerFrameGeometry.marker.height / 2)).toBeCloseTo(
+      (markerFrameGeometry.bounds.y + markerFrameGeometry.viewport.scrollY)
+        * markerFrameGeometry.viewport.zoom
+        + markerFrameGeometry.viewport.offsetTop,
+      0,
+    );
+
+    await pageB.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.setViewport({
+      scrollX: 40,
+      scrollY: 30,
+      zoom: 1.5,
+    }));
+    await expect.poll(async () => {
+      const markerAfterZoom = await markerB.boundingBox();
+      if (!markerBeforeZoom || !markerAfterZoom) {
+        return 0;
+      }
+      return Math.round(markerAfterZoom.x - markerBeforeZoom.x) + Math.round(markerAfterZoom.y - markerBeforeZoom.y);
+    }).not.toBe(0);
+
+    await markerB.click();
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toBeVisible();
+    await pageB.keyboard.press('Escape');
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toBeHidden();
+    await markerB.click();
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toBeVisible();
+    await pageB.locator('canvas.excalidraw__canvas.interactive').dispatchEvent('pointerdown');
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toBeHidden();
+    await markerB.click();
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toContainText('Add the owner here');
+    await expect(pageB.getByTestId('diagram-comments-drawer')).toContainText(
+      'Rectangle element · Add the owner here',
+    );
+    await pageB.locator('textarea[aria-label="Reply"]').fill('Reviewer will own it.');
+    await pageB.getByRole('button', { name: 'Reply' }).click();
+    await expect.poll(async () => pageA.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getCommentThreads()[0]?.messages.length || 0
+    ))).toBe(2);
+
+    await pageA.locator(`[data-comment-thread-id="${threadId}"]`).click();
+    await pageA.getByRole('button', { name: 'Resolve' }).click();
+    await expect.poll(async () => pageB.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getCommentThreads().length
+    ))).toBe(0);
+    await expect.poll(async () => pageA.evaluate(() => (
+      JSON.parse(window.__COLLABMD_EXCALIDRAW_TEST__.getSceneJson()).elements.map((element) => element.id)
+    ))).toEqual(['comment-target']);
+  } finally {
+    await context.close();
+  }
+});
+
 test('@excalidraw-smoke single-entry undo and redo do not cross a collaborator-superseded entry', async ({ browser }, testInfo) => {
   const context = await browser.newContext();
   const pageA = await context.newPage();

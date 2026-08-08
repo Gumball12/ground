@@ -39,10 +39,16 @@ function createThreadSummary(thread) {
   }
 
   const id = asString(thread.id);
+  const anchorKind = asString(thread.anchorKind) || 'line';
+  const isDiagramElementAnchor = anchorKind === 'diagram-element';
   const anchorStartLine = asFiniteNumber(thread.anchorStartLine);
   const anchorEndLine = asFiniteNumber(thread.anchorEndLine);
   const messages = asArray(thread.messages);
-  if (!id || anchorStartLine === null || anchorEndLine === null || messages.length === 0) {
+  if (
+    !id
+    || messages.length === 0
+    || (!isDiagramElementAnchor && (anchorStartLine === null || anchorEndLine === null))
+  ) {
     return null;
   }
 
@@ -53,10 +59,14 @@ function createThreadSummary(thread) {
 
   return {
     anchor: {
-      endLine: Math.max(anchorEndLine, anchorStartLine),
-      kind: asString(thread.anchorKind) || 'line',
-      quote: asString(thread.anchorQuote),
-      startLine: Math.max(anchorStartLine, 1),
+      ...(isDiagramElementAnchor
+        ? {}
+        : {
+          endLine: Math.max(anchorEndLine, anchorStartLine),
+          startLine: Math.max(anchorStartLine, 1),
+        }),
+      kind: anchorKind,
+      quote: asString(thread.anchorQuote) || (isDiagramElementAnchor ? 'Diagram element' : ''),
     },
     createdAt: asFiniteNumber(thread.createdAt) ?? latestActivityAt,
     createdByColor: asString(thread.createdByColor),

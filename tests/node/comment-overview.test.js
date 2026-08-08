@@ -44,6 +44,24 @@ test('createCommentOverview groups summaries by file and sorts by latest message
   assert.equal(overview.files[0].threads[0].messageCount, 2);
 });
 
+test('createCommentOverview includes Excalidraw element threads without source lines', () => {
+  const overview = createCommentOverview([{
+    filePath: 'diagrams/architecture.excalidraw',
+    threads: [{
+      anchorKind: 'diagram-element',
+      anchorQuote: '',
+      createdAt: 10,
+      createdByName: 'Ada',
+      id: 'diagram-thread',
+      messages: [{ body: 'Add the owner here', createdAt: 20, userName: 'Ada' }],
+    }],
+  }]);
+
+  assert.equal(overview.totalThreadCount, 1);
+  assert.equal(overview.files[0].threads[0].anchor.kind, 'diagram-element');
+  assert.equal(overview.files[0].threads[0].anchor.quote, 'Diagram element');
+});
+
 test('createCommentOverview preserves Markdown structure in latest message previews', () => {
   const overview = createCommentOverview([{
     filePath: 'notes/a.md',

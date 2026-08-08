@@ -1,4 +1,7 @@
-import { getVaultFileKind, supportsCommentsForFilePath } from '../../../domain/file-kind.js';
+import {
+  getVaultFileKind,
+  supportsCommentsForFilePath,
+} from '../../../domain/file-kind.js';
 
 export const commentsFeature = {
   createCommentThread(payload) {
@@ -82,19 +85,20 @@ export const commentsFeature = {
       return;
     }
 
+    const isDiagram = getVaultFileKind(filePath) === 'excalidraw';
     const line = Number.isFinite(anchor?.startLine) ? anchor.startLine : null;
-    this._pendingCommentOverviewFocus = {
-      attempts: 0,
-      filePath,
-      line,
-      threadId,
-    };
+    if (!isDiagram) {
+      this._pendingCommentOverviewFocus = {
+        attempts: 0,
+        filePath,
+        line,
+        threadId,
+      };
+    }
     this.setSidebarTab('comments');
     this.setSidebarVisibility(true);
     this.workspaceRouteController?.preserveSidebarTabForNextFileRoute?.(filePath);
-    this.navigation.navigateToFile(filePath, {
-      line,
-    });
+    this.navigation.navigateToFile(filePath, isDiagram ? undefined : { line });
 
     if (this.currentFilePath !== filePath || !this.session) {
       await this.workspaceRouteController.openFile(filePath);
@@ -102,6 +106,11 @@ export const commentsFeature = {
 
     this.setSidebarTab('comments');
     this.setSidebarVisibility(true);
+    if (isDiagram) {
+      this.excalidrawEmbed?.openCommentThread?.(filePath, threadId);
+      return;
+    }
+
     this.focusPendingCommentOverviewThread();
   },
 

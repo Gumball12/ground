@@ -83,15 +83,21 @@ function normalizeSelectionAnchorPayload(payload, state) {
 
 export class CommentThreadStore {
   constructor({
+    canWrite = () => true,
+    createAnchor = null,
     getDoc,
     getEditorState,
     getLocalUser,
     onCommentsChange = null,
+    resolveThread = null,
   }) {
+    this.canWrite = canWrite;
+    this.createAnchor = createAnchor;
     this.getDoc = getDoc;
     this.getEditorState = getEditorState;
     this.getLocalUser = getLocalUser;
     this.onCommentsChange = onCommentsChange;
+    this.resolveThread = resolveThread;
     this.commentThreads = null;
     this.ydoc = null;
     this.ytext = null;
@@ -144,33 +150,44 @@ export class CommentThreadStore {
     }
 
     return serializeCommentThreads(this.commentThreads)
-      .map((thread) => this.resolveCommentThread(thread))
+      .map((thread) => this.resolveThread
+        ? this.resolveThread(thread)
+        : this.resolveCommentThread(thread))
       .filter(Boolean);
   }
 
   createCommentThread({ anchor, body }) {
-    const state = this.getEditorState();
-    if (!state || !this.commentThreads || !this.ytext || !this.ydoc) {
+    if (!this.canWrite() || !this.commentThreads || !this.ydoc) {
       return null;
     }
 
+    const state = this.getEditorState?.();
     const normalizedBody = normalizeCommentBody(body);
-    const normalizedAnchor = normalizeSelectionAnchorPayload(anchor, state);
+    if (!this.createAnchor && (!state || !this.ytext)) {
+      return null;
+    }
+
+    const normalizedAnchor = this.createAnchor
+      ? this.createAnchor(anchor)
+      : normalizeSelectionAnchorPayload(anchor, state);
     if (!normalizedBody || !normalizedAnchor) {
       return null;
     }
 
     const thread = createCommentThreadSharedType({
-      anchorEnd: Y.relativePositionToJSON(
-        Y.createRelativePositionFromTypeIndex(this.ytext, normalizedAnchor.endIndex),
-      ),
-      anchorEndLine: normalizedAnchor.anchorEndLine,
+      ...normalizedAnchor,
+      ...(this.createAnchor ? {} : {
+        anchorEnd: Y.relativePositionToJSON(
+          Y.createRelativePositionFromTypeIndex(this.ytext, normalizedAnchor.endIndex),
+        ),
+      }),
       anchorKind: normalizedAnchor.anchorKind,
       anchorQuote: normalizedAnchor.anchorQuote,
-      anchorStart: Y.relativePositionToJSON(
-        Y.createRelativePositionFromTypeIndex(this.ytext, normalizedAnchor.startIndex),
-      ),
-      anchorStartLine: normalizedAnchor.anchorStartLine,
+      ...(this.createAnchor ? {} : {
+        anchorStart: Y.relativePositionToJSON(
+          Y.createRelativePositionFromTypeIndex(this.ytext, normalizedAnchor.startIndex),
+        ),
+      }),
       createdAt: Date.now(),
       createdByColor: this.getLocalUser()?.color ?? '',
       createdByName: this.getLocalUser()?.name ?? 'Anonymous',
@@ -194,6 +211,10 @@ export class CommentThreadStore {
   }
 
   replyToCommentThread(threadId, body) {
+    if (!this.canWrite()) {
+      return null;
+    }
+
     const normalizedBody = normalizeCommentBody(body);
     if (!normalizedBody || !this.ydoc) {
       return null;
@@ -291,7 +312,7 @@ export class CommentThreadStore {
   }
 
   deleteCommentThread(threadId) {
-    if (!this.commentThreads || !this.ydoc) {
+    if (!this.canWrite() || !this.commentThreads || !this.ydoc) {
       return false;
     }
 

@@ -88,6 +88,46 @@ test('replays a queued follow target after the Excalidraw iframe reports ready',
   }
 });
 
+test('opens a queued Excalidraw comment thread in a ready iframe', () => {
+  const originalWindow = globalThis.window;
+  const posts = [];
+  const entry = {
+    filePath: 'sample-excalidraw.excalidraw',
+    iframe: { contentWindow: {} },
+    isReady: true,
+    wrapper: {},
+  };
+
+  globalThis.window = {
+    location: { origin: 'http://localhost:4173' },
+  };
+
+  try {
+    const controller = {
+      embedEntries: new Map([['sample-excalidraw.excalidraw#file-preview', entry]]),
+      _findEntryByFilePath: ExcalidrawEmbedController.prototype._findEntryByFilePath,
+      _postMessageToEntry: (_entry, payload) => posts.push(payload),
+      _postPendingCommentThread: ExcalidrawEmbedController.prototype._postPendingCommentThread,
+    };
+
+    const didQueueComment = ExcalidrawEmbedController.prototype.openCommentThread.call(
+      controller,
+      entry.filePath,
+      'thread-42',
+    );
+
+    assert.equal(didQueueComment, true);
+    assert.deepEqual(posts, [{
+      source: 'collabmd-host',
+      threadId: 'thread-42',
+      type: 'open-comment-thread',
+    }]);
+    assert.equal(entry.pendingCommentThreadId, null);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
 test('forwards Excalidraw quick switcher requests from known same-origin iframe', () => {
   const originalWindow = globalThis.window;
   const iframeWindow = {};

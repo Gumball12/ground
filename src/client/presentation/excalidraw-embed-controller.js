@@ -230,6 +230,25 @@ export class ExcalidrawEmbedController {
     });
   }
 
+  openCommentThread(filePath, threadId) {
+    if (!filePath || !threadId) {
+      return false;
+    }
+
+    const entry = this._findEntryByFilePath(filePath);
+    if (!entry) {
+      return false;
+    }
+
+    entry.pendingCommentThreadId = threadId;
+    if (entry.isReady) {
+      this._postPendingCommentThread(entry);
+    } else if (!entry.wrapper) {
+      this._enqueueHydration(entry, { prioritize: true });
+    }
+    return true;
+  }
+
   prepareFileDisconnect(filePath, { timeoutMs = 10000 } = {}) {
     const entry = this._findEntryByFilePath(filePath);
     if (!entry?.iframe?.contentWindow) {
@@ -1196,6 +1215,7 @@ export class ExcalidrawEmbedController {
         theme: this.getTheme?.() || 'dark',
       });
       this._syncEntryFollowState(entry);
+      this._postPendingCommentThread?.(entry);
       if (this._entryNeedsHardReload(entry)) {
         void this._hydrateEntry(entry);
       }
@@ -1258,6 +1278,19 @@ export class ExcalidrawEmbedController {
 
   _postMessageToEntry(entry, payload) {
     entry?.iframe?.contentWindow?.postMessage(payload, window.location.origin);
+  }
+
+  _postPendingCommentThread(entry) {
+    if (!entry?.isReady || !entry.pendingCommentThreadId) {
+      return;
+    }
+
+    this._postMessageToEntry(entry, {
+      source: 'collabmd-host',
+      threadId: entry.pendingCommentThreadId,
+      type: 'open-comment-thread',
+    });
+    entry.pendingCommentThreadId = null;
   }
 
   _requestPreviewViewportFit(entry) {

@@ -31,6 +31,300 @@ body[data-surface='excalidraw-editor'][data-document-mode='preview'] .disable-vi
   pointer-events: none;
 }
 
+.diagram-comments-overlay {
+  position: absolute;
+  z-index: 25;
+  inset: 0;
+  pointer-events: none;
+}
+
+.diagram-comments-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: auto;
+}
+
+.diagram-comment-button,
+.diagram-comment-close,
+.diagram-comment-back,
+.diagram-comment-marker {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.diagram-comment-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  box-shadow: none;
+  transition: transform var(--transition-interactive), background var(--transition-interactive), border-color var(--transition-interactive), color var(--transition-interactive);
+}
+
+.diagram-comment-button:hover:not(:disabled),
+.diagram-comment-back:hover {
+  border-color: var(--color-comment);
+}
+
+.diagram-comment-button:hover:not(:disabled),
+.diagram-comment-button.is-active {
+  background: var(--color-surface-raised);
+}
+
+.diagram-comment-button:active:not(:disabled),
+.diagram-comment-add:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.diagram-comment-button:focus-visible,
+.diagram-comment-add:focus-visible,
+.diagram-comment-close:focus-visible,
+.diagram-comment-back:focus-visible,
+.diagram-comment-marker:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.diagram-comment-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.diagram-comments-toolbar .diagram-comment-button,
+.diagram-comments-toolbar .diagram-comment-add {
+  position: relative;
+}
+
+.diagram-comment-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-full);
+  background: var(--color-comment);
+  color: var(--color-primary-contrast);
+  font-family: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+.diagram-comment-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  min-width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0;
+  border: 1px solid var(--border-comment-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-comment-soft);
+  color: var(--color-comment-text);
+  cursor: pointer;
+  transition: transform var(--transition-interactive), background var(--transition-interactive), border-color var(--transition-interactive), color var(--transition-interactive);
+}
+
+.diagram-comment-add:hover:not(:disabled) {
+  border-color: var(--border-comment-active);
+  background: var(--surface-comment-offset-active);
+}
+
+.diagram-comment-button.is-primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.diagram-comment-button.is-danger {
+  color: var(--color-error);
+}
+
+.diagram-comment-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.diagram-comment-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.diagram-comment-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.diagram-comment-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-comment);
+  color: var(--color-primary-contrast);
+  box-shadow: var(--shadow-accent-ring);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.diagram-comment-marker.is-active {
+  box-shadow: var(--shadow-accent-ring-strong);
+}
+
+.diagram-comments-drawer {
+  position: absolute;
+  top: 4.5rem;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, calc(100vw - (2 * var(--space-3))));
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.diagram-comments-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+.diagram-comments-drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.diagram-comment-close {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 22px;
+}
+
+.diagram-comments-drawer-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+}
+
+.diagram-comment-message-body {
+  margin: 0;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diagram-comment-message-meta {
+  color: var(--color-comment-text);
+  font-weight: 650;
+}
+
+.diagram-comments-drawer-content.is-list {
+  gap: 0;
+  padding: var(--space-2) var(--space-2) var(--space-4);
+}
+
+.diagram-comment-anchor-label {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-ui-sm);
+}
+
+.diagram-comment-back {
+  align-self: flex-start;
+  padding: 0;
+  background: transparent;
+  color: var(--color-comment-text);
+}
+
+.diagram-comment-messages {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.diagram-comment-message {
+  padding: var(--space-3);
+  border: 1px solid var(--border-comment-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.diagram-comment-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.diagram-comment-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.diagram-comment-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: var(--shadow-focus-compact);
+}
+
+.diagram-comment-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 600px) {
+  .diagram-comments-drawer {
+    top: var(--space-3);
+    right: var(--space-3);
+    bottom: 4.25rem;
+  }
+}
+
 .loading-state {
   display: flex;
   align-items: center;

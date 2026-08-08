@@ -53,6 +53,45 @@ test('comment overview selection keeps comments tab and opens anchored thread ca
   assert.equal(context._pendingCommentOverviewFocus, null);
 });
 
+test('comment overview selection opens an Excalidraw thread in its diagram drawer', async () => {
+  const calls = [];
+  const context = {
+    currentFilePath: 'notes/current.md',
+    excalidrawEmbed: {
+      openCommentThread: (filePath, threadId) => calls.push(['openCommentThread', filePath, threadId]),
+    },
+    navigation: {
+      navigateToFile: (filePath, options) => calls.push(['navigateToFile', filePath, options]),
+    },
+    setSidebarTab: (tab) => calls.push(['setSidebarTab', tab]),
+    setSidebarVisibility: (visible) => calls.push(['setSidebarVisibility', visible]),
+    workspaceRouteController: {
+      openFile: async (filePath) => {
+        calls.push(['openFile', filePath]);
+        context.currentFilePath = filePath;
+      },
+      preserveSidebarTabForNextFileRoute: (filePath) => calls.push(['preserveSidebarTabForNextFileRoute', filePath]),
+    },
+  };
+
+  await commentsFeature.openCommentOverviewThread.call(context, {
+    anchor: { kind: 'diagram-element' },
+    filePath: 'diagrams/target.excalidraw',
+    threadId: 'thread-diagram',
+  });
+
+  assert.deepEqual(calls, [
+    ['setSidebarTab', 'comments'],
+    ['setSidebarVisibility', true],
+    ['preserveSidebarTabForNextFileRoute', 'diagrams/target.excalidraw'],
+    ['navigateToFile', 'diagrams/target.excalidraw', undefined],
+    ['openFile', 'diagrams/target.excalidraw'],
+    ['setSidebarTab', 'comments'],
+    ['setSidebarVisibility', true],
+    ['openCommentThread', 'diagrams/target.excalidraw', 'thread-diagram'],
+  ]);
+});
+
 test('comment overview tree changes refresh only while comments tab is active', () => {
   const calls = [];
   const filesContext = {

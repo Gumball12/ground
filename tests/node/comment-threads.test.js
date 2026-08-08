@@ -50,6 +50,67 @@ test('comment thread serialization supports new line and text anchors', () => {
   assert.equal(serialized[1].anchorQuote, 'selected text');
 });
 
+test('comment thread serialization supports diagram element anchors with a fallback snapshot', () => {
+  const doc = new Y.Doc();
+  const threads = doc.getArray('comments');
+  threads.push([createCommentThreadSharedType({
+    anchorKind: 'diagram-element',
+    anchorPoint: { x: 140, y: 80 },
+    anchorQuote: 'Architecture node',
+    anchorSnapshot: {
+      height: 40,
+      text: 'Architecture node',
+      type: 'rectangle',
+      width: 80,
+      x: 100,
+      y: 60,
+    },
+    createdAt: 123,
+    elementId: 'shape-1',
+    id: 'thread-diagram',
+    messages: [{
+      body: 'Add the owner here',
+      createdAt: 456,
+      id: 'comment-diagram',
+      userName: 'Tester',
+    }],
+  })]);
+
+  const [serialized] = serializeCommentThreads(threads);
+  assert.deepEqual(serialized, {
+    anchorKind: 'diagram-element',
+    anchorPoint: { x: 140, y: 80 },
+    anchorQuote: 'Architecture node',
+    anchorSnapshot: {
+      height: 40,
+      text: 'Architecture node',
+      type: 'rectangle',
+      width: 80,
+      x: 100,
+      y: 60,
+    },
+    createdAt: 123,
+    createdByColor: '',
+    createdByName: 'Tester',
+    createdByPeerId: '',
+    elementId: 'shape-1',
+    id: 'thread-diagram',
+    messages: [{
+      body: 'Add the owner here',
+      createdAt: 456,
+      id: 'comment-diagram',
+      peerId: '',
+      reactions: [],
+      userColor: '',
+      userName: 'Tester',
+    }],
+    resolvedAt: null,
+    resolvedByColor: '',
+    resolvedByName: '',
+    resolvedByPeerId: '',
+  });
+});
+
 test('comment thread serialization ignores old-format thread records', () => {
   const doc = new Y.Doc();
   const threads = doc.getArray('comments');

@@ -94,6 +94,7 @@ async function createConnectedClient({
   historyLimit,
   historyCaptureWindowMs,
   now = () => Date.now(),
+  onCommentThreadsChange = () => {},
   onRemoteSceneJson = () => {},
 } = {}) {
   const provider = createFakeProvider();
@@ -103,6 +104,7 @@ async function createConnectedClient({
     historyCaptureWindowMs,
     historyLimit,
     now,
+    onCommentThreadsChange,
     onRemoteSceneJson,
     resolveWsBaseUrlFn: () => 'ws://localhost:3000',
     setTimeoutFn: (callback) => {
@@ -165,6 +167,55 @@ test('ExcalidrawRoomClient syncs local scene updates into the structured room st
   });
 });
 
+test('ExcalidrawRoomClient creates, replies to, and resolves diagram comment threads', async () => {
+  const commentUpdates = [];
+  const { client } = await createConnectedClient({
+    onCommentThreadsChange: (threads) => commentUpdates.push(threads),
+  });
+
+  const threadId = client.createCommentThread({
+    body: 'Add the owner here',
+    element: {
+      height: 40,
+      id: 'shape-1',
+      text: 'Architecture node',
+      type: 'rectangle',
+      width: 80,
+      x: 100,
+      y: 60,
+    },
+  });
+
+  assert.equal(typeof threadId, 'string');
+  let [thread] = client.getCommentThreads();
+  assert.equal(thread.anchorKind, 'diagram-element');
+  assert.equal(thread.elementId, 'shape-1');
+  assert.deepEqual(thread.anchorPoint, { x: 140, y: 80 });
+  assert.deepEqual(thread.anchorSnapshot, {
+    height: 40,
+    text: 'Architecture node',
+    type: 'rectangle',
+    width: 80,
+    x: 100,
+    y: 60,
+  });
+  assert.equal(thread.messages[0].body, 'Add the owner here');
+
+  const replyId = client.replyToCommentThread(threadId, 'Reviewer will own it.');
+  assert.equal(typeof replyId, 'string');
+  [thread] = client.getCommentThreads();
+  assert.deepEqual(thread.messages.map((message) => message.body), [
+    'Add the owner here',
+    'Reviewer will own it.',
+  ]);
+
+  assert.equal(client.deleteCommentThread(threadId), true);
+  assert.deepEqual(client.getCommentThreads(), []);
+  assert.ok(commentUpdates.some((threads) => threads.some((item) => item.id === threadId)));
+
+  client.disconnect();
+});
+
 test('ExcalidrawRoomClient rejects fallback writes before authoritative sync', async () => {
   const provider = createFakeProvider();
   provider.synced = false;
@@ -200,6 +251,12 @@ test('ExcalidrawRoomClient rejects fallback writes before authoritative sync', a
   assert.equal(client.hasPendingWrites(), false);
   assert.equal(client.flushSceneSync(), false);
   assert.equal(client.commitSceneJson(createScene('fallback-edit')), false);
+  assert.equal(client.createCommentThread({
+    body: 'Should stay read-only',
+    element: { height: 20, id: 'fallback-shape', width: 20, x: 0, y: 0 },
+  }), null);
+  assert.equal(client.replyToCommentThread('missing-thread', 'Should stay read-only'), null);
+  assert.equal(client.deleteCommentThread('missing-thread'), false);
   assert.deepEqual(buildExcalidrawRoomScene(ydoc).elements, []);
   assert.deepEqual(states, ['connecting', 'fallback-readonly']);
 

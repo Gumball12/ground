@@ -6,7 +6,9 @@ import {
   reconcileElements,
   restoreAppState,
   restoreElements,
+  sceneCoordsToViewportCoords,
 } from '@excalidraw/excalidraw';
+import { getElementBounds } from '@excalidraw/element';
 import '@excalidraw/excalidraw/index.css';
 
 import {
@@ -17,6 +19,9 @@ import {
   resolveLocalAwarenessUser,
 } from './domain/excalidraw-collaboration.js';
 import './styles/surfaces/embedded-editor-base.css';
+import './styles/features/comment-markdown.css';
+import './styles/features/comment-overview.css';
+import './styles/features/comments-drawer.css';
 import './styles/surfaces/excalidraw-editor.css';
 import {
   applySceneUpdateWithFiles,
@@ -27,6 +32,11 @@ import {
   parseSceneJson,
   sceneToInitialData,
 } from './domain/excalidraw-scene.js';
+import {
+  createCommentOverviewThread,
+  formatAnchorLabel,
+  getLatestMessage,
+} from './presentation/comment-ui/comment-ui-shared.js';
 import {
   buildReconciledExcalidrawSceneUpdate,
 } from './domain/excalidraw-scene-reconcile.js';
@@ -76,6 +86,7 @@ let apiStateCleanupCallbacks = [];
 let collaboratorRenderFrame = 0;
 let queuedCollaborators = null;
 let initialViewportFitPending = true;
+let viewportFitGeneration = 0;
 let previewViewportFitTimerId = 0;
 let previewViewportFitRetryTimerId = 0;
 let roomClient = null;
@@ -84,12 +95,28 @@ let reactRoot = null;
 let editorRenderKey = 0;
 let skipRoomDisconnectOnUnmount = false;
 let roomConnectionState = EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING;
+let diagramCommentThreads = [];
+let pendingDiagramCommentFocus = null;
+let diagramCommentFocusRequestId = 0;
 let parkRequestedWhileBlocked = false;
 const pendingDisconnectRequestIds = new Set();
 const reportedFileConflictSignatures = new Set();
 
 function getMountedExcalidrawAPI() {
   return excalidrawAPI && !excalidrawAPI.isDestroyed ? excalidrawAPI : null;
+}
+
+function requestDiagramCommentFocus(threadId) {
+  const normalizedThreadId = String(threadId ?? '').trim();
+  if (!normalizedThreadId) {
+    return;
+  }
+
+  pendingDiagramCommentFocus = {
+    requestId: ++diagramCommentFocusRequestId,
+    threadId: normalizedThreadId,
+  };
+  renderExcalidrawApp();
 }
 
 if (diagnostics.enabled) {
@@ -125,6 +152,213 @@ function getAuthorityBannerText() {
   return '';
 }
 
+function getSelectedDiagramElement() {
+  const api = getMountedExcalidrawAPI();
+  const selectedElementIds = api?.getAppState?.()?.selectedElementIds || {};
+  const selectedElements = api?.getSceneElementsIncludingDeleted?.()
+    ?.filter((element) => selectedElementIds[element.id] && !element.isDeleted) ?? [];
+  return selectedElements.length === 1 ? selectedElements[0] : null;
+}
+
+function normalizeDiagramLabelText(value, maxLength = 72) {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function getDiagramElementContent(element, api = getMountedExcalidrawAPI()) {
+  const directText = normalizeDiagramLabelText(element?.text);
+  if (directText) {
+    return directText;
+  }
+
+  const sceneElements = api?.getSceneElementsIncludingDeleted?.() || [];
+  const boundElementIds = new Set(
+    Array.isArray(element?.boundElements)
+      ? element.boundElements.map((boundElement) => boundElement?.id).filter(Boolean)
+      : [],
+  );
+  if (boundElementIds.size === 0) {
+    return '';
+  }
+
+  return normalizeDiagramLabelText(
+    sceneElements
+      .filter((sceneElement) => boundElementIds.has(sceneElement.id) && !sceneElement.isDeleted)
+      .map((sceneElement) => sceneElement.text)
+      .filter((text) => typeof text === 'string' && text.trim())
+      .join(' '),
+  );
+}
+
+function formatDiagramAnchorLabel(type, content = '') {
+  const normalizedType = typeof type === 'string' && type.trim() ? type.trim() : 'element';
+  const typeLabel = normalizedType === 'element'
+    ? 'Diagram element'
+    : `${normalizedType.charAt(0).toUpperCase()}${normalizedType.slice(1)} element`;
+  const normalizedContent = normalizeDiagramLabelText(content);
+  return normalizedContent ? `${typeLabel} · ${normalizedContent}` : typeLabel;
+}
+
+function getDiagramAnchorLabel(thread) {
+  const snapshot = thread?.anchorSnapshot;
+  const element = getMountedExcalidrawAPI()?.getSceneElementsIncludingDeleted?.()
+    ?.find((candidate) => candidate.id === thread?.elementId && !candidate.isDeleted);
+  const elementContent = normalizeDiagramLabelText(snapshot?.text) || getDiagramElementContent(element);
+  const firstMessageContent = thread?.messages?.[0]?.body;
+  return formatDiagramAnchorLabel(snapshot?.type || element?.type, elementContent || firstMessageContent);
+}
+
+const diagramCommentTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  month: 'short',
+});
+
+function formatDiagramCommentTimestamp(value) {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+
+  try {
+    return diagramCommentTimeFormatter.format(new Date(value));
+  } catch {
+    return '';
+  }
+}
+
+function renderDiagramCommentOverviewThread(thread, activeThreadId, onOpen) {
+  const latestMessage = getLatestMessage(thread?.messages ?? []);
+  const messageCount = Array.isArray(thread?.messages) ? thread.messages.length : 0;
+  const button = createCommentOverviewThread({
+    authorName: latestMessage?.userName || thread?.createdByName || 'Anonymous',
+    buttonClassName: 'comment-overview-thread comments-drawer-item',
+    footerClassName: 'comment-overview-thread-footer comments-drawer-item-footer',
+    headerClassName: 'comment-overview-thread-header comments-drawer-item-header',
+    lineClassName: 'comment-overview-thread-line comments-drawer-item-title',
+    lineLabel: formatAnchorLabel(thread),
+    messageCount,
+    previewBody: latestMessage?.body || '',
+    previewClassName: 'comment-markdown comment-overview-thread-preview comments-drawer-item-preview',
+    quote: thread?.anchorQuote || thread?.anchorSnapshot?.text || 'Diagram element',
+    quoteClassName: 'comment-overview-thread-quote comments-drawer-item-quote',
+    timestamp: formatDiagramCommentTimestamp(latestMessage?.createdAt),
+  });
+  button.classList.toggle('is-active', thread.id === activeThreadId);
+
+  return React.createElement('button', {
+    className: button.className,
+    dangerouslySetInnerHTML: { __html: button.innerHTML },
+    key: thread.id,
+    onClick: () => onOpen(thread.id),
+    type: 'button',
+  });
+}
+
+function DiagramCommentIcon({ add = false }) {
+  const paths = [React.createElement('path', {
+    d: 'M3 4.75A1.75 1.75 0 0 1 4.75 3h6.5A1.75 1.75 0 0 1 13 4.75v4.5A1.75 1.75 0 0 1 11.25 11H8.9L6.5 13v-2H4.75A1.75 1.75 0 0 1 3 9.25v-4.5Z',
+    fill: 'none',
+    key: 'bubble',
+    stroke: 'currentColor',
+    strokeLinejoin: 'round',
+    strokeWidth: '1.35',
+  })];
+  if (add) {
+    paths.push(React.createElement('path', {
+      d: 'M8 5.5v3.5M6.25 7.25h3.5',
+      fill: 'none',
+      key: 'plus',
+      stroke: 'currentColor',
+      strokeLinecap: 'round',
+      strokeWidth: '1.35',
+    }));
+  }
+
+  return React.createElement('svg', {
+    'aria-hidden': 'true',
+    className: 'diagram-comment-icon',
+    fill: 'none',
+    focusable: 'false',
+    viewBox: '0 0 16 16',
+  }, paths);
+}
+
+function getDiagramCommentMarkerPosition(thread, api = getMountedExcalidrawAPI()) {
+  if (!api || thread?.anchorKind !== 'diagram-element') {
+    return null;
+  }
+
+  let scenePoint = thread.anchorPoint;
+  const element = api.getSceneElementsIncludingDeleted?.()
+    ?.find((candidate) => candidate.id === thread.elementId && !candidate.isDeleted);
+  if (element) {
+    try {
+      const bounds = getElementBounds(element, api.getSceneElementsMapIncludingDeleted?.());
+      scenePoint = {
+        x: bounds[2],
+        y: bounds[1],
+      };
+    } catch {
+      scenePoint = thread.anchorPoint;
+    }
+  }
+
+  const x = Number(scenePoint?.x);
+  const y = Number(scenePoint?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  const appState = api.getAppState?.();
+  if (!appState?.zoom || !Number.isFinite(appState.scrollX) || !Number.isFinite(appState.scrollY)) {
+    return null;
+  }
+
+  return sceneCoordsToViewportCoords(
+    { sceneX: x, sceneY: y },
+    {
+      offsetLeft: Number.isFinite(appState.offsetLeft) ? appState.offsetLeft : 0,
+      offsetTop: Number.isFinite(appState.offsetTop) ? appState.offsetTop : 0,
+      scrollX: appState.scrollX,
+      scrollY: appState.scrollY,
+      zoom: appState.zoom,
+    },
+  );
+}
+
+function focusDiagramCommentThread(thread) {
+  const api = getMountedExcalidrawAPI();
+  const element = api?.getSceneElementsIncludingDeleted?.()
+    ?.find((candidate) => candidate.id === thread?.elementId && !candidate.isDeleted);
+  if (!api || !element) {
+    return;
+  }
+
+  api.updateScene({
+    appState: {
+      selectedElementIds: { [element.id]: true },
+    },
+    captureUpdate: CaptureUpdateAction.NEVER,
+  });
+
+  if (typeof api.setViewport !== 'function') {
+    return;
+  }
+
+  suppressViewportBroadcast = true;
+  try {
+    api.setViewport({
+      animation: false,
+      fit: 'contain',
+      offsets: { ui: true },
+      target: element,
+    });
+  } finally {
+    releaseViewportBroadcastSuppressionAfterPaint();
+  }
+}
+
 function applyDocumentMode(mode = currentDocument.mode) {
   document.body.dataset.documentMode = normalizeDocumentMode(mode);
 }
@@ -144,6 +378,16 @@ function createRoomClient(filePath) {
       }
 
       queueCollaboratorsRender(collaborators);
+    },
+    onCommentThreadsChange: (threads) => {
+      if (generation !== roomClientGeneration) {
+        return;
+      }
+
+      diagramCommentThreads = Array.isArray(threads) ? threads : [];
+      if (reactRoot) {
+        renderExcalidrawApp();
+      }
     },
     onConnectionStateChange: (event) => {
       if (generation !== roomClientGeneration) {
@@ -169,7 +413,7 @@ function createRoomClient(filePath) {
   };
 }
 
-function buildExcalidrawProps({ initialData } = {}) {
+function buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled } = {}) {
   const props = {
     onMount: handleEditorMount,
     onInitialize: (api) => {
@@ -195,12 +439,17 @@ function buildExcalidrawProps({ initialData } = {}) {
     onPointerUpdate: (payload) => {
       roomClient?.scheduleLocalPointerAwareness(payload);
     },
+    onPointerDown: () => {
+      initialViewportFitPending = false;
+    },
+    renderTopRightUI,
     historyOptions: {
       traversal: 'single-entry',
     },
     onHistoryAction: handleHistoryAction,
     theme: currentTheme,
     ...getDocumentViewState(),
+    ...(typeof viewModeEnabled === 'boolean' ? { viewModeEnabled } : {}),
     UIOptions: {
       canvasActions: {
         export: false,
@@ -218,6 +467,425 @@ function buildExcalidrawProps({ initialData } = {}) {
   return props;
 }
 
+const diagramCommentsContext = React.createContext(null);
+
+function DiagramCommentsToolbar() {
+  const context = React.useContext(diagramCommentsContext);
+  if (!context?.visible || !context.room) {
+    return null;
+  }
+
+  const addCommentButton = context.selectedElement
+    ? React.createElement('button', {
+      'aria-label': 'Add comment',
+      className: 'diagram-comment-add sidebar-trigger',
+      'data-testid': 'diagram-add-comment',
+      disabled: !context.canWrite,
+      key: 'add',
+      onClick: context.openComposer,
+      title: context.canWrite ? 'Add comment to selected element' : 'Reconnect to add a comment',
+      type: 'button',
+    }, React.createElement(DiagramCommentIcon, { add: true }))
+    : null;
+
+  return React.createElement('div', {
+    'aria-label': 'Diagram comments',
+    className: 'diagram-comments-toolbar',
+    role: 'toolbar',
+  }, [
+    addCommentButton,
+    React.createElement('button', {
+      'aria-expanded': context.drawerOpen,
+      'aria-label': 'Comments',
+      className: `diagram-comment-button sidebar-trigger${context.drawerOpen ? ' active' : ''}`,
+      'data-testid': 'diagram-comments-toggle',
+      key: 'toggle',
+      onClick: context.toggleDrawer,
+      title: context.drawerOpen ? 'Close comments' : 'Open comments',
+      type: 'button',
+    }, [
+      React.createElement(DiagramCommentIcon, { key: 'icon' }),
+      context.threads.length > 0
+        ? React.createElement('span', {
+          className: 'diagram-comment-count',
+          key: 'count',
+        }, String(context.threads.length))
+        : null,
+    ]),
+  ]);
+}
+
+const DiagramCommentsExcalidraw = React.memo(function DiagramCommentsExcalidraw({ initialData = null, renderKey = 0, viewModeEnabled }) {
+  const renderTopRightUI = React.useCallback(
+    () => React.createElement(DiagramCommentsToolbar),
+    [],
+  );
+
+  return React.createElement(Excalidraw, {
+    key: `editor-${renderKey}`,
+    ...buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled }),
+  });
+});
+
+function useCloseDiagramCommentsOnCanvas(drawerOpen, setDrawerOpen) {
+  React.useEffect(() => {
+    if (!drawerOpen) {
+      return undefined;
+    }
+
+    const closeOnCanvasPointerDown = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest('canvas.excalidraw__canvas')) {
+        return;
+      }
+
+      setDrawerOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setDrawerOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnCanvasPointerDown, true);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnCanvasPointerDown, true);
+      document.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, [drawerOpen, setDrawerOpen]);
+}
+
+function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = null, initialData = null, room = null, threads = [], visible = false }) {
+  const [activeThreadId, setActiveThreadId] = React.useState(null);
+  const [composerOpen, setComposerOpen] = React.useState(false);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const [replyDraft, setReplyDraft] = React.useState('');
+  const [, setViewportRevision] = React.useState(0);
+
+  React.useEffect(() => {
+    const api = getMountedExcalidrawAPI();
+    if (!api) {
+      return undefined;
+    }
+
+    const refresh = () => setViewportRevision((revision) => revision + 1);
+    const cleanups = [
+      api.onChange?.(refresh),
+      api.onScrollChange?.(refresh),
+    ].filter((cleanup) => typeof cleanup === 'function');
+    window.addEventListener('resize', refresh);
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+      window.removeEventListener('resize', refresh);
+    };
+  }, [apiId]);
+
+  useCloseDiagramCommentsOnCanvas(drawerOpen, setDrawerOpen);
+
+  React.useEffect(() => {
+    if (activeThreadId && !threads.some((thread) => thread.id === activeThreadId)) {
+      setActiveThreadId(null);
+    }
+  }, [activeThreadId, threads]);
+
+  React.useEffect(() => {
+    const threadId = focusRequest?.threadId;
+    const thread = threads.find((candidate) => candidate.id === threadId);
+    if (!thread) {
+      return;
+    }
+
+    setDrawerOpen(true);
+    setComposerOpen(false);
+    setActiveThreadId(threadId);
+    setReplyDraft('');
+    focusDiagramCommentThread(thread);
+  }, [focusRequest?.requestId, threads]);
+
+  const selectedElement = getSelectedDiagramElement();
+  const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
+  const openComposer = () => {
+    if (!canWrite || !selectedElement) {
+      return;
+    }
+
+    setDrawerOpen(true);
+    setComposerOpen(true);
+    setActiveThreadId(null);
+  };
+  const openThread = (threadId) => {
+    setDrawerOpen(true);
+    setComposerOpen(false);
+    setActiveThreadId(threadId);
+    setReplyDraft('');
+  };
+  const submitComposer = (event) => {
+    event.preventDefault();
+    const selectedElementForAnchor = getSelectedDiagramElement();
+    const elementContent = getDiagramElementContent(selectedElementForAnchor);
+    const threadId = room.createCommentThread({
+      body: draft,
+      element: elementContent
+        ? { ...selectedElementForAnchor, text: elementContent }
+        : selectedElementForAnchor,
+    });
+    if (!threadId) {
+      return;
+    }
+
+    setDraft('');
+    setComposerOpen(false);
+    setActiveThreadId(threadId);
+  };
+  const submitReply = (event) => {
+    event.preventDefault();
+    if (!activeThread) {
+      return;
+    }
+
+    const messageId = room.replyToCommentThread(activeThread.id, replyDraft);
+    if (!messageId) {
+      return;
+    }
+
+    setReplyDraft('');
+  };
+  const resolveThread = () => {
+    if (!activeThread || !room.deleteCommentThread(activeThread.id)) {
+      return;
+    }
+
+    setActiveThreadId(null);
+  };
+  const renderComposer = () => React.createElement('form', {
+    className: 'diagram-comment-form',
+    onSubmit: submitComposer,
+  }, [
+    React.createElement('p', {
+      className: 'diagram-comment-anchor-label',
+      key: 'anchor',
+    }, selectedElement
+      ? `On ${formatDiagramAnchorLabel(selectedElement.type, getDiagramElementContent(selectedElement))}`
+      : 'On selected element'),
+    React.createElement('textarea', {
+      'aria-label': 'Comment',
+      autoFocus: true,
+      className: 'diagram-comment-input',
+      key: 'input',
+      maxLength: 2000,
+      onChange: (event) => setDraft(event.target.value),
+      placeholder: 'Add context, feedback, or a question…',
+      rows: 4,
+      value: draft,
+    }),
+    React.createElement('div', {
+      className: 'diagram-comment-form-actions',
+      key: 'actions',
+    }, [
+      React.createElement('button', {
+        className: 'diagram-comment-button is-secondary',
+        key: 'cancel',
+        onClick: () => setComposerOpen(false),
+        type: 'button',
+      }, 'Cancel'),
+      React.createElement('button', {
+        className: 'diagram-comment-button is-primary',
+        disabled: !draft.trim() || !canWrite,
+        key: 'submit',
+        type: 'submit',
+      }, 'Post comment'),
+    ]),
+  ]);
+  const renderThread = () => React.createElement(React.Fragment, null, [
+    React.createElement('button', {
+      className: 'diagram-comment-back',
+      key: 'back',
+      onClick: () => setActiveThreadId(null),
+      type: 'button',
+    }, '← All comments'),
+    React.createElement('p', {
+      className: 'diagram-comment-anchor-label',
+      key: 'label',
+    }, getDiagramAnchorLabel(activeThread)),
+    React.createElement('div', {
+      className: 'diagram-comment-messages',
+      key: 'messages',
+    }, activeThread.messages?.map((message) => React.createElement('article', {
+      className: 'diagram-comment-message',
+      key: message.id,
+    }, [
+      React.createElement('div', {
+        className: 'diagram-comment-message-meta',
+        key: 'meta',
+      }, message.userName || 'Anonymous'),
+      React.createElement('p', {
+        className: 'diagram-comment-message-body',
+        key: 'body',
+      }, message.body),
+    ]))),
+    React.createElement('form', {
+      className: 'diagram-comment-form',
+      key: 'reply-form',
+      onSubmit: submitReply,
+    }, [
+      React.createElement('textarea', {
+        'aria-label': 'Reply',
+        className: 'diagram-comment-input',
+        disabled: !canWrite,
+        key: 'reply-input',
+        maxLength: 2000,
+        onChange: (event) => setReplyDraft(event.target.value),
+        placeholder: canWrite ? 'Reply…' : 'Reconnect to reply',
+        rows: 3,
+        value: replyDraft,
+      }),
+      React.createElement('div', {
+        className: 'diagram-comment-form-actions',
+        key: 'reply-actions',
+      }, [
+        React.createElement('button', {
+          className: 'diagram-comment-button is-primary',
+          disabled: !replyDraft.trim() || !canWrite,
+          type: 'submit',
+        }, 'Reply'),
+        React.createElement('button', {
+          className: 'diagram-comment-button is-danger',
+          disabled: !canWrite,
+          onClick: resolveThread,
+          type: 'button',
+        }, 'Resolve'),
+      ]),
+    ]),
+  ]);
+  const renderDrawer = () => {
+    if (!drawerOpen) {
+      return null;
+    }
+
+    const isListView = !composerOpen && !activeThread;
+    const content = composerOpen
+      ? renderComposer()
+      : activeThread
+        ? renderThread()
+          : threads.length > 0
+          ? threads.map((thread) => renderDiagramCommentOverviewThread(thread, activeThreadId, openThread))
+          : React.createElement('div', {
+            className: 'comments-drawer-empty ui-empty-state ui-empty-state--compact',
+          }, [
+            React.createElement('p', {
+              className: 'ui-empty-state-title',
+              key: 'title',
+            }, 'No comments yet'),
+            React.createElement('p', {
+              className: 'ui-empty-state-copy',
+              key: 'copy',
+            }, 'Select an element and add the first comment.'),
+          ]);
+    const drawerAddButton = selectedElement && !composerOpen
+      ? React.createElement('button', {
+        'aria-label': 'Add comment',
+        className: 'diagram-comment-add',
+        disabled: !canWrite,
+        key: 'add',
+        onClick: openComposer,
+        title: canWrite ? 'Add comment to selected element' : 'Reconnect to add a comment',
+        type: 'button',
+      }, React.createElement(DiagramCommentIcon, { add: true }))
+      : null;
+
+    return React.createElement('aside', {
+      'aria-label': 'Diagram comments',
+      className: 'diagram-comments-drawer',
+      'data-testid': 'diagram-comments-drawer',
+    }, [
+      React.createElement('div', {
+        className: 'comments-drawer-header diagram-comments-drawer-header',
+        key: 'header',
+      }, [
+        React.createElement('span', {
+          className: 'comments-drawer-title',
+          key: 'title',
+        }, composerOpen ? 'New comment' : activeThread ? 'Comment thread' : 'Comments'),
+        React.createElement('div', {
+          className: 'diagram-comments-drawer-header-actions',
+          key: 'actions',
+        }, [
+          drawerAddButton,
+          React.createElement('button', {
+            'aria-label': 'Close comments',
+            className: 'diagram-comment-close',
+            key: 'close',
+            onClick: () => setDrawerOpen(false),
+            type: 'button',
+          }, '×'),
+        ]),
+      ]),
+      React.createElement('div', {
+        className: `diagram-comments-drawer-content${isListView ? ' comments-drawer-list is-list' : ''}`,
+        key: 'content',
+      }, content),
+    ]);
+  };
+
+  const renderCommentsOverlay = visible && room
+    ? React.createElement('div', {
+      'aria-label': 'Diagram comments overlay',
+      className: 'diagram-comments-overlay',
+      key: 'overlay',
+    }, [
+      React.createElement('div', {
+        className: 'diagram-comment-markers',
+        key: 'markers',
+      }, threads.map((thread) => {
+        const position = getDiagramCommentMarkerPosition(thread);
+        if (!position) {
+          return null;
+        }
+
+        return React.createElement('button', {
+          'aria-label': `Open comment on ${getDiagramAnchorLabel(thread)}`,
+          className: `diagram-comment-marker${thread.id === activeThreadId ? ' is-active' : ''}`,
+          'data-comment-thread-id': thread.id,
+          key: thread.id,
+          onClick: () => openThread(thread.id),
+          style: {
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+          },
+          type: 'button',
+        }, React.createElement(DiagramCommentIcon));
+      })),
+      renderDrawer(),
+    ])
+    : null;
+
+  return React.createElement(diagramCommentsContext.Provider, {
+    value: {
+      canWrite,
+      drawerOpen,
+      openComposer,
+      room,
+      selectedElement,
+      threads,
+      toggleDrawer: () => setDrawerOpen((open) => !open),
+      visible,
+    },
+  }, [
+    React.createElement(DiagramCommentsExcalidraw, {
+      initialData,
+      key: 'excalidraw',
+      renderKey: editorRenderKey,
+      viewModeEnabled: getDocumentViewState().viewModeEnabled,
+    }),
+    renderCommentsOverlay,
+  ]);
+}
+
 function renderExcalidrawApp({ initialData } = {}) {
   if (!reactRoot) {
     return;
@@ -227,9 +895,14 @@ function renderExcalidrawApp({ initialData } = {}) {
     React.createElement(
       'div',
       { className: 'excalidraw-editor-shell' },
-      React.createElement(Excalidraw, {
-        key: `editor-${editorRenderKey}`,
-        ...buildExcalidrawProps({ initialData }),
+      React.createElement(DiagramCommentsEditor, {
+        apiId: getMountedExcalidrawAPI()?.id || '',
+        canWrite: roomConnectionState === EXCALIDRAW_ROOM_CONNECTION_STATE.AUTHORITATIVE,
+        focusRequest: pendingDiagramCommentFocus,
+        initialData,
+        room: roomClient,
+        threads: diagramCommentThreads,
+        visible: normalizeDocumentMode(currentDocument.mode) !== 'preview',
       }),
       getAuthorityBannerText()
         ? React.createElement('div', {
@@ -392,6 +1065,7 @@ if (isTestMode) {
       replaceFiles: typeof getMountedExcalidrawAPI()?.replaceFiles === 'function',
     }),
     getAuthorityState: () => roomConnectionState,
+    getCommentThreads: () => roomClient?.getCommentThreads?.() || [],
     getDiagnosticTrace: () => diagnostics.exportTrace(),
     getHistoryState: () => getNativeHistoryState(),
     getLocalUserName: () => localAwarenessUser?.name || '',
@@ -399,12 +1073,28 @@ if (isTestMode) {
     getViewport: () => {
       const appState = getMountedExcalidrawAPI()?.getAppState?.();
       return appState ? {
+        offsetLeft: appState.offsetLeft,
+        offsetTop: appState.offsetTop,
         scrollX: appState.scrollX,
         scrollY: appState.scrollY,
         zoom: appState.zoom?.value ?? null,
       } : null;
     },
     isViewMode: () => Boolean(getMountedExcalidrawAPI()?.getAppState?.().viewModeEnabled),
+    selectElement: (elementId) => {
+      const api = getMountedExcalidrawAPI();
+      if (!api || !elementId) {
+        return false;
+      }
+
+      api.updateScene({
+        appState: {
+          selectedElementIds: { [elementId]: true },
+        },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      return true;
+    },
     getSceneJson: () => roomClient?.getLastSceneJson?.() || '',
     isAuthoritativeReady: () => (
       Boolean(getMountedExcalidrawAPI())
@@ -413,7 +1103,7 @@ if (isTestMode) {
       && roomClient?.waitingForAuthoritativeSync === false
       && roomClient?.isApplyingSharedSnapshot?.() === false
     ),
-    isReady: () => collabReady && Boolean(getMountedExcalidrawAPI()) && Boolean(getNativeHistoryButton('undo')) && Boolean(getNativeHistoryButton('redo')),
+    isReady: () => collabReady && Boolean(getMountedExcalidrawAPI()),
     redoShared: () => triggerNativeHistory('redo'),
     reconnectTransport: () => roomClient?.provider?.connect?.(),
     setScene: (scene) => {
@@ -713,11 +1403,17 @@ function scheduleViewportFit({
   consumeInitialFit = false,
 } = {}) {
   const normalizedMode = normalizeDocumentMode(currentDocument.mode);
-  if (!getMountedExcalidrawAPI() || (forcePreview && normalizedMode !== 'preview')) {
+  const api = getMountedExcalidrawAPI();
+  if (!api || (forcePreview && normalizedMode !== 'preview')) {
     return;
   }
 
   if (!forcePreview && !initialViewportFitPending) {
+    return;
+  }
+
+  if (!forcePreview && api.getAppState?.().cursorButton === 'down') {
+    initialViewportFitPending = false;
     return;
   }
 
@@ -729,16 +1425,42 @@ function scheduleViewportFit({
     initialViewportFitPending = false;
   }
 
+  if (!forcePreview && delayMs === 0) {
+    api.setViewport({
+      target: elements,
+      animation: false,
+      fit: 'contain',
+    });
+    return;
+  }
+
+  const generation = ++viewportFitGeneration;
+
   if (previewViewportFitTimerId) {
     window.clearTimeout(previewViewportFitTimerId);
   }
 
   previewViewportFitTimerId = window.setTimeout(() => {
     previewViewportFitTimerId = 0;
+    if (generation !== viewportFitGeneration) {
+      return;
+    }
+
     requestAnimationFrame(() => {
+      if (generation !== viewportFitGeneration) {
+        return;
+      }
+
       requestAnimationFrame(() => {
+        if (generation !== viewportFitGeneration) {
+          return;
+        }
+
         const api = getMountedExcalidrawAPI();
         if (!api) {
+          return;
+        }
+        if (!forcePreview && api.getAppState?.().cursorButton === 'down') {
           return;
         }
 
@@ -782,6 +1504,8 @@ function schedulePreviewViewportFit() {
 }
 
 function clearPreviewViewportFitTimers() {
+  viewportFitGeneration += 1;
+
   if (previewViewportFitTimerId) {
     window.clearTimeout(previewViewportFitTimerId);
     previewViewportFitTimerId = 0;
@@ -895,6 +1619,8 @@ function resetRealtimeRoomState() {
   pendingRemoteSceneJson = '';
   pendingCollaborators = null;
   activeCollaborators = new Map();
+  diagramCommentThreads = [];
+  pendingDiagramCommentFocus = null;
   followedSocketId = null;
   pendingHostFollowPeerId = null;
   suppressViewportBroadcast = false;
@@ -1054,6 +1780,11 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'open-comment-thread') {
+    requestDiagramCommentFocus(message.threadId);
+    return;
+  }
+
   if (message.type === 'follow-user') {
     applyHostFollowRequest(message.peerId || null);
     return;
@@ -1149,6 +1880,9 @@ function initializeEditor(api) {
 
     setFollowedSocket(null, { force: true });
   }));
+  apiStateCleanupCallbacks.push(api.onStateChange('selectedElementIds', () => {
+    renderExcalidrawApp();
+  }));
   apiStateCleanupCallbacks.push(api.onStateChange('editingTextElement', (editingTextElement) => {
     if (!editingTextElement) {
       requestAnimationFrame(() => {
@@ -1184,6 +1918,7 @@ function initializeEditor(api) {
 
   scheduleInitialViewportFit();
   postToParent('ready');
+  renderExcalidrawApp();
 }
 
 function handleEditorMount({ excalidrawAPI: api }) {

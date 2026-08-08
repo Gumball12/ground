@@ -5,7 +5,7 @@ export const COMMENT_EXCERPT_MAX_LENGTH = 160;
 export const COMMENT_ANCHOR_QUOTE_MAX_LENGTH = 280;
 export const COMMENT_REACTION_EMOJI_MAX_LENGTH = 16;
 
-const COMMENT_ANCHOR_KINDS = new Set(['line', 'text']);
+const COMMENT_ANCHOR_KINDS = new Set(['diagram-element', 'line', 'text']);
 
 function asFiniteNumber(value) {
   return Number.isFinite(value) ? value : null;
@@ -53,6 +53,38 @@ function readRecordValue(record, key) {
 
 function normalizeAnchorKind(value) {
   return COMMENT_ANCHOR_KINDS.has(value) ? value : null;
+}
+
+function normalizeDiagramElementId(value) {
+  const normalized = asString(value).trim().slice(0, 240);
+  return normalized || null;
+}
+
+function normalizeDiagramAnchorPoint(value) {
+  const point = asObject(value);
+  const x = asFiniteNumber(point?.x);
+  const y = asFiniteNumber(point?.y);
+  return x === null || y === null ? null : { x, y };
+}
+
+function normalizeDiagramAnchorSnapshot(value) {
+  const snapshot = asObject(value);
+  const x = asFiniteNumber(snapshot?.x);
+  const y = asFiniteNumber(snapshot?.y);
+  const width = asFiniteNumber(snapshot?.width);
+  const height = asFiniteNumber(snapshot?.height);
+  if (x === null || y === null || width === null || height === null) {
+    return null;
+  }
+
+  return {
+    height,
+    text: normalizeCommentQuote(snapshot?.text),
+    type: asString(snapshot?.type).trim() || 'element',
+    width,
+    x,
+    y,
+  };
 }
 
 export function normalizeCommentBody(value) {
@@ -196,6 +228,23 @@ export function createCommentId(prefix = 'comment') {
 
 export function normalizeCommentAnchor(record = {}) {
   const anchorKind = normalizeAnchorKind(record.anchorKind);
+  if (anchorKind === 'diagram-element') {
+    const anchorPoint = normalizeDiagramAnchorPoint(record.anchorPoint);
+    const anchorSnapshot = normalizeDiagramAnchorSnapshot(record.anchorSnapshot);
+    const elementId = normalizeDiagramElementId(record.elementId);
+    if (!anchorPoint || !anchorSnapshot || !elementId) {
+      return null;
+    }
+
+    return {
+      anchorKind,
+      anchorPoint,
+      anchorQuote: normalizeCommentQuote(record.anchorQuote || anchorSnapshot.text),
+      anchorSnapshot,
+      elementId,
+    };
+  }
+
   const anchorStart = asObject(record.anchorStart);
   const anchorEnd = asObject(record.anchorEnd);
   const anchorStartLine = asFiniteNumber(record.anchorStartLine);
@@ -235,12 +284,18 @@ export function createCommentThreadSharedType(record = {}) {
   messages.push(normalizedMessages.length > 0 ? normalizedMessages : [initialMessage]);
 
   const thread = new Y.Map();
-  thread.set('anchorEnd', anchor.anchorEnd);
-  thread.set('anchorEndLine', anchor.anchorEndLine);
   thread.set('anchorKind', anchor.anchorKind);
   thread.set('anchorQuote', anchor.anchorQuote);
-  thread.set('anchorStart', anchor.anchorStart);
-  thread.set('anchorStartLine', anchor.anchorStartLine);
+  if (anchor.anchorKind === 'diagram-element') {
+    thread.set('anchorPoint', anchor.anchorPoint);
+    thread.set('anchorSnapshot', anchor.anchorSnapshot);
+    thread.set('elementId', anchor.elementId);
+  } else {
+    thread.set('anchorEnd', anchor.anchorEnd);
+    thread.set('anchorEndLine', anchor.anchorEndLine);
+    thread.set('anchorStart', anchor.anchorStart);
+    thread.set('anchorStartLine', anchor.anchorStartLine);
+  }
   thread.set('createdAt', asFiniteNumber(record.createdAt) ?? Date.now());
   thread.set('createdByColor', asString(record.createdByColor));
   thread.set('createdByName', asString(record.createdByName) || initialMessage.userName);
@@ -266,6 +321,9 @@ export function serializeCommentThread(thread) {
     anchorQuote: readThreadValue(thread, 'anchorQuote'),
     anchorStart: readThreadValue(thread, 'anchorStart'),
     anchorStartLine: readThreadValue(thread, 'anchorStartLine'),
+    anchorPoint: readThreadValue(thread, 'anchorPoint'),
+    anchorSnapshot: readThreadValue(thread, 'anchorSnapshot'),
+    elementId: readThreadValue(thread, 'elementId'),
   });
   const messages = serializeMessages(readThreadValue(thread, 'messages'));
 

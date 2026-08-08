@@ -980,6 +980,55 @@ test('renaming in the app updates the mounted Excalidraw iframe user name', asyn
   )).toBe('After Name');
 });
 
+test('shows Excalidraw comments in the workspace overview and opens the selected thread', async ({ page }) => {
+  await prepareExcalidrawTestFile(page, 'sample-excalidraw.excalidraw');
+  await page.goto('/?test=1#file=sample-excalidraw.excalidraw');
+
+  const frame = await waitForExcalidrawFrameHarness(page);
+  await expect.poll(async () => (
+    frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.isAuthoritativeReady())
+  )).toBe(true);
+
+  await frame.evaluate((scene) => {
+    window.__COLLABMD_EXCALIDRAW_TEST__.setScene(scene);
+  }, createSeededMultiplayerScene());
+  await frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.selectElement('table-shell'));
+  await frame.getByTestId('diagram-comments-toggle').click();
+  await frame.getByTestId('diagram-add-comment').click();
+  await frame.locator('textarea[aria-label="Comment"]').fill('Review this diagram');
+  await frame.getByRole('button', { name: 'Post comment' }).click();
+
+  await expect.poll(async () => (
+    frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getCommentThreads().length)
+  )).toBe(1);
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/comments/overview');
+    const payload = await response.json();
+    return payload?.overview?.totalThreadCount ?? payload?.totalThreadCount ?? 0;
+  }).toBe(1);
+
+  await frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.setViewport({
+    scrollX: 0,
+    scrollY: 0,
+    zoom: 1,
+  }));
+  await expect.poll(async () => (
+    frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getViewport()?.zoom)
+  )).toBe(1);
+
+  await page.locator('#commentsSidebarTab').click();
+  const overviewRow = page.locator('.comment-overview-thread');
+  await expect(overviewRow).toContainText('Review this diagram');
+  await expect(overviewRow).toContainText('Diagram element');
+  await overviewRow.click();
+
+  await expect(frame.getByTestId('diagram-comments-drawer')).toBeVisible();
+  await expect(frame.getByTestId('diagram-comments-drawer')).toContainText('Review this diagram');
+  await expect.poll(async () => (
+    frame.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getViewport()?.zoom)
+  )).toBeGreaterThan(1);
+});
+
 test('renders comment controls for text files', async ({ page }) => {
   await openFile(page, 'README.md');
 
