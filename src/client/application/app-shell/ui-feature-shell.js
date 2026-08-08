@@ -36,6 +36,7 @@ const PREVIEW_HEADING_LINK_ICON = `
  * @property {any} themeController
  * @property {any} previewRenderer
  * @property {any} tabActivityLock
+ * @property {any} notifications
  * @property {any} toastController
  * @property {any} versionMonitor
  */
@@ -59,7 +60,6 @@ function initialize() {
   this.syncCurrentUserName();
   this.syncWrapToggle();
   this.syncToolbarOverflowVisibility?.();
-  this.syncChatNotificationButton();
   this.syncFileHistoryButton({ mode: 'empty' });
   this.renderChat();
   this.elements.chatInput?.setAttribute('maxlength', String(this.lobbyChatMessageMaxLength));
@@ -253,13 +253,13 @@ function bindEvents() {
     this.closeToolbarOverflowMenu?.();
   });
 
+  this.elements.chatNotificationButton?.addEventListener('click', () => {
+    void this.handleChatNotificationToggle();
+  });
+
   this.elements.chatForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     this.handleChatSubmit();
-  });
-
-  this.elements.chatNotificationButton?.addEventListener('click', () => {
-    void this.handleChatNotificationToggle();
   });
 
   bindToolbarEvents.call(this);

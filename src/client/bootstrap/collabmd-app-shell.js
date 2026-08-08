@@ -17,8 +17,8 @@ import { uiFeatureTabActivityMethods } from '../application/app-shell/ui-feature
 import { uiFeatureToolbarMethods } from '../application/app-shell/ui-feature-toolbar.js';
 import { workspaceFeature } from '../application/app-shell/workspace-feature.js';
 import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/lobby-presence.js';
-import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { BrowserPreferencesPort } from '../infrastructure/browser-preferences-port.js';
+import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { AppVersionMonitor } from '../infrastructure/app-version-monitor.js';
 import { gitApiClient } from '../infrastructure/git-api-client.js';
 import {
@@ -101,7 +101,6 @@ export class CollabMdAppShell {
       navigateToGitHistory,
     };
     this.preferences = new BrowserPreferencesPort({
-      chatNotificationsKey: 'collabmd-chat-notifications-enabled',
       fileTreeShowExtensionsKey: 'collabmd-file-tree-show-extensions',
       lineWrappingKey: 'collabmd-editor-line-wrap',
       recentFilesKey: 'collabmd-recent-files',
@@ -123,8 +122,6 @@ export class CollabMdAppShell {
     this._staticPreviewDocument = null;
     this.pendingGitResetPath = null;
     this.chatTimeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-    this.chatNotificationsEnabled = this.preferences.getChatNotificationsEnabled();
-    this.chatNotificationPermission = this.notifications.getPermission();
     this.lobbyChatMessageMaxLength = LOBBY_CHAT_MESSAGE_MAX_LENGTH;
     this.quickSwitcher = null;
     this.quickSwitcherModulePromise = null;
@@ -503,9 +500,6 @@ export class CollabMdAppShell {
       workspaceCoordinator: this.workspaceCoordinator,
     });
 
-    if (this.chatNotificationPermission !== 'granted') {
-      this.chatNotificationsEnabled = false;
-    }
   }
 
   get session() { return this._session; }

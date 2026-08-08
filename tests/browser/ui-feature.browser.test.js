@@ -150,7 +150,6 @@ describe('uiFeature browser helpers', () => {
       scrollSyncController: {
         initialize: vi.fn(),
       },
-      syncChatNotificationButton: vi.fn(),
       syncCurrentUserName: vi.fn(),
       syncFileHistoryButton: vi.fn(),
       syncIdentityManagementUi: vi.fn(),
@@ -488,7 +487,6 @@ describe('uiFeature browser helpers', () => {
       <div id="chat-container"><button id="chat-inner"></button></div>
       <form id="chat-form"></form>
       <button id="chat-toggle"></button>
-      <button id="chat-notification"></button>
       <button id="share-button"></button>
       <button id="file-history"></button>
       <button id="edit-name"></button>
@@ -517,7 +515,6 @@ describe('uiFeature browser helpers', () => {
       elements: {
         chatContainer: document.getElementById('chat-container'),
         chatForm: document.getElementById('chat-form'),
-        chatNotificationButton: document.getElementById('chat-notification'),
         chatToggleButton: document.getElementById('chat-toggle'),
         displayNameCancel: document.getElementById('display-name-cancel'),
         displayNameForm: document.getElementById('display-name-form'),
@@ -546,7 +543,6 @@ describe('uiFeature browser helpers', () => {
         toggleWrapButton: document.getElementById('toggle-wrap'),
       },
       gitRepoAvailable: true,
-      handleChatNotificationToggle: vi.fn(),
       handleChatSubmit: vi.fn(),
       handleDisplayNameSubmit: vi.fn(),
       handleFileHistorySelection: vi.fn(),

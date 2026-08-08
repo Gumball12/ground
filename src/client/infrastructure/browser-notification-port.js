@@ -1,36 +1,49 @@
 export class BrowserNotificationPort {
-  constructor({
-    NotificationImpl = globalThis.Notification,
-    focusWindow = () => globalThis.window?.focus?.(),
-  } = {}) {
-    this.NotificationImpl = NotificationImpl;
-    this.focusWindow = focusWindow;
+  getApi() {
+    return typeof globalThis.Notification === 'function'
+      ? globalThis.Notification
+      : null;
   }
 
   getPermission() {
-    return typeof this.NotificationImpl === 'function'
-      ? this.NotificationImpl.permission
-      : 'unsupported';
+    return this.getApi()?.permission ?? 'unsupported';
   }
 
   async requestPermission() {
-    return typeof this.NotificationImpl === 'function'
-      ? this.NotificationImpl.requestPermission()
-      : 'unsupported';
+    const api = this.getApi();
+    if (!api || typeof api.requestPermission !== 'function') {
+      return 'unsupported';
+    }
+
+    if (api.permission !== 'default') {
+      return api.permission;
+    }
+
+    try {
+      return await api.requestPermission();
+    } catch {
+      return api.permission ?? 'default';
+    }
   }
 
-  createNotification({ body, onClick, tag, title }) {
-    if (typeof this.NotificationImpl !== 'function') {
+  show({ body, onClick, tag, title } = {}) {
+    const api = this.getApi();
+    if (!api || api.permission !== 'granted' || !body) {
       return null;
     }
 
-    const notification = new this.NotificationImpl(title, { body, tag });
-    if (typeof onClick === 'function') {
-      notification.addEventListener('click', () => {
-        this.focusWindow();
-        onClick();
+    try {
+      const notification = new api(title, {
+        body,
+        renotify: true,
+        tag,
       });
+      if (onClick) {
+        notification.onclick = onClick;
+      }
+      return notification;
+    } catch {
+      return null;
     }
-    return notification;
   }
 }

@@ -1619,40 +1619,10 @@ test('shows a foreground toast and stronger unread state for visible remote chat
   const pageA = await browser.newPage();
   const pageB = await browser.newPage();
 
-  await pageB.addInitScript(() => {
-    window.__testNotifications = [];
-
-    class TestNotification {
-      static permission = 'granted';
-
-      static async requestPermission() {
-        return 'granted';
-      }
-
-      constructor(title, options = {}) {
-        this.title = title;
-        this.options = options;
-        window.__testNotifications.push({ title, ...options });
-      }
-
-      addEventListener() { }
-
-      close() { }
-    }
-
-    Object.defineProperty(window, 'Notification', {
-      configurable: true,
-      writable: true,
-      value: TestNotification,
-    });
-  });
-
   await openFile(pageA, 'README.md', { userName: 'Sender' });
   await openFile(pageB, 'README.md', { userName: 'Receiver' });
 
   await openChat(pageB);
-  await pageB.locator('#chatNotificationBtn').click();
-  await expect(pageB.locator('#chatNotificationBtn')).toHaveText('Alerts on');
   await pageB.locator('#chatToggleBtn').click();
 
   await sendChatMessage(pageA, 'Quick sync: reviewing README right now.');
@@ -1666,9 +1636,6 @@ test('shows a foreground toast and stronger unread state for visible remote chat
   );
   await expect(pageB.locator('#chatToggleBadge')).toHaveText('1');
   await expect(pageB.locator('#chatToggleBtn')).toHaveClass(/is-unread/);
-  await expect.poll(async () => (
-    pageB.evaluate(() => window.__testNotifications.length)
-  )).toBe(0);
 
   await openChat(pageB);
   await expect(pageB.locator('#chatMessages')).toContainText('Quick sync: reviewing README right now.');
@@ -1679,66 +1646,55 @@ test('shows a foreground toast and stronger unread state for visible remote chat
   await pageB.close();
 });
 
-test('shows a browser notification for a background chat message when alerts are enabled', async ({ browser }) => {
+test('shows a desktop notification for a remote chat message once alerts are enabled', async ({ browser }) => {
   const pageA = await browser.newPage();
   const pageB = await browser.newPage();
 
   await pageB.addInitScript(() => {
-    window.__testNotifications = [];
+    const events = [];
+    class FakeNotification {
+      static permission = 'default';
 
-    class TestNotification {
-      static permission = 'granted';
-
-      static async requestPermission() {
-        return 'granted';
+      static requestPermission() {
+        FakeNotification.permission = 'granted';
+        return Promise.resolve('granted');
       }
 
-      constructor(title, options = {}) {
-        this.title = title;
-        this.options = options;
-        window.__testNotifications.push({ title, ...options });
+      constructor(title, options) {
+        events.push({ title, options });
       }
-
-      addEventListener() { }
-
-      close() { }
     }
 
     Object.defineProperty(window, 'Notification', {
       configurable: true,
-      writable: true,
-      value: TestNotification,
+      value: FakeNotification,
     });
+    window.__collabmdNotificationEvents = events;
   });
 
-  await openFile(pageA, 'README.md');
-  await openFile(pageB, 'README.md');
+  await openFile(pageA, 'README.md', { userName: 'Sender' });
+  await openFile(pageB, 'README.md', { userName: 'Receiver' });
 
   await openChat(pageB);
   await pageB.locator('#chatNotificationBtn').click();
-  await expect(pageB.locator('#chatNotificationBtn')).toHaveText('Alerts on');
-  await pageB.locator('#chatToggleBtn').click();
+  await expect(pageB.locator('#chatNotificationBtn')).toHaveText('Desktop alerts on');
+  await expect(pageB.locator('#chatToggleBtn')).toHaveAttribute('aria-expanded', 'true');
 
-  await pageB.evaluate(() => {
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      get: () => true,
-    });
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => 'hidden',
-    });
-  });
+  await pageA.bringToFront();
+  await sendChatMessage(pageA, 'Background alert: reviewing README right now.');
 
-  await sendChatMessage(pageA, 'Background ping from README.');
-
-  await expect.poll(async () => (
-    pageB.evaluate(() => window.__testNotifications.length)
+  await expect.poll(async () => pageB.evaluate(
+    () => window.__collabmdNotificationEvents?.length ?? 0,
   )).toBe(1);
 
-  const notification = await pageB.evaluate(() => window.__testNotifications[0]);
-  expect(notification.title).toContain('CollabMD chat');
-  expect(notification.body).toBe('README: Background ping from README.');
+  const notification = await pageB.evaluate(() => window.__collabmdNotificationEvents[0]);
+  expect(notification.title).toBe('New message from Sender');
+  expect(notification.options.body).toBe('Background alert: reviewing README right now.');
+  await expect(pageB.locator('#chatMessages')).toContainText(
+    'Background alert: reviewing README right now.',
+  );
+  await expect(pageB.locator('#chatToggleBadge')).toBeHidden();
+  await expect(pageB.locator('#chatToastContainer .toast')).toHaveCount(0);
 
   await pageA.close();
   await pageB.close();

@@ -19,7 +19,6 @@ const MAX_RECENT_FILES = 20;
 
 export class BrowserPreferencesPort {
   constructor({
-    chatNotificationsKey,
     fileTreeShowExtensionsKey,
     lineWrappingKey,
     recentFilesKey = 'collabmd-recent-files',
@@ -27,7 +26,6 @@ export class BrowserPreferencesPort {
     userNameKey,
     storage = globalThis.localStorage,
   }) {
-    this.chatNotificationsKey = chatNotificationsKey;
     this.fileTreeShowExtensionsKey = fileTreeShowExtensionsKey;
     this.lineWrappingKey = lineWrappingKey;
     this.recentFilesKey = recentFilesKey;
@@ -90,11 +88,4 @@ export class BrowserPreferencesPort {
     writeStorage(this.storage, this.sidebarVisibleKey, showSidebar ? 'true' : 'false');
   }
 
-  getChatNotificationsEnabled() {
-    return readStorage(this.storage, this.chatNotificationsKey, null) === 'true';
-  }
-
-  setChatNotificationsEnabled(enabled) {
-    writeStorage(this.storage, this.chatNotificationsKey, String(enabled));
-  }
 }

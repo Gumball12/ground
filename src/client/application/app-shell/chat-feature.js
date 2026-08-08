@@ -93,7 +93,6 @@ export const chatFeature = {
 
     this.syncChatToggleButton();
     this.syncChatNotificationButton();
-
     const list = this.elements.chatMessages;
     const emptyState = this.elements.chatEmptyState;
 
@@ -214,6 +213,47 @@ export const chatFeature = {
     return `${sender}: ${compactText}`;
   },
 
+  syncChatNotificationButton() {
+    const button = this.elements.chatNotificationButton;
+    if (!button) {
+      return;
+    }
+
+    const permission = this.notifications?.getPermission?.() ?? 'unsupported';
+    const enabled = permission === 'granted';
+    const unavailable = permission === 'unsupported';
+
+    button.classList.toggle('is-enabled', enabled);
+    button.classList.toggle('is-blocked', permission === 'denied');
+    button.disabled = unavailable;
+    button.hidden = unavailable;
+    button.setAttribute('aria-pressed', String(enabled));
+    button.textContent = enabled ? 'Desktop alerts on' : 'Enable desktop alerts';
+    button.title = permission === 'denied'
+      ? 'Desktop alerts are blocked in browser settings'
+      : enabled
+        ? 'Desktop alerts enabled'
+        : 'Allow desktop alerts for new chat messages';
+  },
+
+  async handleChatNotificationToggle() {
+    const permission = await this.notifications?.requestPermission?.();
+    this.syncChatNotificationButton();
+
+    if (permission === 'granted') {
+      return;
+    }
+
+    if (permission === 'denied') {
+      this.chatToastController.show('Desktop alerts are blocked. Allow them in browser site settings.', 5000);
+      return;
+    }
+
+    if (permission === 'unsupported') {
+      this.chatToastController.show('This browser does not support desktop alerts.', 5000);
+    }
+  },
+
   syncChatToggleButton() {
     const button = this.elements.chatToggleButton;
     const badge = this.elements.chatToggleBadge;
@@ -243,123 +283,29 @@ export const chatFeature = {
     badge.textContent = this.chatUnreadCount > 9 ? '9+' : String(this.chatUnreadCount);
   },
 
-  syncChatNotificationButton() {
-    const button = this.elements.chatNotificationButton;
-    if (!button) {
-      return;
-    }
-
-    const permission = this.notifications.getPermission();
-    this.chatNotificationPermission = permission;
-
-    let label = 'Enable alerts';
-    let title = 'Enable browser notifications for new chat messages';
-    let pressed = false;
-
-    if (permission === 'unsupported') {
-      label = 'Alerts unavailable';
-      title = 'Browser notifications are unavailable here';
-    } else if (permission === 'denied') {
-      label = 'Alerts off';
-      title = 'Browser notifications are blocked for this site';
-    } else if (permission === 'granted') {
-      pressed = this.chatNotificationsEnabled;
-      label = pressed ? 'Alerts on' : 'Alerts off';
-      title = pressed
-        ? 'Disable browser notifications for chat'
-        : 'Enable browser notifications for chat';
-    }
-
-    button.textContent = label;
-    button.title = title;
-    button.setAttribute('aria-pressed', String(pressed));
-    button.classList.toggle('is-enabled', pressed);
-    button.classList.toggle('is-blocked', permission === 'denied');
-  },
-
-  async handleChatNotificationToggle() {
-    const permission = this.notifications.getPermission();
-    this.chatNotificationPermission = permission;
-
-    if (permission === 'unsupported') {
-      this.toastController.show('Browser notifications are unavailable here');
-      this.syncChatNotificationButton();
-      return;
-    }
-
-    if (permission === 'denied') {
-      this.chatNotificationsEnabled = false;
-      this.preferences.setChatNotificationsEnabled(false);
-      this.toastController.show('Browser notifications are blocked for this site');
-      this.syncChatNotificationButton();
-      return;
-    }
-
-    if (permission === 'default') {
-      const nextPermission = await this.notifications.requestPermission();
-      this.chatNotificationPermission = nextPermission;
-
-      if (nextPermission !== 'granted') {
-        this.chatNotificationsEnabled = false;
-        this.preferences.setChatNotificationsEnabled(false);
-        if (nextPermission === 'denied') {
-          this.toastController.show('Browser notifications were blocked');
-        }
-        this.syncChatNotificationButton();
-        return;
-      }
-
-      this.chatNotificationsEnabled = true;
-      this.preferences.setChatNotificationsEnabled(true);
-      this.syncChatNotificationButton();
-      return;
-    }
-
-    this.chatNotificationsEnabled = !this.chatNotificationsEnabled;
-    this.preferences.setChatNotificationsEnabled(this.chatNotificationsEnabled);
-    this.syncChatNotificationButton();
-  },
-
   maybeNotifyChatMessage(message) {
     if (!this.chatInitialSyncComplete) {
       return;
     }
 
-    if (document.hidden) {
-      this.maybeShowBrowserChatNotification(message);
+    if (!this.isTabActive) {
       return;
     }
 
-    if (!this.isTabActive || this.chatIsOpen) {
+    const notification = this.notifications?.show?.({
+      body: String(message?.text ?? '').replace(/\s+/g, ' ').trim(),
+      onClick: () => {
+        window.focus?.();
+        notification?.close?.();
+        this.openChatPanel();
+      },
+      tag: `collabmd-chat-${message?.id ?? 'message'}`,
+      title: `New message from ${message?.userName || 'Someone'}`,
+    });
+    if (notification || this.chatIsOpen) {
       return;
     }
 
     (this.chatToastController ?? this.toastController).show(this.formatChatToastMessage(message), 4000);
-  },
-
-  maybeShowBrowserChatNotification(message) {
-    if (!this.chatNotificationsEnabled || this.notifications.getPermission() !== 'granted') {
-      return;
-    }
-
-    const title = `CollabMD chat • ${message.userName}`;
-    const fileLabel = this.getChatMessageFileLabel(message.filePath);
-    const body = fileLabel ? `${fileLabel}: ${message.text}` : message.text;
-    const notification = this.notifications.createNotification({
-      body,
-      onClick: () => {
-        if (message.filePath) {
-          this.navigation.navigateToFile(message.filePath);
-        }
-      },
-      tag: `collabmd-chat-${message.id}`,
-      title,
-    });
-
-    if (notification) {
-      setTimeout(() => {
-        notification.close?.();
-      }, 6000);
-    }
   },
 };

@@ -83,6 +83,18 @@
   gap: var(--space-3);
 }
 
+.chat-notification-action {
+  flex-shrink: 0;
+}
+
+.chat-notification-action.is-enabled {
+  color: var(--color-primary);
+}
+
+.chat-notification-action.is-blocked {
+  color: var(--color-text-faint);
+}
+
 .chat-panel-title {
   margin: 0;
   font-size: var(--text-sm);
@@ -93,21 +105,6 @@
   margin: var(--space-1) 0 0;
   color: var(--color-text-muted);
   font-size: var(--text-meta);
-}
-
-.chat-notification-action {
-  flex-shrink: 0;
-}
-
-.chat-notification-action.is-enabled {
-  border-color: oklch(from var(--color-success) l c h / 0.45);
-  background: var(--surface-success-soft);
-  color: var(--color-success);
-}
-
-.chat-notification-action.is-blocked {
-  border-color: var(--color-divider);
-  color: var(--color-text-faint);
 }
 
 .chat-empty-state {
