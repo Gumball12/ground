@@ -282,7 +282,7 @@ test('@excalidraw-smoke single-entry undo and redo do not cross a collaborator-s
   }
 });
 
-test('@excalidraw-smoke same-ID binary replacement keeps the editor and history mounted', async ({ browser }, testInfo) => {
+test('@excalidraw-smoke same-ID binary replacement uses native replacement or a safe remount fallback', async ({ browser }, testInfo) => {
   const context = await browser.newContext();
   const pageA = await context.newPage();
   const pageB = await context.newPage();
@@ -301,7 +301,6 @@ test('@excalidraw-smoke same-ID binary replacement keeps the editor and history 
     const capabilities = await pageA.evaluate(() => (
       window.__COLLABMD_EXCALIDRAW_TEST__.getForkCapabilities()
     ));
-    test.skip(!capabilities.replaceFiles, 'Requires @andes90/excalidraw fork APIs');
 
     const localEdit = await getScene(pageA);
     localEdit.appState.viewBackgroundColor = '#e0f2fe';
@@ -344,8 +343,14 @@ test('@excalidraw-smoke same-ID binary replacement keeps the editor and history 
     await expect.poll(async () => pageA.evaluate(() => (
       window.__COLLABMD_EXCALIDRAW_TEST__.getFileVersion('same-file')
     ))).toBe(2);
-    expect(await pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getEditorId())).toBe(editorId);
-    expect(await pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getHistoryState().canUndo)).toBe(true);
+    if (capabilities.replaceFiles) {
+      expect(await pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getEditorId())).toBe(editorId);
+      expect(await pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getHistoryState().canUndo)).toBe(true);
+    } else {
+      await expect.poll(async () => (
+        pageA.evaluate(() => window.__COLLABMD_EXCALIDRAW_TEST__.getEditorId())
+      )).not.toBe(editorId);
+    }
   } finally {
     await attachDiagnostics(testInfo, null, { pageA, pageB });
     await context.close();

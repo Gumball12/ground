@@ -143,12 +143,32 @@ export function resolveApiUrl(pathValue = '/', config = getClientRuntimeConfig()
   return resolveAppPath(`/api${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`, config);
 }
 
-export function resolveWsBaseUrl(config = getClientRuntimeConfig()) {
-  const params = new URLSearchParams(window.location.search);
-  const customServerUrl = params.get('server');
+export function resolveWsServerOverride(config = getClientRuntimeConfig()) {
+  if (!['development', 'test'].includes(config.environment)) {
+    return '';
+  }
 
-  if (customServerUrl) {
-    return trimTrailingSlash(customServerUrl);
+  const customServerUrl = new URLSearchParams(window.location.search).get('server');
+  if (!customServerUrl) {
+    return '';
+  }
+
+  try {
+    const parsedUrl = new URL(customServerUrl, window.location.origin);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsedUrl.protocol)) {
+      return '';
+    }
+
+    return trimTrailingSlash(parsedUrl.toString());
+  } catch {
+    return '';
+  }
+}
+
+export function resolveWsBaseUrl(config = getClientRuntimeConfig()) {
+  const serverOverride = resolveWsServerOverride(config);
+  if (serverOverride) {
+    return serverOverride;
   }
 
   if (config.publicWsBaseUrl) {

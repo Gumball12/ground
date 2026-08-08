@@ -366,8 +366,8 @@ test('Excalidraw layout sync preserves iframe src while updating placeholder geo
 
   const placeholder = {
     classList: createClassList(),
-    dataset: {},
-    isConnected: true,
+    dataset: { embedKey: 'diagram"evil]#0' },
+    isConnected: false,
     offsetLeft: 30,
     offsetTop: 18,
     offsetWidth: 720,
@@ -389,13 +389,13 @@ test('Excalidraw layout sync preserves iframe src while updating placeholder geo
   const entry = {
     filePath: 'diagram.excalidraw',
     iframe,
-    key: 'diagram.excalidraw#0',
+    key: 'diagram"evil]#0',
     placeholder,
     wrapper,
   };
   const controller = {
     embedEntries: new Map([[entry.key, entry]]),
-    previewElement: { querySelector: () => null },
+    previewElement: { querySelectorAll: () => [placeholder] },
     _isFilePreviewEntry: ExcalidrawEmbedController.prototype._isFilePreviewEntry,
     _shouldInlineFilePreview: ExcalidrawEmbedController.prototype._shouldInlineFilePreview,
     _syncEntryLayout: ExcalidrawEmbedController.prototype._syncEntryLayout,
@@ -464,6 +464,62 @@ test('Excalidraw embedded height resize updates height without recreating iframe
     assert.equal(iframe.style.height, '470px');
     assert.equal(iframe.style.pointerEvents, '');
     assert.equal(resizeEndCalls, 1);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('Excalidraw resizer cleanup removes active document listeners without finishing the resize', () => {
+  const originalDocument = globalThis.document;
+  const listeners = new Map();
+  let resizeEndCalls = 0;
+  const resizer = {
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+    removeEventListener(type, handler) {
+      if (listeners.get(type) === handler) {
+        listeners.delete(type);
+      }
+    },
+  };
+  const iframe = {
+    offsetHeight: 420,
+    style: {},
+  };
+
+  globalThis.document = {
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+    removeEventListener(type, handler) {
+      if (listeners.get(type) === handler) {
+        listeners.delete(type);
+      }
+    },
+  };
+
+  try {
+    const cleanup = ExcalidrawEmbedController.prototype._setupResizer.call(
+      {},
+      resizer,
+      iframe,
+      () => {
+        resizeEndCalls += 1;
+      },
+    );
+
+    listeners.get('pointerdown')({
+      clientY: 100,
+      preventDefault() {},
+    });
+    cleanup();
+
+    assert.equal(listeners.has('pointerdown'), false);
+    assert.equal(listeners.has('pointermove'), false);
+    assert.equal(listeners.has('pointerup'), false);
+    assert.equal(iframe.style.pointerEvents, '');
+    assert.equal(resizeEndCalls, 0);
   } finally {
     globalThis.document = originalDocument;
   }

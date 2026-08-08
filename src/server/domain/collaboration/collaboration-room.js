@@ -9,6 +9,7 @@ import { CollaborationDocumentStore } from './collaboration-document-store.js';
 import { RoomPersistenceController } from './room-persistence-controller.js';
 import { logPerfEvent } from '../../config/perf-logging.js';
 import { populateCommentThreads, serializeCommentThreads } from '../../../domain/comment-threads.js';
+import { getVaultFileKind } from '../../../domain/file-kind.js';
 import {
   EXCALIDRAW_APP_STATE_KEY,
   EXCALIDRAW_ELEMENTS_KEY,
@@ -123,7 +124,7 @@ function readAwarenessEntries(update) {
 }
 
 function isExcalidrawRoom(name) {
-  return typeof name === 'string' && name.endsWith('.excalidraw');
+  return getVaultFileKind(name) === 'excalidraw';
 }
 
 function isWorkspaceRoom(name) {

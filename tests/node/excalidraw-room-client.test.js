@@ -307,6 +307,9 @@ test('ExcalidrawRoomClient builds live sync deltas with only changed elements an
     type: 'excalidraw',
     version: 2,
   }), { origin: 'seed-shapes' });
+  client.getStructuredSceneJson = () => {
+    throw new Error('live delta should use the cached room scene');
+  };
 
   const changedShape = {
     ...JSON.parse(createScene('shape-1')).elements[0],
@@ -621,6 +624,10 @@ test('ExcalidrawRoomClient does not recreate a missing file during connect', asy
     /File not found/,
   );
   assert.equal(createCalls, 0);
+  assert.equal(provider.disconnected, true);
+  assert.equal(provider.destroyed, true);
+  assert.equal(client.provider, null);
+  assert.equal(client.ydoc, null);
 });
 
 test('ExcalidrawRoomClient delays transient empty scene commits during active collaboration', async () => {

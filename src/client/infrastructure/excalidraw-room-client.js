@@ -39,16 +39,21 @@ export const EXCALIDRAW_ROOM_CONNECTION_STATE = Object.freeze({
   RECONNECTING_READONLY: 'reconnecting-readonly',
 });
 
-function stableJson(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableJson(entry)).join(',')}]`;
+function areExcalidrawFilesEqual(left, right) {
+  if (left === right) {
+    return true;
   }
 
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') {
+    return false;
   }
 
-  return JSON.stringify(value);
+  return left.id === right.id
+    && left.mimeType === right.mimeType
+    && left.dataURL === right.dataURL
+    && left.created === right.created
+    && left.lastRetrieved === right.lastRetrieved
+    && left.version === right.version;
 }
 
 function normalizeElementVersion(value) {
@@ -138,6 +143,7 @@ export class ExcalidrawRoomClient {
     this.lastViewportSignature = '';
     this.lastSelectedIdsSignature = '';
     this.pendingEmptySceneCandidate = null;
+    this.structuredObserversAttached = false;
     this.canWriteToRoom = false;
     this.waitingForAuthoritativeSync = false;
     this.connectionState = EXCALIDRAW_ROOM_CONNECTION_STATE.CLOSED;
@@ -268,7 +274,16 @@ export class ExcalidrawRoomClient {
     return this.localUser;
   }
 
-  async connect({ initialUser = null } = {}) {
+  async connect(options = {}) {
+    try {
+      return await this.connectInternal(options);
+    } catch (error) {
+      this.disconnect();
+      throw error;
+    }
+  }
+
+  async connectInternal({ initialUser = null } = {}) {
     this.localUser = initialUser;
     this.setConnectionState(EXCALIDRAW_ROOM_CONNECTION_STATE.CONNECTING);
 
@@ -367,6 +382,7 @@ export class ExcalidrawRoomClient {
     this.roomElements.observeDeep(this.handleStructuredSceneUpdate);
     this.roomFiles.observeDeep(this.handleStructuredSceneUpdate);
     this.roomAppState.observe(this.handleStructuredSceneUpdate);
+    this.structuredObserversAttached = true;
     if (usedApiFallback && this.canWriteToRoom) {
       this.commitSceneJson(this.lastSceneJson, {
         origin: 'excalidraw-api-fallback',
@@ -501,7 +517,7 @@ export class ExcalidrawRoomClient {
 
   mergeLocallyChangedAppState(appState, baseSceneJson) {
     const baseScene = parseSceneJson(baseSceneJson);
-    const roomScene = parseSceneJson(this.getStructuredSceneJson() || this.lastSceneJson);
+    const roomScene = parseSceneJson(this.lastSceneJson || this.getStructuredSceneJson());
     const nextAppState = {
       ...roomScene.appState,
     };
@@ -523,7 +539,7 @@ export class ExcalidrawRoomClient {
     elements,
     files,
   } = {}) {
-    const roomSceneJson = this.getStructuredSceneJson() || this.lastSceneJson || baseSceneJson;
+    const roomSceneJson = this.lastSceneJson || this.getStructuredSceneJson() || baseSceneJson;
     const roomScene = parseSceneJson(roomSceneJson);
     const nextAppState = this.mergeLocallyChangedAppState(appState, baseSceneJson);
     const roomElementsById = new Map(roomScene.elements.map((element) => [element.id, element]));
@@ -533,7 +549,7 @@ export class ExcalidrawRoomClient {
     const nextFiles = files && typeof files === 'object' ? files : {};
     const changedFiles = Object.fromEntries(
       Object.entries(nextFiles).filter(([fileId, file]) => (
-        stableJson(file) !== stableJson(roomScene.files?.[fileId])
+        !areExcalidrawFilesEqual(file, roomScene.files?.[fileId])
       )),
     );
     const appStateChanged = (
@@ -869,10 +885,13 @@ export class ExcalidrawRoomClient {
     this.lastSelectedIdsSignature = '';
     this.pendingEmptySceneCandidate = null;
 
-    this.roomMeta?.unobserve(this.handleStructuredSceneUpdate);
-    this.roomElements?.unobserveDeep(this.handleStructuredSceneUpdate);
-    this.roomFiles?.unobserveDeep(this.handleStructuredSceneUpdate);
-    this.roomAppState?.unobserve(this.handleStructuredSceneUpdate);
+    if (this.structuredObserversAttached) {
+      this.roomMeta?.unobserve(this.handleStructuredSceneUpdate);
+      this.roomElements?.unobserveDeep(this.handleStructuredSceneUpdate);
+      this.roomFiles?.unobserveDeep(this.handleStructuredSceneUpdate);
+      this.roomAppState?.unobserve(this.handleStructuredSceneUpdate);
+      this.structuredObserversAttached = false;
+    }
 
     if (this.awareness) {
       this.awareness.off('change', this.handleAwarenessChange);

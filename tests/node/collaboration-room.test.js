@@ -641,7 +641,7 @@ test('CollaborationRoom persists markdown comment threads without rewriting unch
   assert.equal(commentWrites[0].threads[1].id, 'thread-2');
 });
 
-test('CollaborationRoom hydrates and persists excalidraw rooms via excalidraw file APIs', async () => {
+test('CollaborationRoom hydrates and persists Excalidraw rooms regardless of extension case', async () => {
   const initialScene = JSON.stringify({
     appState: { gridSize: null, viewBackgroundColor: '#ffffff' },
     elements: [{ id: 'shape-1' }],
@@ -664,7 +664,7 @@ test('CollaborationRoom hydrates and persists excalidraw rooms via excalidraw fi
 
   const room = new CollaborationRoom({
     maxBufferedAmountBytes: 1024,
-    name: 'diagram.excalidraw',
+    name: 'diagram.EXCALIDRAW',
     onEmpty: () => {},
     backlinkIndex: {
       updateFile() {
@@ -674,7 +674,7 @@ test('CollaborationRoom hydrates and persists excalidraw rooms via excalidraw fi
     vaultFileStore: {
       async readEditableVaultContent(path) {
         readExcalidrawCount += 1;
-        assert.equal(path, 'diagram.excalidraw');
+        assert.equal(path, 'diagram.EXCALIDRAW');
         return initialScene;
       },
       async persistCollaborationState(path, { content }) {
@@ -695,7 +695,7 @@ test('CollaborationRoom hydrates and persists excalidraw rooms via excalidraw fi
   await room.persist();
 
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].path, 'diagram.excalidraw');
+  assert.equal(writes[0].path, 'diagram.EXCALIDRAW');
   assert.deepEqual(JSON.parse(writes[0].content), JSON.parse(updatedScene));
   assert.equal(backlinkUpdates, 0);
 });
