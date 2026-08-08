@@ -162,6 +162,25 @@ test('live scene diffs preserve room elements omitted from stale local payloads'
   assert.equal(scene.elements.find((element) => element.id === 'shape-b').x, 30);
 });
 
+test('sorts Excalidraw fractional indices using code-point ordering', () => {
+  const doc = new Y.Doc();
+  const baseElement = createElement('shape-a', { index: 'b0a' });
+  const movedElement = createElement('shape-b', { index: 'b0b' });
+
+  replaceExcalidrawRoomScene(doc, createScene([baseElement, movedElement]));
+  applySceneDiffToExcalidrawRoom(doc, createScene([{
+    ...movedElement,
+    index: 'b0Z',
+    version: 2,
+    versionNonce: 2,
+  }]));
+
+  assert.deepEqual(
+    buildExcalidrawRoomScene(doc).elements.map((element) => element.id),
+    ['shape-b', 'shape-a'],
+  );
+});
+
 test('live scene diffs preserve files omitted from stale local payloads', () => {
   const doc = new Y.Doc();
   replaceExcalidrawRoomScene(doc, {

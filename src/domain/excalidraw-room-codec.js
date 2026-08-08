@@ -98,13 +98,15 @@ function compareElementVersions(left, right) {
 }
 
 function compareElementIndex(left, right) {
-  const leftIndex = left?.index ?? '';
-  const rightIndex = right?.index ?? '';
+  const leftIndex = String(left?.index ?? '');
+  const rightIndex = String(right?.index ?? '');
   if (leftIndex !== rightIndex) {
-    return String(leftIndex).localeCompare(String(rightIndex));
+    return leftIndex < rightIndex ? -1 : 1;
   }
 
-  return String(left?.id || '').localeCompare(String(right?.id || ''));
+  const leftId = String(left?.id || '');
+  const rightId = String(right?.id || '');
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
 }
 
 function getNestedMapValue(map, key, { create = false } = {}) {
