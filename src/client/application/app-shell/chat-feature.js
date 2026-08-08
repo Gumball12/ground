@@ -87,7 +87,6 @@ export const chatFeature = {
     this.renderChat({ stickToBottom: true });
     requestAnimationFrame(() => {
       this.elements.chatInput?.focus();
-      this.scrollChatToBottom();
     });
   },
 
@@ -170,24 +169,11 @@ export const chatFeature = {
     list.classList.remove('hidden');
 
     const wasAtBottom = stickToBottom || isChatAtBottom(list);
-    const renderedIds = Array.from(list.children, (item) => item.dataset.chatMessageId);
-    const canAppend = renderedIds.length > 0
-      && renderedIds.every((id, index) => id === this.chatMessages[index]?.id)
-      && this.chatMessages.length >= renderedIds.length;
-
-    if (canAppend) {
-      const fragment = document.createDocumentFragment();
-      this.chatMessages.slice(renderedIds.length).forEach((message) => {
-        fragment.appendChild(this.createChatMessageElement(message));
-      });
-      list.appendChild(fragment);
-    } else {
-      const fragment = document.createDocumentFragment();
-      this.chatMessages.forEach((message) => {
-        fragment.appendChild(this.createChatMessageElement(message));
-      });
-      list.replaceChildren(fragment);
-    }
+    const fragment = document.createDocumentFragment();
+    this.chatMessages.forEach((message) => {
+      fragment.appendChild(this.createChatMessageElement(message));
+    });
+    list.replaceChildren(fragment);
 
     if (wasAtBottom) {
       this.scrollChatToBottom();
@@ -199,7 +185,6 @@ export const chatFeature = {
     const isLocal = message.peerId === this.lobby.getLocalUser()?.peerId;
     item.className = 'chat-message';
     item.classList.toggle('is-local', isLocal);
-    item.dataset.chatMessageId = message.id;
 
     const avatar = document.createElement('div');
     avatar.className = 'chat-message-avatar';
@@ -291,9 +276,20 @@ export const chatFeature = {
     const permission = this.notifications?.getPermission?.() ?? 'unsupported';
     const enabled = permission === 'granted';
     const muted = enabled && getChatAlertMuteUntil() > 0;
+    const blocked = permission === 'denied';
+    const statusState = enabled
+      ? {
+          text: muted ? 'Alerts muted' : 'Alerts on',
+          label: muted ? 'Desktop alerts muted' : 'Desktop alerts enabled',
+        }
+      : blocked
+        ? {
+            text: 'Alerts blocked',
+            label: 'Desktop alerts blocked in browser settings',
+          }
+        : null;
 
     if (button) {
-      button.hidden = permission !== 'default';
       button.classList.toggle('hidden', permission !== 'default');
       button.disabled = false;
       button.removeAttribute('aria-pressed');
@@ -302,7 +298,6 @@ export const chatFeature = {
     }
 
     if (muteButton) {
-      muteButton.hidden = !enabled;
       muteButton.classList.toggle('hidden', !enabled);
       muteButton.disabled = false;
       muteButton.setAttribute('aria-pressed', String(muted));
@@ -312,22 +307,11 @@ export const chatFeature = {
     }
 
     if (status) {
-      const blocked = permission === 'denied';
-      status.hidden = !enabled && !blocked;
-      status.classList.toggle('hidden', !enabled && !blocked);
-      const statusLabel = enabled
-        ? muted ? 'Desktop alerts muted' : 'Desktop alerts enabled'
-        : blocked
-          ? 'Desktop alerts blocked in browser settings'
-          : '';
-      status.textContent = enabled
-        ? muted ? 'Alerts muted' : 'Alerts on'
-        : blocked
-          ? 'Alerts blocked'
-          : '';
-      if (statusLabel) {
-        status.setAttribute('aria-label', statusLabel);
-        status.title = statusLabel;
+      status.classList.toggle('hidden', !statusState);
+      status.textContent = statusState?.text ?? '';
+      if (statusState) {
+        status.setAttribute('aria-label', statusState.label);
+        status.title = statusState.label;
       } else {
         status.removeAttribute('aria-label');
         status.removeAttribute('title');

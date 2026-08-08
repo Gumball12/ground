@@ -75,11 +75,11 @@
   flex-shrink: 0;
 }
 
-.chat-notification-mute-action {
+.chat-notification-mute-action,
+.chat-close-btn {
   width: var(--control-h-md);
   min-width: var(--control-h-md);
   height: var(--control-h-md);
-  padding: 0;
   flex-shrink: 0;
 }
 
@@ -220,10 +220,4 @@
 
 .chat-send-btn {
   flex-shrink: 0;
-}
-
-.chat-close-btn {
-  width: var(--control-h-md);
-  min-width: var(--control-h-md);
-  height: var(--control-h-md);
 }
