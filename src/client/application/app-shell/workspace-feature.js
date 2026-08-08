@@ -10,44 +10,23 @@ import {
 } from '../../../domain/file-kind.js';
 
 export const workspaceFeature = {
-  isExcalidrawFile(filePath) {
-    return isExcalidrawFilePath(filePath);
-  },
-
-  isBaseFile(filePath) {
-    return isBaseFilePath(filePath);
-  },
-
-  isDrawioFile(filePath) {
-    return isDrawioFilePath(filePath);
-  },
-
-  isImageFile(filePath) {
-    return isImageAttachmentFilePath(filePath);
-  },
-
-  isMermaidFile(filePath) {
-    return isMermaidFilePath(filePath);
-  },
-
-  isPlantUmlFile(filePath) {
-    return isPlantUmlFilePath(filePath);
-  },
-
-  createDiagramPreviewDocument(language, source = '') {
-    return this.workspacePreviewController.createDiagramPreviewDocument(language, source);
-  },
+  isBaseFile: isBaseFilePath,
+  isDrawioFile: isDrawioFilePath,
+  isExcalidrawFile: isExcalidrawFilePath,
+  isImageFile: isImageAttachmentFilePath,
+  isMermaidFile: isMermaidFilePath,
+  isPlantUmlFile: isPlantUmlFilePath,
 
   getPreviewSource() {
     const previewDocument = this.getStaticPreviewDocument?.();
     const previewFilePath = previewDocument?.currentFilePath ?? previewDocument?.filePath ?? null;
     if (previewDocument && previewFilePath && previewFilePath === this.currentFilePath) {
       if (this.isMermaidFile(this.currentFilePath)) {
-        return this.createDiagramPreviewDocument('mermaid', previewDocument.content);
+        return this.workspacePreviewController.createDiagramPreviewDocument('mermaid', previewDocument.content);
       }
 
       if (this.isPlantUmlFile(this.currentFilePath)) {
-        return this.createDiagramPreviewDocument('plantuml', previewDocument.content);
+        return this.workspacePreviewController.createDiagramPreviewDocument('plantuml', previewDocument.content);
       }
 
       return String(previewDocument.content ?? '');
@@ -91,14 +70,6 @@ export const workspaceFeature = {
       .pop());
   },
 
-  resetPreviewMode() {
-    this.workspacePreviewController.resetPreviewMode();
-  },
-
-  syncFileChrome(filePath, options = {}) {
-    this.workspacePreviewController.syncFileChrome(filePath, options);
-  },
-
   handleLayoutViewRequest(view) {
     if (!this.currentFilePath || !this.isDrawioFile(this.currentFilePath)) {
       return true;
@@ -125,18 +96,6 @@ export const workspaceFeature = {
     return false;
   },
 
-  renderExcalidrawFilePreview(filePath) {
-    this.workspacePreviewController.renderExcalidrawFilePreview(filePath);
-  },
-
-  renderDrawioFilePreview(filePath) {
-    this.workspacePreviewController.renderDrawioFilePreview(filePath);
-  },
-
-  renderImageFilePreview(filePath) {
-    this.workspacePreviewController.renderImageFilePreview(filePath);
-  },
-
   renderBaseFilePreview(filePath, options) {
     clearTimeout(this._basePreviewRenderTimer);
     this._basePreviewRenderTimer = null;
@@ -153,10 +112,6 @@ export const workspaceFeature = {
       }
       void this.renderBaseFilePreview(filePath, options);
     }, 180);
-  },
-
-  renderTextFilePreview(payload) {
-    this.workspacePreviewController.renderTextFilePreview(payload);
   },
 
   createResizeHandler() {
@@ -201,10 +156,6 @@ export const workspaceFeature = {
     });
   },
 
-  async handleHashChange() {
-    await this.workspaceRouteController.handleHashChange();
-  },
-
   showEmptyState() {
     clearTimeout(this._previewLayoutSyncTimer);
     this._previewLayoutSyncTimer = null;
@@ -221,30 +172,4 @@ export const workspaceFeature = {
     this.workspaceRouteController.showDiffState();
   },
 
-  async openFile(filePath) {
-    await this.workspaceRouteController.openFile(filePath);
-  },
-
-  cleanupSession() {
-    this.workspaceRouteController.cleanupSession();
-  },
-
-  handleWikiLinkClick(target) {
-    this.wikiLinkFileController.handleWikiLinkClick(target);
-  },
-
-  normalizeNewWikiFilePath(target) {
-    return this.wikiLinkFileController.normalizeNewWikiFilePath(target);
-  },
-
-  async createAndOpenFile(filePath, displayName) {
-    await this.wikiLinkFileController.createAndOpenFile(filePath, displayName);
-  },
-
-  handleFileSelection(filePath, { closeSidebarOnMobile = false, revealInTree = false } = {}) {
-    this.workspaceRouteController.handleFileSelection(filePath, {
-      closeSidebarOnMobile,
-      revealInTree,
-    });
-  },
 };

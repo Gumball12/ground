@@ -8,7 +8,6 @@ import {
   syncAttribute,
   normalizeDiagramError,
 } from './preview-diagram-utils.js';
-import { resolveApiUrl } from '../domain/runtime-paths.js';
 
 function datasetKeyToAttributeName(datasetKey) {
   return `data-${datasetKey.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
@@ -18,7 +17,6 @@ export class DiagramPreviewHydrator {
   constructor(renderer, {
     batchSize,
     datasetKeys,
-    fetchFn = null,
     loadFileSource = null,
     filePathLabel,
     requestIdleRenderFn = requestIdleRender,
@@ -32,7 +30,7 @@ export class DiagramPreviewHydrator {
     this.renderer = renderer;
     this.batchSize = batchSize;
     this.datasetKeys = datasetKeys;
-    this.loadFileSource = loadFileSource ?? this.createLegacyFileSourceLoader(fetchFn);
+    this.loadFileSource = loadFileSource;
     this.filePathLabel = filePathLabel;
     this.requestIdleRenderFn = requestIdleRenderFn;
     this.cancelIdleRenderFn = cancelIdleRenderFn;
@@ -56,22 +54,6 @@ export class DiagramPreviewHydrator {
     this.instanceCounter = 0;
     this.preservedShells = [];
     this.fileInflightRequests = new Map();
-  }
-
-  createLegacyFileSourceLoader(fetchFn) {
-    if (typeof fetchFn !== 'function') {
-      return null;
-    }
-
-    return async (filePath) => {
-      const response = await fetchFn(resolveApiUrl(`/file?path=${encodeURIComponent(filePath)}`));
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || `Failed to load ${this.filePathLabel.toLowerCase()} source`);
-      }
-
-      return String(payload?.content ?? '');
-    };
   }
 
   destroy() {

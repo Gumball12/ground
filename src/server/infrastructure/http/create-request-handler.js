@@ -2,7 +2,6 @@ import { createAuthApiHandler } from './create-auth-api-handler.js';
 import { createGitApiCommandHandler } from './create-git-api-command-handler.js';
 import { createGitApiQueryHandler } from './create-git-api-query-handler.js';
 import { createHostedApiHandler } from './create-hosted-api-handler.js';
-import { createEsmProxyHandler } from './create-esm-proxy-handler.js';
 import { createPlantUmlApiHandler } from './create-plantuml-api-handler.js';
 import { createStaticHandler } from './create-static-handler.js';
 import { createVaultApiCommandHandler } from './create-vault-api-command-handler.js';
@@ -56,7 +55,6 @@ export function createRequestHandler(
   hostedWorkspaceService = null,
   githubSetupFlow = null,
 ) {
-  const handleEsmProxy = createEsmProxyHandler();
   const handleStaticRequest = createStaticHandler(config, authService, searchService);
   const handleAuthApi = createAuthApiHandler({ authService });
   const handleHostedApi = createHostedApiHandler({
@@ -192,10 +190,6 @@ export function createRequestHandler(
     }
 
     if (await handleHostedApi(req, res, requestUrl)) {
-      return;
-    }
-
-    if (await handleEsmProxy(req, res, requestUrl)) {
       return;
     }
 

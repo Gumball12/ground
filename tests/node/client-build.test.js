@@ -30,7 +30,7 @@ test('client build emits hashed entry assets and the main bundle references the 
   await access(resolve(clientDistDir, mainAssetPath), fsConstants.R_OK);
   await access(resolve(clientDistDir, 'assets', workerReference), fsConstants.R_OK);
   await access(resolve(clientDistDir, mainStylesheetPath), fsConstants.R_OK);
-  assert.doesNotMatch(indexHtml, /app-config\.js/);
+  assert.match(indexHtml, /src="\.\/app-config\.js"/);
   assert.doesNotMatch(indexHtml, /assets\/vendor\/highlight\/github-dark\.min\.css/);
   assert.doesNotMatch(indexHtml, /main-entry\.js/);
 });
@@ -47,7 +47,7 @@ test('excalidraw build references hashed HTML entry assets and omits the disable
 
   assert.ok(excalidrawCssReference, 'expected Excalidraw bundle to reference emitted stylesheet');
   await access(resolve(clientDistDir, 'assets', excalidrawCssReference), fsConstants.R_OK);
-  assert.doesNotMatch(excalidrawHtml, /app-config\.js/);
+  assert.match(excalidrawHtml, /src="\.\/app-config\.js"/);
   assert.doesNotMatch(excalidrawHtml, /excalidraw-editor-entry\.js/);
   const importedSpecifiers = [
     ...excalidrawBundle.matchAll(/from"([^"]+)"/g),

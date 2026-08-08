@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
-import { extractAssetPath } from './helpers/asset-path.js';
+import { extractAssetPath } from '../helpers/asset-path.js';
 
 const execFile = promisify(execFileCallback);
-const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 async function listRelativeFiles(rootPath, currentPath = rootPath) {
   const entries = await readdir(currentPath, { withFileTypes: true });

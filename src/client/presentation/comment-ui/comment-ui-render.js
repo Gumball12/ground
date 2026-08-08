@@ -1,4 +1,8 @@
-import { createRenderedCommentBody, formatAnchorLabel, getLatestGroupMessage } from './comment-ui-shared.js';
+import {
+  createCommentOverviewThread,
+  formatAnchorLabel,
+  getLatestGroupMessage,
+} from './comment-ui-shared.js';
 
 /**
  * @typedef {object} CommentUiRenderContext
@@ -74,9 +78,25 @@ function renderDrawer() {
 
   const fragment = document.createDocumentFragment();
   groups.forEach((group) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'comment-overview-thread comments-drawer-item';
+    const latestMessage = getLatestGroupMessage(group);
+    const messageCount = group.threads.reduce(
+      (count, thread) => count + (Array.isArray(thread.messages) ? thread.messages.length : 0),
+      0,
+    );
+    const button = createCommentOverviewThread({
+      authorName: latestMessage?.userName || group.threads[0]?.createdByName || 'Anonymous',
+      buttonClassName: 'comment-overview-thread comments-drawer-item',
+      footerClassName: 'comment-overview-thread-footer comments-drawer-item-footer',
+      headerClassName: 'comment-overview-thread-header comments-drawer-item-header',
+      lineClassName: 'comment-overview-thread-line comments-drawer-item-title',
+      lineLabel: formatAnchorLabel(group.anchor),
+      messageCount,
+      previewBody: latestMessage?.body || '',
+      previewClassName: 'comment-markdown comment-overview-thread-preview comments-drawer-item-preview',
+      quote: group.anchor?.quote || group.anchor?.excerpt || 'Source anchored comment',
+      quoteClassName: 'comment-overview-thread-quote comments-drawer-item-quote',
+      timestamp: latestMessage ? this.formatTimestamp(latestMessage.createdAt) : '',
+    });
     button.classList.toggle('is-active', this.activeCard?.groupKey === group.key);
     button.addEventListener('pointerdown', (event) => {
       event.preventDefault();
@@ -90,58 +110,6 @@ function renderDrawer() {
           ?? button.getBoundingClientRect(),
       });
     });
-
-    const latestMessage = getLatestGroupMessage(group);
-
-    const header = document.createElement('div');
-    header.className = 'comment-overview-thread-header comments-drawer-item-header';
-
-    const line = document.createElement('span');
-    line.className = 'comment-overview-thread-line comments-drawer-item-title';
-    line.textContent = formatAnchorLabel(group.anchor);
-
-    const meta = document.createElement('span');
-    meta.className = 'comment-overview-thread-meta';
-    meta.textContent = latestMessage ? this.formatTimestamp(latestMessage.createdAt) : '';
-
-    header.append(line, meta);
-
-    const body = document.createElement('div');
-    body.className = 'comment-overview-thread-body';
-
-    const preview = createRenderedCommentBody(
-      latestMessage?.body || '',
-      'comment-markdown comment-overview-thread-preview comments-drawer-item-preview',
-    );
-
-    const quoteSection = document.createElement('div');
-    quoteSection.className = 'comment-overview-thread-section comment-overview-thread-reference';
-    const quoteLabel = document.createElement('span');
-    quoteLabel.className = 'comment-overview-thread-section-label';
-    quoteLabel.textContent = 'Reference';
-    const quote = document.createElement('span');
-    quote.className = 'comment-overview-thread-quote comments-drawer-item-quote';
-    quote.textContent = group.anchor.quote || group.anchor.excerpt || 'Source anchored comment';
-    quoteSection.append(quoteLabel, quote);
-    body.append(preview, quoteSection);
-
-    const footer = document.createElement('div');
-    footer.className = 'comment-overview-thread-footer comments-drawer-item-footer';
-    const author = document.createElement('span');
-    author.className = 'comment-overview-thread-author';
-    author.textContent = latestMessage?.userName || group.threads[0]?.createdByName || 'Anonymous';
-
-    const messageCount = group.threads.reduce(
-      (count, thread) => count + (Array.isArray(thread.messages) ? thread.messages.length : 0),
-      0,
-    );
-    const messages = document.createElement('span');
-    messages.className = 'comment-overview-thread-message-count';
-    messages.textContent = `${messageCount} message${messageCount === 1 ? '' : 's'}`;
-
-    footer.append(author, messages);
-
-    button.append(header, body, footer);
     fragment.appendChild(button);
   });
 

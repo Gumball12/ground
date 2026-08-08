@@ -12,7 +12,7 @@ import {
 } from './preview-diagram-utils.js';
 
 export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
-  constructor(renderer, { fetchFn = null, loadFileSource = null } = {}) {
+  constructor(renderer, { loadFileSource = null } = {}) {
     super(renderer, {
       batchSize: MERMAID_BATCH_SIZE,
       datasetKeys: {
@@ -26,7 +26,6 @@ export class MermaidPreviewHydrator extends DiagramPreviewHydrator {
         sourceLineEnd: 'sourceLineEnd',
         target: 'mermaidTarget',
       },
-      fetchFn,
       filePathLabel: 'Mermaid',
       loadFileSource,
       shellClassName: 'mermaid-shell',

@@ -1,6 +1,11 @@
 import { exportToSvg as exportExcalidrawToSvg } from '@excalidraw/excalidraw';
 
-import { sanitizeSvgMarkup } from '../application/preview-diagram-utils.js';
+import {
+  encodeSvgDataUrl,
+  loadImage,
+  resolveSvgDimensions,
+  sanitizeSvgMarkup,
+} from '../application/preview-diagram-utils.js';
 import { compilePreviewDocument } from '../application/preview-render-compiler.js';
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { parseSceneJson, sceneToInitialData } from '../domain/excalidraw-scene.js';
@@ -60,10 +65,6 @@ function createDocumentTitle(filePath, title = '') {
   return stripVaultFileExtension(leaf) || 'document';
 }
 
-function encodeSvgDataUrl(svgMarkup) {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
-}
-
 function encodeSvgBase64DataUrl(svgMarkup) {
   const bytes = new TextEncoder().encode(String(svgMarkup ?? ''));
   const chunkSize = 0x8000;
@@ -85,35 +86,6 @@ function blobToDataUrl(blob) {
     reader.addEventListener('error', () => reject(reader.error ?? new Error('Failed to read blob')));
     reader.readAsDataURL(blob);
   });
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.addEventListener('load', () => resolve(image), { once: true });
-    image.addEventListener('error', () => reject(new Error(`Failed to load image: ${src}`)), { once: true });
-    image.src = src;
-  });
-}
-
-function resolveSvgDimensions(svgElement) {
-  const widthAttr = Number.parseFloat(svgElement.getAttribute('width') || '');
-  const heightAttr = Number.parseFloat(svgElement.getAttribute('height') || '');
-  const viewBox = svgElement.getAttribute('viewBox') || '';
-  const viewBoxParts = viewBox.split(/\s+/).map((value) => Number.parseFloat(value));
-
-  const width = Number.isFinite(widthAttr) && widthAttr > 0
-    ? widthAttr
-    : (Number.isFinite(viewBoxParts[2]) && viewBoxParts[2] > 0 ? viewBoxParts[2] : 1200);
-  const height = Number.isFinite(heightAttr) && heightAttr > 0
-    ? heightAttr
-    : (Number.isFinite(viewBoxParts[3]) && viewBoxParts[3] > 0 ? viewBoxParts[3] : 800);
-
-  return {
-    height,
-    width,
-  };
 }
 
 function trimSvgCanvas(svgMarkup, { padding = 16 } = {}) {

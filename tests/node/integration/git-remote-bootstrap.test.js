@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { loadConfig } from '../../src/server/config/env.js';
-import { createAppServer } from '../../src/server/create-app-server.js';
-import { prepareConfigForStartup } from '../../src/server/startup/git-remote-bootstrap.js';
+import { loadConfig } from '../../../src/server/config/env.js';
+import { createAppServer } from '../../../src/server/create-app-server.js';
+import { prepareConfigForStartup } from '../../../src/server/startup/git-remote-bootstrap.js';
 
 const execFile = promisify(execFileCallback);
 

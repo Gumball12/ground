@@ -7,9 +7,9 @@ import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-import { WORKSPACE_ROOM_NAME } from '../../src/domain/workspace-room.js';
-import { startTestServer, waitForCondition } from './helpers/test-server.js';
-import { waitForProviderSync } from './helpers/collaboration-protocol.js';
+import { WORKSPACE_ROOM_NAME } from '../../../src/domain/workspace-room.js';
+import { startTestServer, waitForCondition } from '../helpers/test-server.js';
+import { waitForProviderSync } from '../helpers/collaboration-protocol.js';
 
 function createProvider(app, roomName, ydoc) {
   return new WebsocketProvider(`ws://127.0.0.1:${app.port}${app.server.config.wsBasePath}`, roomName, ydoc, {

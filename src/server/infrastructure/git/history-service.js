@@ -1,4 +1,4 @@
-import { createGitRequestError } from './errors.js';
+import { createRequestError as createGitRequestError } from '../http/http-errors.js';
 import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { normalizeRelativeGitPath } from './path-utils.js';
 import {
@@ -9,11 +9,7 @@ import {
   parseUnifiedDiff,
 } from './parsers.js';
 import {
-  createCommitDiffResponse,
   createEmptyStats,
-  createFileHistoryResponse,
-  createFileSnapshotResponse,
-  createHistoryResponse,
 } from './responses.js';
 
 const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
@@ -127,13 +123,13 @@ export class GitHistoryService {
     const normalizedOffset = normalizeHistoryOffset(offset);
 
     if (!isGitRepo) {
-      return createHistoryResponse({
+      return {
         commits: [],
         hasMore: false,
         isGitRepo: false,
         limit: normalizedLimit,
         offset: normalizedOffset,
-      });
+      };
     }
 
     const cacheKey = JSON.stringify({
@@ -149,12 +145,13 @@ export class GitHistoryService {
     return this.runRequest(cacheKey, async () => {
       const hasHeadCommit = await this.hasHeadCommit();
       if (!hasHeadCommit) {
-        return setCachedValue(this.historyCache, cacheKey, createHistoryResponse({
+        return setCachedValue(this.historyCache, cacheKey, {
           commits: [],
           hasMore: false,
+          isGitRepo: true,
           limit: normalizedLimit,
           offset: normalizedOffset,
-        }), this.responseCacheTtlMs);
+        }, this.responseCacheTtlMs);
       }
 
       const output = await this.commandRunner.execGit([
@@ -175,12 +172,13 @@ export class GitHistoryService {
         .map((chunk) => this.parseHistoryChunk(chunk));
 
       const hasMore = commits.length > normalizedLimit;
-      const response = createHistoryResponse({
+      const response = {
         commits: commits.slice(0, normalizedLimit),
         hasMore,
+        isGitRepo: true,
         limit: normalizedLimit,
         offset: normalizedOffset,
-      });
+      };
 
       return setCachedValue(this.historyCache, cacheKey, response, this.responseCacheTtlMs);
     });
@@ -193,14 +191,14 @@ export class GitHistoryService {
     const normalizedPath = normalizeRelativeGitPath(path);
 
     if (!isGitRepo) {
-      return createFileHistoryResponse({
+      return {
         commits: [],
         hasMore: false,
         isGitRepo: false,
         limit: normalizedLimit,
         offset: normalizedOffset,
         path: normalizedPath,
-      });
+      };
     }
 
     const cacheKey = JSON.stringify({
@@ -217,13 +215,14 @@ export class GitHistoryService {
     return this.runRequest(cacheKey, async () => {
       const hasHeadCommit = await this.hasHeadCommit();
       if (!hasHeadCommit) {
-        return setCachedValue(this.historyCache, cacheKey, createFileHistoryResponse({
+        return setCachedValue(this.historyCache, cacheKey, {
           commits: [],
           hasMore: false,
+          isGitRepo: true,
           limit: normalizedLimit,
           offset: normalizedOffset,
           path: normalizedPath,
-        }), this.responseCacheTtlMs);
+        }, this.responseCacheTtlMs);
       }
 
       const logArgs = [
@@ -254,13 +253,14 @@ export class GitHistoryService {
 
       const commits = this.mergeFileHistoryChunks(nameStatusOutput, numstatOutput);
       const hasMore = commits.length > normalizedLimit;
-      const response = createFileHistoryResponse({
+      const response = {
         commits: commits.slice(0, normalizedLimit),
         hasMore,
+        isGitRepo: true,
         limit: normalizedLimit,
         offset: normalizedOffset,
         path: normalizedPath,
-      });
+      };
 
       return setCachedValue(this.historyCache, cacheKey, response, this.responseCacheTtlMs);
     });
@@ -269,13 +269,19 @@ export class GitHistoryService {
   async getCommit({ allowLargePatch = false, hash, metaOnly = false, path = null } = {}) {
     const isGitRepo = await this.commandRunner.isGitRepo();
     if (!isGitRepo) {
-      return createCommitDiffResponse({
+      return {
         commit: null,
         files: [],
         isGitRepo: false,
         metaOnly,
         path: null,
-      });
+        source: 'commit',
+        summary: {
+          additions: 0,
+          deletions: 0,
+          filesChanged: 0,
+        },
+      };
     }
 
     const normalizedHash = this.normalizeCommitHash(hash);
@@ -301,13 +307,15 @@ export class GitHistoryService {
       const summary = createSummaryFromFiles(meta.files);
 
       if (metaOnly) {
-        const metaResponse = createCommitDiffResponse({
+        const metaResponse = {
           commit: meta.commit,
           files: meta.files,
+          isGitRepo: true,
           metaOnly: true,
           path: normalizedPath,
+          source: 'commit',
           summary,
-        });
+        };
         return setCachedValue(this.commitCache, cacheKey, metaResponse, this.responseCacheTtlMs);
       }
 
@@ -326,7 +334,7 @@ export class GitHistoryService {
         !allowLargePatch
         && (fileSummary.additions + fileSummary.deletions) > this.maxInitialPatchLines
       ) {
-        const guardedResponse = createCommitDiffResponse({
+        const guardedResponse = {
           commit: meta.commit,
           files: [{
             ...baseFile,
@@ -335,10 +343,12 @@ export class GitHistoryService {
             patchLineCount: fileSummary.additions + fileSummary.deletions,
             tooLarge: true,
           }],
+          isGitRepo: true,
           metaOnly: false,
           path: normalizedPath,
+          source: 'commit',
           summary,
-        });
+        };
         return setCachedValue(this.commitCache, cacheKey, guardedResponse, this.responseCacheTtlMs);
       }
 
@@ -385,13 +395,15 @@ export class GitHistoryService {
           tooLarge: false,
         };
 
-      const response = createCommitDiffResponse({
+      const response = {
         commit: meta.commit,
         files: [detailedFile],
+        isGitRepo: true,
         metaOnly: false,
         path: normalizedPath,
+        source: 'commit',
         summary,
-      });
+      };
       return setCachedValue(this.commitCache, cacheKey, response, this.responseCacheTtlMs);
     });
   }
@@ -402,13 +414,13 @@ export class GitHistoryService {
     const normalizedPath = normalizeRelativeGitPath(path);
 
     if (!isGitRepo) {
-      return createFileSnapshotResponse({
+      return {
         content: '',
         fileKind: getVaultFileKind(normalizedPath),
         hash: normalizedHash,
         isGitRepo: false,
         path: normalizedPath,
-      });
+      };
     }
 
     if (isImageAttachmentFilePath(normalizedPath)) {
@@ -438,12 +450,13 @@ export class GitHistoryService {
         throw createGitRequestError(404, 'Commit file not found');
       }
 
-      return setCachedValue(this.commitCache, cacheKey, createFileSnapshotResponse({
+      return setCachedValue(this.commitCache, cacheKey, {
         content,
         fileKind,
         hash: normalizedHash,
+        isGitRepo: true,
         path: normalizedPath,
-      }), this.responseCacheTtlMs);
+      }, this.responseCacheTtlMs);
     });
   }
 

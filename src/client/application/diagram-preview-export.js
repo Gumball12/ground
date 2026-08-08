@@ -4,7 +4,13 @@ import {
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
 import { getVaultPathLeaf } from '../domain/vault-paths.js';
-import { sanitizeSvgMarkup, serializeSvgElement } from './preview-diagram-utils.js';
+import {
+  encodeSvgDataUrl,
+  loadImage,
+  resolveSvgDimensions,
+  sanitizeSvgMarkup,
+  serializeSvgElement,
+} from './preview-diagram-utils.js';
 
 const LIGHT_EXPORT_MERMAID_CONFIG = Object.freeze({
   htmlLabels: false,
@@ -25,39 +31,9 @@ const MERMAID_INIT_DIRECTIVE_PATTERN = /^\s*%%\{\s*(?:init|initialize)\s*:[\s\S]
 
 let mermaidExportCounter = 0;
 
-function encodeSvgDataUrl(svgMarkup) {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
-}
-
 function createMermaidExportId() {
   mermaidExportCounter += 1;
   return `mermaid-export-${mermaidExportCounter.toString(36)}`;
-}
-
-function resolveSvgDimensions(svgElement) {
-  const widthAttr = Number.parseFloat(svgElement.getAttribute('width') || '');
-  const heightAttr = Number.parseFloat(svgElement.getAttribute('height') || '');
-  const viewBox = svgElement.getAttribute('viewBox') || '';
-  const viewBoxParts = viewBox.split(/\s+/u).map((value) => Number.parseFloat(value));
-
-  return {
-    height: Number.isFinite(heightAttr) && heightAttr > 0
-      ? heightAttr
-      : (Number.isFinite(viewBoxParts[3]) && viewBoxParts[3] > 0 ? viewBoxParts[3] : 800),
-    width: Number.isFinite(widthAttr) && widthAttr > 0
-      ? widthAttr
-      : (Number.isFinite(viewBoxParts[2]) && viewBoxParts[2] > 0 ? viewBoxParts[2] : 1200),
-  };
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.addEventListener('load', () => resolve(image), { once: true });
-    image.addEventListener('error', () => reject(new Error(`Failed to load image: ${src}`)), { once: true });
-    image.src = src;
-  });
 }
 
 async function canvasToPngBlob(canvas) {

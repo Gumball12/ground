@@ -6,7 +6,6 @@ import { uiFeatureShellMethods } from '../../src/client/application/app-shell/ui
 import { uiFeatureSidebarMethods } from '../../src/client/application/app-shell/ui-feature-sidebar.js';
 import { uiFeatureToolbarMethods } from '../../src/client/application/app-shell/ui-feature-toolbar.js';
 import { ensureQuickSwitcherInstance } from '../../src/client/application/quick-switcher-loader.js';
-import { lazyControllerFeature } from '../../src/client/bootstrap/lazy-controller-feature.js';
 
 function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
   document.body.innerHTML = `
@@ -83,50 +82,45 @@ describe('uiFeature browser helpers', () => {
     expect(context.refreshCommentOverviewForSidebarOpen).toHaveBeenCalledTimes(1);
   });
 
-  it('prewarms lazy Git by refreshing repo status after the controller loads', async () => {
-    const refresh = vi.fn(async () => {});
-    let idleCallback = null;
-    const requestIdleCallback = vi.fn((callback) => {
-      idleCallback = callback;
-      return 42;
-    });
-    vi.stubGlobal('requestIdleCallback', requestIdleCallback);
-
-    const context = {
-      _gitControllerPrewarmHandle: null,
-      gitPanel: {
-        ensure: vi.fn(async () => ({ refresh })),
-      },
-      runtimeConfig: { gitEnabled: true },
-    };
-    Object.assign(context, lazyControllerFeature);
-    context.reportLazyControllerError = vi.fn();
-
-    context.scheduleGitControllerPrewarm({ timeout: 123 });
-    idleCallback();
-    await Promise.resolve();
-
-    expect(requestIdleCallback).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
-    expect(context.gitPanel.ensure).toHaveBeenCalledTimes(1);
-    expect(refresh).toHaveBeenCalledWith({ force: true });
-    expect(context.reportLazyControllerError).not.toHaveBeenCalled();
-    expect(context._gitControllerPrewarmHandle).toBeNull();
-  });
-
-  it('schedules Git controller prewarm after the initial file explorer refresh', async () => {
-    const scheduleGitControllerPrewarm = vi.fn();
+  it('refreshes Git status during startup so the Git menu can be revealed', async () => {
+    document.body.innerHTML = `
+      <div id="sidebar-tabs" class="hidden"></div>
+      <button id="git-tab" class="hidden"></button>
+    `;
+    const status = { isGitRepo: true, summary: { changedFiles: 0 } };
     const handleHashChange = vi.fn();
-    const context = {
+    let context;
+    const refreshGitStatus = vi.fn(async () => {
+      context.handleGitRepoChange(true, status);
+      return status;
+    });
+    context = {
+      activeSidebarTab: 'files',
       bindEvents: vi.fn(),
       createResizeHandler: () => vi.fn(),
+      currentFilePath: 'README.md',
       elements: {
         chatInput: document.createElement('textarea'),
+        gitSidebarTab: document.getElementById('git-tab'),
+        sidebarTabs: document.getElementById('sidebar-tabs'),
       },
       fileExplorer: {
         initialize: vi.fn(),
         refresh: vi.fn(async () => {}),
       },
-      handleHashChange,
+      fileHistoryView: {
+        initialize: vi.fn(),
+      },
+      gitDiffView: {
+        initialize: vi.fn(),
+        setRepoStatus: vi.fn(),
+      },
+      gitPanel: {
+        initialize: vi.fn(),
+        refresh: refreshGitStatus,
+      },
+      gitRepoAvailable: false,
+      handleGitRepoChange: gitFeature.handleGitRepoChange,
       initializeExportBridge: vi.fn(),
       initializePreviewLayoutObserver: vi.fn(),
       initializeVersionMonitoring: vi.fn(),
@@ -136,6 +130,9 @@ describe('uiFeature browser helpers', () => {
         initialize: vi.fn(),
       },
       lobbyChatMessageMaxLength: 500,
+      navigation: {
+        getHashRoute: () => ({ type: 'file' }),
+      },
       outlineController: {
         initialize: vi.fn(),
       },
@@ -145,8 +142,8 @@ describe('uiFeature browser helpers', () => {
       },
       renderChat: vi.fn(),
       restoreSidebarState: vi.fn(),
+      runtimeConfig: { gitEnabled: true },
       scheduleEditorSessionPrewarm: vi.fn(),
-      scheduleGitControllerPrewarm,
       scrollSyncController: {
         initialize: vi.fn(),
       },
@@ -163,12 +160,20 @@ describe('uiFeature browser helpers', () => {
         getTheme: () => 'dark',
         initialize: vi.fn(),
       },
+      workspaceRouteController: {
+        handleHashChange,
+      },
     };
     uiFeatureShellMethods.initialize.call(context);
     await context.fileExplorerReadyPromise;
 
     expect(context.fileExplorer.refresh).toHaveBeenCalledTimes(1);
-    expect(scheduleGitControllerPrewarm).toHaveBeenCalledTimes(1);
+    expect(context.gitPanel.initialize).toHaveBeenCalledTimes(1);
+    expect(context.gitPanel.refresh).toHaveBeenCalledWith({ force: true });
+    expect(context.gitDiffView.initialize).toHaveBeenCalledTimes(1);
+    expect(context.fileHistoryView.initialize).toHaveBeenCalledTimes(1);
+    expect(context.elements.sidebarTabs.classList.contains('hidden')).toBe(false);
+    expect(context.elements.gitSidebarTab.classList.contains('hidden')).toBe(false);
     expect(handleHashChange).toHaveBeenCalledTimes(1);
   });
 
@@ -632,13 +637,15 @@ describe('uiFeature browser helpers', () => {
 
     const context = {
       fileExplorer: { flatFiles: ['README.md'] },
-      handleFileSelection: vi.fn(),
       loadQuickSwitcherController: vi.fn()
         .mockRejectedValueOnce(loadError)
         .mockResolvedValueOnce(TestQuickSwitcher),
       quickSwitcher: null,
       quickSwitcherModulePromise: null,
       toastController: { show: vi.fn() },
+      workspaceRouteController: {
+        handleFileSelection: vi.fn(),
+      },
     };
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -656,7 +663,7 @@ describe('uiFeature browser helpers', () => {
     expect(quickSwitcher).toBeInstanceOf(TestQuickSwitcher);
     expect(quickSwitcher.options.getFileList()).toEqual(['README.md']);
     quickSwitcher.options.onFileSelect('docs/guide.md');
-    expect(context.handleFileSelection).toHaveBeenCalledWith('docs/guide.md', {
+    expect(context.workspaceRouteController.handleFileSelection).toHaveBeenCalledWith('docs/guide.md', {
       closeSidebarOnMobile: true,
       revealInTree: true,
     });
@@ -684,9 +691,11 @@ describe('uiFeature browser helpers', () => {
         previewContent: document.getElementById('preview-content'),
       },
       handlePreviewContentClick: uiFeatureShellMethods.handlePreviewContentClick,
-      handleWikiLinkClick: vi.fn(),
       session: {
         toggleTaskListItem: vi.fn(() => true),
+      },
+      wikiLinkFileController: {
+        handleWikiLinkClick: vi.fn(),
       },
     };
 
@@ -712,7 +721,7 @@ describe('uiFeature browser helpers', () => {
     const wikiLink = context.elements.previewContent.querySelector('a.wiki-link');
     wikiLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-    expect(context.handleWikiLinkClick).toHaveBeenCalledWith('README');
+    expect(context.wikiLinkFileController.handleWikiLinkClick).toHaveBeenCalledWith('README');
     expect(context.session.toggleTaskListItem).toHaveBeenCalledTimes(1);
 
     context.session.toggleTaskListItem.mockClear();

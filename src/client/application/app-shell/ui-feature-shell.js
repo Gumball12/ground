@@ -54,6 +54,9 @@ function initialize() {
   this.layoutController.initialize();
   this.scrollSyncController.initialize();
   this.fileExplorer.initialize();
+  this.gitPanel.initialize();
+  this.gitDiffView.initialize();
+  this.fileHistoryView.initialize();
   this.commentsOverview?.initialize?.();
   this.initializePreviewLayoutObserver();
   this.syncIdentityManagementUi();
@@ -70,7 +73,7 @@ function initialize() {
   this.tabActivityLock.initialize();
   this.tabActivityLock.tryActivate();
 
-  window.addEventListener('hashchange', () => this.handleHashChange());
+  window.addEventListener('hashchange', () => this.workspaceRouteController.handleHashChange());
   const handleResize = this.createResizeHandler();
   window.addEventListener('resize', () => {
     handleResize();
@@ -80,9 +83,11 @@ function initialize() {
   this.fileExplorerReadyPromise = this.fileExplorer.refresh().then(() => {
     this.fileExplorerReady = true;
     void this.commentsOverview?.refresh?.();
-    this.scheduleGitControllerPrewarm?.();
+    if (this.runtimeConfig?.gitEnabled !== false) {
+      void this.gitPanel.refresh({ force: true });
+    }
     if (this.isTabActive) {
-      return this.handleHashChange();
+      return this.workspaceRouteController.handleHashChange();
     }
     return undefined;
   });
@@ -638,7 +643,7 @@ function handlePreviewContentClick(event) {
   const wikiLink = event.target.closest('a.wiki-link[data-wiki-target]');
   if (wikiLink) {
     event.preventDefault();
-    this.handleWikiLinkClick(wikiLink.dataset.wikiTarget);
+    this.wikiLinkFileController.handleWikiLinkClick(wikiLink.dataset.wikiTarget);
     return;
   }
 

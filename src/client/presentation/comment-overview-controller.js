@@ -1,19 +1,12 @@
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
-import { createRenderedCommentBody } from './comment-ui/comment-ui-shared.js';
+import {
+  createCommentOverviewThread,
+  formatAnchorLabel,
+} from './comment-ui/comment-ui-shared.js';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
-}
-
-function formatLineLabel(anchor = {}) {
-  const startLine = Number(anchor.startLine || 0);
-  const endLine = Number(anchor.endLine || startLine);
-  if (!Number.isFinite(startLine) || startLine <= 0) {
-    return 'No source anchor';
-  }
-
-  return startLine === endLine ? `Line ${startLine}` : `Lines ${startLine}-${endLine}`;
 }
 
 function createOverviewState({ copy, title, tone = '' }) {
@@ -190,9 +183,15 @@ export class CommentOverviewController {
   }
 
   createThreadButton(filePath, thread) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'comment-overview-thread';
+    const messageCount = Number(thread.messageCount || 0);
+    const button = createCommentOverviewThread({
+      authorName: thread.latestMessage?.userName || thread.createdByName || 'Anonymous',
+      lineLabel: formatAnchorLabel(thread.anchor),
+      messageCount,
+      previewBody: thread.latestMessage?.bodyPreview || '',
+      quote: thread.anchor?.quote || 'Source anchored comment',
+      timestamp: this.formatTimestamp(thread.latestActivityAt),
+    });
     button.addEventListener('click', () => {
       this.onThreadSelect?.({
         anchor: thread.anchor,
@@ -200,52 +199,6 @@ export class CommentOverviewController {
         threadId: thread.id,
       });
     });
-
-    const header = document.createElement('div');
-    header.className = 'comment-overview-thread-header';
-
-    const line = document.createElement('span');
-    line.className = 'comment-overview-thread-line';
-    line.textContent = formatLineLabel(thread.anchor);
-
-    const meta = document.createElement('span');
-    meta.className = 'comment-overview-thread-meta';
-    meta.textContent = this.formatTimestamp(thread.latestActivityAt);
-    header.append(line, meta);
-
-    const body = document.createElement('div');
-    body.className = 'comment-overview-thread-body';
-
-    const quote = document.createElement('span');
-    quote.className = 'comment-overview-thread-quote';
-    quote.textContent = thread.anchor?.quote || 'Source anchored comment';
-
-    const preview = createRenderedCommentBody(
-      thread.latestMessage?.bodyPreview || '',
-      'comment-markdown comment-overview-thread-preview',
-    );
-
-    const quoteSection = document.createElement('div');
-    quoteSection.className = 'comment-overview-thread-section comment-overview-thread-reference';
-    const quoteLabel = document.createElement('span');
-    quoteLabel.className = 'comment-overview-thread-section-label';
-    quoteLabel.textContent = 'Reference';
-    quoteSection.append(quoteLabel, quote);
-
-    body.append(preview, quoteSection);
-
-    const footer = document.createElement('div');
-    footer.className = 'comment-overview-thread-footer';
-    const author = document.createElement('span');
-    author.className = 'comment-overview-thread-author';
-    author.textContent = thread.latestMessage?.userName || thread.createdByName || 'Anonymous';
-    const replies = document.createElement('span');
-    replies.className = 'comment-overview-thread-message-count';
-    const messageCount = Number(thread.messageCount || 0);
-    replies.textContent = `${messageCount} message${messageCount === 1 ? '' : 's'}`;
-    footer.append(author, replies);
-
-    button.append(header, body, footer);
     return button;
   }
 

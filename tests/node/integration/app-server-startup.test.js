@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { loadConfig } from '../../src/server/config/env.js';
-import { createAppServer } from '../../src/server/create-app-server.js';
+import { loadConfig } from '../../../src/server/config/env.js';
+import { createAppServer } from '../../../src/server/create-app-server.js';
 
 async function createVault(t, files = {}) {
   const vaultDir = await mkdtemp(join(tmpdir(), 'collabmd-app-startup-'));

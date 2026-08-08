@@ -25,7 +25,7 @@ export async function ensureQuickSwitcherInstance(host) {
       getFileMetadata: () => host.fileExplorer.fileEntries,
       getRecentFiles: () => host.preferences?.getRecentFiles?.() ?? [],
       getSearchConfig: () => host.runtimeConfig.search ?? {},
-      onFileSelect: (filePath) => host.handleFileSelection(filePath, {
+      onFileSelect: (filePath) => host.workspaceRouteController.handleFileSelection(filePath, {
         closeSidebarOnMobile: true,
         revealInTree: true,
       }),

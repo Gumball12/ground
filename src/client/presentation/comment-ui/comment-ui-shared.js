@@ -51,19 +51,15 @@ export function areAnchorsEqual(left, right) {
 }
 
 export function formatAnchorLabel(anchor) {
-  if (!anchor) {
+  const startLine = Number(anchor?.startLine || 0);
+  const endLine = Number(anchor?.endLine || startLine);
+  if (!Number.isFinite(startLine) || startLine <= 0) {
     return 'No source anchor';
   }
 
-  if ((anchor.kind || anchor.anchorKind) === 'text' && anchor.quote) {
-    return anchor.startLine === anchor.endLine
-      ? `Line ${anchor.startLine}`
-      : `Lines ${anchor.startLine}-${anchor.endLine}`;
-  }
-
-  return anchor.startLine === anchor.endLine
-    ? `Line ${anchor.startLine}`
-    : `Lines ${anchor.startLine}-${anchor.endLine}`;
+  return startLine === endLine
+    ? `Line ${startLine}`
+    : `Lines ${startLine}-${endLine}`;
 }
 
 export function getAnchorGroupKey(anchor = {}) {
@@ -114,6 +110,65 @@ export function createRenderedCommentBody(body, className = 'comment-markdown') 
   container.className = className;
   container.innerHTML = renderCommentMarkdownToHtml(body);
   return container;
+}
+
+export function createCommentOverviewThread({
+  authorName = 'Anonymous',
+  buttonClassName = 'comment-overview-thread',
+  footerClassName = 'comment-overview-thread-footer',
+  headerClassName = 'comment-overview-thread-header',
+  lineClassName = 'comment-overview-thread-line',
+  lineLabel = '',
+  messageCount = 0,
+  previewBody = '',
+  previewClassName = 'comment-markdown comment-overview-thread-preview',
+  quote = 'Source anchored comment',
+  quoteClassName = 'comment-overview-thread-quote',
+  timestamp = '',
+} = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = buttonClassName;
+
+  const header = document.createElement('div');
+  header.className = headerClassName;
+
+  const line = document.createElement('span');
+  line.className = lineClassName;
+  line.textContent = lineLabel;
+
+  const meta = document.createElement('span');
+  meta.className = 'comment-overview-thread-meta';
+  meta.textContent = timestamp;
+  header.append(line, meta);
+
+  const body = document.createElement('div');
+  body.className = 'comment-overview-thread-body';
+  const preview = createRenderedCommentBody(previewBody, previewClassName);
+
+  const quoteSection = document.createElement('div');
+  quoteSection.className = 'comment-overview-thread-section comment-overview-thread-reference';
+  const quoteLabel = document.createElement('span');
+  quoteLabel.className = 'comment-overview-thread-section-label';
+  quoteLabel.textContent = 'Reference';
+  const quoteNode = document.createElement('span');
+  quoteNode.className = quoteClassName;
+  quoteNode.textContent = quote;
+  quoteSection.append(quoteLabel, quoteNode);
+  body.append(preview, quoteSection);
+
+  const footer = document.createElement('div');
+  footer.className = footerClassName;
+  const author = document.createElement('span');
+  author.className = 'comment-overview-thread-author';
+  author.textContent = authorName;
+  const messages = document.createElement('span');
+  messages.className = 'comment-overview-thread-message-count';
+  messages.textContent = `${messageCount} message${messageCount === 1 ? '' : 's'}`;
+  footer.append(author, messages);
+
+  button.append(header, body, footer);
+  return button;
 }
 
 export function hasLocalReaction(reaction, localUserId) {

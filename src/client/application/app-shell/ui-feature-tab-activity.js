@@ -16,7 +16,7 @@
  * @property {{ show(message: string): void }} toastController
  * @property {{ tryActivate(options?: { takeover?: boolean }): void }} tabActivityLock
  * @property {{ prepareFileDisconnect(filePath: string): Promise<void> }} excalidrawEmbed
- * @property {() => void} handleHashChange
+ * @property {{ handleHashChange(): Promise<void> }} workspaceRouteController
  * @property {() => boolean} isExcalidrawFile
  * @property {() => void} promptForDisplayNameIfNeeded
  * @property {() => void} renderChat
@@ -45,7 +45,7 @@ function handleTabActivated({ takeover = false } = {}) {
 
   if (wasInactive) {
     if (this.fileExplorerReady) {
-      void this.handleHashChange();
+      void this.workspaceRouteController.handleHashChange();
     }
     this.promptForDisplayNameIfNeeded();
   }

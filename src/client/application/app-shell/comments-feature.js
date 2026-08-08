@@ -97,7 +97,7 @@ export const commentsFeature = {
     });
 
     if (this.currentFilePath !== filePath || !this.session) {
-      await this.openFile(filePath);
+      await this.workspaceRouteController.openFile(filePath);
     }
 
     this.setSidebarTab('comments');

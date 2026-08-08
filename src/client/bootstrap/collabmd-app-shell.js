@@ -38,6 +38,12 @@ import { BacklinksPanel } from '../presentation/backlinks-panel.js';
 import { CommentOverviewController } from '../presentation/comment-overview-controller.js';
 import { CommentUiController } from '../presentation/comment-ui-controller.js';
 import { FileExplorerController } from '../presentation/file-explorer-controller.js';
+import { FileHistoryViewController } from '../presentation/file-history-view-controller.js';
+import { BasesPreviewController } from '../presentation/bases-preview-controller.js';
+import { DrawioEmbedController } from '../presentation/drawio-embed-controller.js';
+import { ExcalidrawEmbedController } from '../presentation/excalidraw-embed-controller.js';
+import { GitDiffViewController } from '../presentation/git-diff-view-controller.js';
+import { GitPanelController } from '../presentation/git-panel-controller.js';
 import { LayoutController } from '../presentation/layout-controller.js';
 import { OutlineController } from '../presentation/outline-controller.js';
 import { ScrollSyncController } from '../presentation/scroll-sync-controller.js';
@@ -45,14 +51,12 @@ import { ThemeController } from '../presentation/theme-controller.js';
 import { ToastController } from '../presentation/toast-controller.js';
 import { VideoEmbedController } from '../presentation/video-embed-controller.js';
 import { ImageLightboxController } from '../presentation/image-lightbox-controller.js';
-import { lazyControllerFeature } from './lazy-controller-feature.js';
 
 const APP_SHELL_FEATURES = [
   chatFeature,
   commentsFeature,
   exportFeature,
   gitFeature,
-  lazyControllerFeature,
   presenceFeature,
   {
     ...uiFeatureShellMethods,
@@ -126,7 +130,6 @@ export class CollabMdAppShell {
     this.quickSwitcher = null;
     this.quickSwitcherModulePromise = null;
     this.fileExplorerReadyPromise = Promise.resolve();
-    this._gitControllerPrewarmHandle = null;
     this.mobileBreakpointQuery = window.matchMedia('(max-width: 768px)');
     this.pendingWorkspaceRequestIds = new Set();
     this._fileOpenPerf = null;
@@ -148,7 +151,7 @@ export class CollabMdAppShell {
         this.handleCommentOverviewWorkspaceTreeChange?.();
         this.fileExplorerReady = true;
         if (!wasReady && this.isTabActive) {
-          void this.handleHashChange();
+          void this.workspaceRouteController.handleHashChange();
         }
       },
       onWorkspaceEvent: (event) => {
@@ -161,7 +164,9 @@ export class CollabMdAppShell {
     this.fileExplorer = new FileExplorerController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onFileDelete: () => this.navigation.navigateToFile(null),
-      onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
+      onFileSelect: (filePath) => this.workspaceRouteController.handleFileSelection(filePath, {
+        closeSidebarOnMobile: true,
+      }),
       onShowFileExtensionsChange: (showFileExtensions) => {
         this.preferences.setFileTreeShowExtensions(showFileExtensions);
       },
@@ -179,7 +184,23 @@ export class CollabMdAppShell {
       toastController: this.toastController,
       vaultApiClient: this.vaultApiClient,
     });
-    this.gitPanel = this.createLazyGitPanelController();
+    this.gitPanel = new GitPanelController({
+      enabled: this.runtimeConfig.gitEnabled !== false,
+      gitApiClient: this.gitApiClient,
+      onCommitStaged: () => this.openGitCommitDialog(),
+      onOpenPullBackup: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onPullBranch: () => this.pullGitBranch(),
+      onPushBranch: () => this.pushGitBranch(),
+      onRepoChange: (isGitRepo, status) => this.handleGitRepoChange(isGitRepo, status),
+      onResetFile: (filePath, { scope }) => this.openGitResetDialog(filePath, { scope }),
+      onSelectCommit: (hash, { path }) => this.handleGitCommitSelection(hash, { closeSidebarOnMobile: true, path }),
+      onSelectDiff: (filePath, { scope }) => this.handleGitDiffSelection(filePath, { closeSidebarOnMobile: true, scope }),
+      onStageFile: (filePath, { scope }) => this.stageGitFile(filePath, { scope }),
+      onUnstageFile: (filePath, { scope }) => this.unstageGitFile(filePath, { scope }),
+      onViewAllDiff: () => this.handleGitDiffSelection(null, { closeSidebarOnMobile: true, scope: 'all' }),
+      searchInput: this.elements.gitSearchInput,
+      toastController: this.toastController,
+    });
     this.outlineController = new OutlineController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onNavigateToHeading: ({ sourceLine }) => {
@@ -192,7 +213,19 @@ export class CollabMdAppShell {
     this.videoEmbed = new VideoEmbedController({
       previewElement: this.elements.previewContent,
     });
-    this.basesPreview = this.createLazyBasesPreviewController();
+    this.basesPreview = new BasesPreviewController({
+      getActiveFilePath: () => this.currentFilePath,
+      getSession: () => this.session,
+      onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      previewElement: this.elements.previewContent,
+      replaceBaseSource: ({ path, source }) => {
+        if (path && path === this.currentFilePath) {
+          this.session?.replaceText?.(source);
+        }
+      },
+      toastController: this.toastController,
+      vaultApiClient: this.vaultApiClient,
+    });
     this.imageLightbox = new ImageLightboxController({
       previewElement: this.elements.previewContent,
     });
@@ -259,11 +292,35 @@ export class CollabMdAppShell {
       headerPanelElement: this.elements.backlinksHeaderPanel,
       inlinePanelElement: this.elements.backlinksInlinePanel,
       loadBacklinks: (filePath, options = {}) => this.vaultApiClient.readBacklinks(filePath, options),
-      onFileSelect: (filePath) => this.handleFileSelection(filePath, { closeSidebarOnMobile: true }),
+      onFileSelect: (filePath) => this.workspaceRouteController.handleFileSelection(filePath, {
+        closeSidebarOnMobile: true,
+      }),
       panelElement: this.elements.backlinksPanel,
     });
-    this.excalidrawEmbed = this.createLazyExcalidrawEmbedController();
-    this.drawioEmbed = this.createLazyDrawioEmbedController();
+    this.excalidrawEmbed = new ExcalidrawEmbedController({
+      getLocalUser: () => this.lobby.getLocalUser(),
+      getTheme: () => this.themeController.getTheme(),
+      onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onToggleQuickSwitcher: () => {
+        void this.toggleQuickSwitcher();
+      },
+      previewContainer: this.elements.previewContainer,
+      previewElement: this.elements.previewContent,
+      toastController: this.toastController,
+    });
+    this.drawioEmbed = new DrawioEmbedController({
+      getLocalUser: () => this.lobby.getLocalUser(),
+      getTheme: () => this.themeController.getTheme(),
+      onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onOpenTextFile: (filePath) => filePath && this.navigation.navigateToFile(filePath, { drawioMode: 'text' }),
+      onToggleQuickSwitcher: () => {
+        void this.toggleQuickSwitcher();
+      },
+      previewContainer: this.elements.previewContainer,
+      previewElement: this.elements.previewContent,
+      toastController: this.toastController,
+      vaultApiClient: this.vaultApiClient,
+    });
     this.commentUi = new CommentUiController({
       commentSelectionButton: this.elements.commentSelectionButton,
       commentsDrawer: this.elements.commentsDrawer,
@@ -323,8 +380,41 @@ export class CollabMdAppShell {
       vaultApiClient: this.vaultApiClient,
       wikiLinkAutoCreate: this.runtimeConfig.wikiLinkAutoCreate !== false,
     });
-    this.gitDiffView = this.createLazyGitDiffViewController();
-    this.fileHistoryView = this.createLazyFileHistoryViewController();
+    this.gitDiffView = new GitDiffViewController({
+      gitApiClient: this.gitApiClient,
+      onBackToHistory: ({ historyFilePath } = {}) => {
+        if (historyFilePath) {
+          this.navigation.navigateToGitFileHistory({ filePath: historyFilePath });
+          return;
+        }
+        this.navigation.navigateToGitHistory();
+      },
+      onCommitStaged: () => this.openGitCommitDialog(),
+      onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onStageFile: (filePath, { scope }) => this.stageGitFile(filePath, { scope }),
+      onUnstageFile: (filePath, { scope }) => this.unstageGitFile(filePath, { scope }),
+      toastController: this.toastController,
+    });
+    this.fileHistoryView = new FileHistoryViewController({
+      diffRenderer: this.gitDiffView,
+      gitApiClient: this.gitApiClient,
+      onOpenCommitDiff: (hash, { historyFilePath, path }) => this.handleGitCommitSelection(hash, {
+        closeSidebarOnMobile: false,
+        historyFilePath,
+        path,
+      }),
+      onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onOpenPreview: ({ hash, path, currentFilePath }) => this.handleGitFilePreviewSelection({
+        hash,
+        path,
+        currentFilePath,
+      }),
+      onOpenWorkspaceDiff: (filePath) => this.handleGitDiffSelection(filePath, {
+        closeSidebarOnMobile: false,
+        scope: 'all',
+      }),
+      toastController: this.toastController,
+    });
     this.tabActivityLock = new TabActivityLock({
       onActivated: ({ takeover }) => this.handleTabActivated({ takeover }),
       onBlocked: () => this.handleTabBlocked({ reason: 'active-elsewhere' }),
@@ -380,7 +470,7 @@ export class CollabMdAppShell {
         this.session = null;
         this.commentUi.attachSession(null);
         this.layoutController.reset();
-        this.resetPreviewMode();
+        this.workspacePreviewController.resetPreviewMode();
         this.elements.emptyState?.classList.add('hidden');
         this.elements.editorPage?.classList.remove('hidden');
         this.elements.diffPage?.classList.add('hidden');
@@ -421,10 +511,10 @@ export class CollabMdAppShell {
         this.session = session;
         this.commentUi.attachSession(session);
       },
-      onRenderDrawioPreview: (filePath) => this.renderDrawioFilePreview(filePath),
+      onRenderDrawioPreview: (filePath) => this.workspacePreviewController.renderDrawioFilePreview(filePath),
       onRenderBasePreview: (filePath) => this.renderBaseFilePreview(filePath),
-      onRenderExcalidrawPreview: (filePath) => this.renderExcalidrawFilePreview(filePath),
-      onRenderImagePreview: (filePath) => this.renderImageFilePreview(filePath),
+      onRenderExcalidrawPreview: (filePath) => this.workspacePreviewController.renderExcalidrawFilePreview(filePath),
+      onRenderImagePreview: (filePath) => this.workspacePreviewController.renderImageFilePreview(filePath),
       onSyncWrapToggle: () => this.syncWrapToggle(),
       onUpdateActiveFile: (filePath) => this.fileExplorer.setActiveFile(filePath),
       onUpdateCurrentFile: (filePath) => {
@@ -432,7 +522,7 @@ export class CollabMdAppShell {
       },
       onUpdateLobbyCurrentFile: (filePath) => this.lobby.setCurrentFile(filePath),
       onUpdateVisibleChrome: (filePath, { displayName }) => {
-        this.syncFileChrome(filePath, {
+        this.workspacePreviewController.syncFileChrome(filePath, {
           drawioMode: this.currentDrawioMode,
           preferPreviewForBase: this.isBaseFile(filePath),
         });
@@ -442,7 +532,7 @@ export class CollabMdAppShell {
           this.elements.activeFileName.textContent = displayName;
         }
       },
-      onViewModeReset: () => this.resetPreviewMode(),
+      onViewModeReset: () => this.workspacePreviewController.resetPreviewMode(),
       renderPresence: () => this.renderPresence(),
       scrollContainerForSession: (session) => session.getScrollContainer(),
       shouldUseDrawioPreview: () => Boolean(this.runtimeConfig.drawioBaseUrl),
@@ -471,7 +561,7 @@ export class CollabMdAppShell {
       requestPreviewRouteAnchor: (anchorId, filePath) => this.requestPreviewRouteAnchor(anchorId, filePath),
       renderAvatars: () => this.renderAvatars(),
       renderPresence: () => this.renderPresence(),
-      resetPreviewMode: () => this.resetPreviewMode(),
+      resetPreviewMode: () => this.workspacePreviewController.resetPreviewMode(),
       scrollSyncController: this.scrollSyncController,
       setCurrentFilePath: (value) => {
         this.currentFilePath = value;

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { GitService } from '../../src/server/infrastructure/git/git-service.js';
+import { GitService } from '../../../src/server/infrastructure/git/git-service.js';
 
 const execFile = promisify(execFileCallback);
 

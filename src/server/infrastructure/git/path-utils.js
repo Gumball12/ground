@@ -1,4 +1,4 @@
-import { createGitRequestError } from './errors.js';
+import { createRequestError as createGitRequestError } from '../http/http-errors.js';
 
 export function decodeQuotedPath(pathValue) {
   const rawValue = String(pathValue ?? '').trim();

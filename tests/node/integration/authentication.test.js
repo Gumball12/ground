@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createServer } from 'node:http';
 
-import { extractCookieHeader } from './helpers/cookie.js';
+import { extractCookieHeader } from '../helpers/cookie.js';
 import {
   AUTH_STRATEGY_NONE,
   AUTH_STRATEGY_OIDC,
   AUTH_STRATEGY_PASSWORD,
   createAuthService,
-} from '../../src/server/auth/create-auth-service.js';
-import { loadConfig } from '../../src/server/config/env.js';
+} from '../../../src/server/auth/create-auth-service.js';
+import { loadConfig } from '../../../src/server/config/env.js';
 
 function withAuthEnvCleared(fn) {
   const previousStrategy = process.env.AUTH_STRATEGY;

@@ -1,5 +1,5 @@
 import { countPatchLines, parseNumstatOutput, parseUnifiedDiff } from './parsers.js';
-import { createDiffResponse, createEmptyStats } from './responses.js';
+import { createEmptyStats } from './responses.js';
 
 function createSectionMap(sections = []) {
   return new Map(sections.map((section) => [section.key, section]));
@@ -162,12 +162,18 @@ export class GitDiffService {
   async getDiff({ allowLargePatch = false, metaOnly = false, path = null, scope = 'working-tree' } = {}) {
     const isGitRepo = await this.commandRunner.isGitRepo();
     if (!isGitRepo) {
-      return createDiffResponse({
+      return {
         files: [],
         isGitRepo: false,
         metaOnly,
+        path: null,
         scope,
-      });
+        summary: {
+          additions: 0,
+          deletions: 0,
+          filesChanged: 0,
+        },
+      };
     }
 
     const resolvedScope = scope === 'staged' || scope === 'all'
@@ -214,13 +220,14 @@ export class GitDiffService {
         scope,
       });
 
-      return createDiffResponse({
+      return {
         files: scopedFiles,
+        isGitRepo: true,
         metaOnly: true,
         path,
         scope,
         summary: scopeSummary,
-      });
+      };
     }
 
     const isSinglePathRequest = Boolean(path);
@@ -234,7 +241,7 @@ export class GitDiffService {
       };
 
       if (!allowLargePatch && fileLineCount > this.maxInitialPatchLines) {
-        return createDiffResponse({
+        return {
           files: [{
             ...currentFile,
             canLoadFullPatch: true,
@@ -246,11 +253,12 @@ export class GitDiffService {
             },
             tooLarge: true,
           }],
+          isGitRepo: true,
           metaOnly: false,
           path,
           scope,
           summary,
-        });
+        };
       }
 
       const syntheticFiles = await this.untrackedFileService.buildSyntheticDiffs([currentFile]);
@@ -263,7 +271,7 @@ export class GitDiffService {
         },
       };
 
-      return createDiffResponse({
+      return {
         files: [{
           ...currentFile,
           ...detail,
@@ -271,11 +279,12 @@ export class GitDiffService {
           patchLineCount: countPatchLines(detail),
           tooLarge: false,
         }],
+        isGitRepo: true,
         metaOnly: false,
         path,
         scope,
         summary,
-      });
+      };
     }
 
     let singleFileSummary = null;
@@ -293,7 +302,7 @@ export class GitDiffService {
         && singleFileSummary.filesChanged > 0
         && (singleFileSummary.additions + singleFileSummary.deletions) > this.maxInitialPatchLines
       ) {
-        return createDiffResponse({
+        return {
           files: [{
             ...currentFile,
             canLoadFullPatch: true,
@@ -305,11 +314,12 @@ export class GitDiffService {
             },
             tooLarge: true,
           }],
+          isGitRepo: true,
           metaOnly: false,
           path,
           scope,
           summary: singleFileSummary,
-        });
+        };
       }
     }
 
@@ -378,12 +388,13 @@ export class GitDiffService {
       filesChanged: 0,
     });
 
-    return createDiffResponse({
+    return {
       files: mergedFiles,
+      isGitRepo: true,
       metaOnly: false,
       path,
       scope,
       summary: isSinglePathRequest ? singleFileSummary ?? summary : summary,
-    });
+    };
   }
 }

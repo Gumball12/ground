@@ -80,6 +80,10 @@ function createContext(overrides = {}) {
         events.push(['toast', message]);
       },
     },
+    workspacePreviewController: {
+      renderTextFilePreview() {},
+      resetPreviewMode() {},
+    },
     ...overrides,
   };
 
@@ -360,9 +364,6 @@ test('gitFeature opens history preview against the current workspace file when t
         events.push(['preview-render']);
       },
     },
-    resetPreviewMode() {
-      events.push(['reset-preview']);
-    },
     setStaticPreviewDocument(document) {
       previewDocuments.push(document);
     },
@@ -381,6 +382,12 @@ test('gitFeature opens history preview against the current workspace file when t
       },
       showPreviewOnlyState(filePath) {
         events.push(['preview-only', filePath]);
+      },
+    },
+    workspacePreviewController: {
+      renderTextFilePreview() {},
+      resetPreviewMode() {
+        events.push(['reset-preview']);
       },
     },
   });

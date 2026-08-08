@@ -16,16 +16,16 @@ test('comment overview selection keeps comments tab and opens anchored thread ca
     navigation: {
       navigateToFile: (filePath, options) => calls.push(['navigateToFile', filePath, options]),
     },
-    openFile: async (filePath) => {
-      calls.push(['openFile', filePath]);
-      context.currentFilePath = filePath;
-    },
     session: {
       scrollToLine: (line, viewportRatio) => calls.push(['scrollToLine', line, viewportRatio]),
     },
     setSidebarTab: (tab) => calls.push(['setSidebarTab', tab]),
     setSidebarVisibility: (visible) => calls.push(['setSidebarVisibility', visible]),
     workspaceRouteController: {
+      openFile: async (filePath) => {
+        calls.push(['openFile', filePath]);
+        context.currentFilePath = filePath;
+      },
       preserveSidebarTabForNextFileRoute: (filePath) => calls.push(['preserveSidebarTabForNextFileRoute', filePath]),
     },
   };

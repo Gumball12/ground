@@ -132,10 +132,10 @@ class TestDiagramPreviewHydrator extends DiagramPreviewHydrator {
         sourceLineEnd: 'sourceLineEnd',
         target: 'diagramTarget',
       },
-      fetchFn: options.fetchFn,
       filePathLabel: 'Diagram',
       intersectionObserverFactory: options.intersectionObserverFactory,
       isNearViewportFn: options.isNearViewportFn,
+      loadFileSource: options.loadFileSource,
       requestAnimationFrameFn: options.requestAnimationFrameFn,
       requestIdleRenderFn: options.requestIdleRenderFn ?? (() => 1),
       shellClassName: 'diagram-shell',
@@ -183,30 +183,12 @@ function createRenderer(previewElement) {
   };
 }
 
-function createWindowStub() {
-  return {
-    __COLLABMD_CONFIG__: { basePath: '/app' },
-    location: {
-      origin: 'http://localhost:3000',
-    },
-  };
-}
-
-test('DiagramPreviewHydrator deduplicates in-flight source fetches by target path', async (t) => {
-  const originalWindow = globalThis.window;
-  globalThis.window = createWindowStub();
-  t.after(() => {
-    globalThis.window = originalWindow;
-  });
-
+test('DiagramPreviewHydrator deduplicates in-flight source loads by target path', async () => {
   const requests = [];
   const hydrator = new TestDiagramPreviewHydrator(createRenderer(new FakePreviewElement()), {
-    fetchFn: async (url) => {
-      requests.push(url);
-      return new Response(JSON.stringify({ content: 'sequenceDiagram\nA->>B: hi' }), {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200,
-      });
+    loadFileSource: async (filePath) => {
+      requests.push(filePath);
+      return 'sequenceDiagram\nA->>B: hi';
     },
   });
 
@@ -217,7 +199,7 @@ test('DiagramPreviewHydrator deduplicates in-flight source fetches by target pat
 
   assert.equal(first, 'sequenceDiagram\nA->>B: hi');
   assert.equal(second, first);
-  assert.deepEqual(requests, ['/app/api/file?path=docs%2Fflow.mmd']);
+  assert.deepEqual(requests, ['docs/flow.mmd']);
 });
 
 test('DiagramPreviewHydrator preserves matching hydrated shells across render commits', () => {

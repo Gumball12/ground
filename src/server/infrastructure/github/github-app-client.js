@@ -1,14 +1,9 @@
 import { createSign } from 'node:crypto';
 
+import { createRequestError } from '../http/http-errors.js';
+
 function base64UrlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function createRequestError(statusCode, message, code) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
 }
 
 function normalizeBaseUrl(value) {
@@ -80,7 +75,9 @@ export class GitHubAppClient {
 
   createAppJwt() {
     if (!this.isConfigured()) {
-      throw createRequestError(503, 'GitHub App setup is not configured.', 'HOSTED_GITHUB_APP_NOT_CONFIGURED');
+      throw createRequestError(503, 'GitHub App setup is not configured.', {
+        code: 'HOSTED_GITHUB_APP_NOT_CONFIGURED',
+      });
     }
 
     return createGitHubAppJwt({
@@ -91,7 +88,9 @@ export class GitHubAppClient {
 
   createInstallationSetupUrl({ state } = {}) {
     if (!this.appSlug) {
-      throw createRequestError(503, 'GitHub App slug is not configured.', 'HOSTED_GITHUB_APP_NOT_CONFIGURED');
+      throw createRequestError(503, 'GitHub App slug is not configured.', {
+        code: 'HOSTED_GITHUB_APP_NOT_CONFIGURED',
+      });
     }
 
     const setupUrl = new URL(`/apps/${encodeURIComponent(this.appSlug)}/installations/new`, this.htmlBaseUrl);
@@ -131,7 +130,7 @@ export class GitHubAppClient {
       throw createRequestError(
         response.status,
         payload?.message || 'GitHub API request failed.',
-        'HOSTED_GITHUB_API_FAILED',
+        { code: 'HOSTED_GITHUB_API_FAILED' },
       );
     }
 
@@ -141,7 +140,9 @@ export class GitHubAppClient {
   async createInstallationAccessToken(installationId, { appJwt = null } = {}) {
     const normalizedInstallationId = String(installationId ?? '').trim();
     if (!normalizedInstallationId) {
-      throw createRequestError(400, 'GitHub installation id is required.', 'HOSTED_GITHUB_INSTALLATION_REQUIRED');
+      throw createRequestError(400, 'GitHub installation id is required.', {
+        code: 'HOSTED_GITHUB_INSTALLATION_REQUIRED',
+      });
     }
 
     const payload = await this.request(`/app/installations/${encodeURIComponent(normalizedInstallationId)}/access_tokens`, {
@@ -150,7 +151,9 @@ export class GitHubAppClient {
     });
     const token = String(payload?.token ?? '').trim();
     if (!token) {
-      throw createRequestError(502, 'GitHub did not return an installation access token.', 'HOSTED_GITHUB_TOKEN_MISSING');
+      throw createRequestError(502, 'GitHub did not return an installation access token.', {
+        code: 'HOSTED_GITHUB_TOKEN_MISSING',
+      });
     }
     return token;
   }
@@ -158,7 +161,9 @@ export class GitHubAppClient {
   async getInstallation(installationId, { appJwt = null } = {}) {
     const normalizedInstallationId = String(installationId ?? '').trim();
     if (!normalizedInstallationId) {
-      throw createRequestError(400, 'GitHub installation id is required.', 'HOSTED_GITHUB_INSTALLATION_REQUIRED');
+      throw createRequestError(400, 'GitHub installation id is required.', {
+        code: 'HOSTED_GITHUB_INSTALLATION_REQUIRED',
+      });
     }
 
     return this.request(`/app/installations/${encodeURIComponent(normalizedInstallationId)}`, {
@@ -176,7 +181,9 @@ export class GitHubAppClient {
   async resolveVaultSourceFromInstallation(installationId) {
     const normalizedInstallationId = String(installationId ?? '').trim();
     if (!normalizedInstallationId) {
-      throw createRequestError(400, 'GitHub installation id is required.', 'HOSTED_GITHUB_INSTALLATION_REQUIRED');
+      throw createRequestError(400, 'GitHub installation id is required.', {
+        code: 'HOSTED_GITHUB_INSTALLATION_REQUIRED',
+      });
     }
 
     const appJwt = this.createAppJwt();
@@ -189,7 +196,7 @@ export class GitHubAppClient {
       throw createRequestError(
         409,
         'GitHub App installation must grant access to exactly one selected repository.',
-        'HOSTED_GITHUB_REPOSITORY_SELECTION_REQUIRED',
+        { code: 'HOSTED_GITHUB_REPOSITORY_SELECTION_REQUIRED' },
       );
     }
 

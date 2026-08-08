@@ -6,9 +6,6 @@ import { workspaceFeature } from '../../src/client/application/app-shell/workspa
 test('workspaceFeature accepts static preview documents that use API path field', () => {
   const app = {
     _staticPreviewDocument: null,
-    createDiagramPreviewDocument(language, source) {
-      return `${language}:${source}`;
-    },
     currentFilePath: 'docs/history.md',
     getStaticPreviewDocument: workspaceFeature.getStaticPreviewDocument,
     isMermaidFile() {
@@ -18,6 +15,9 @@ test('workspaceFeature accepts static preview documents that use API path field'
       return false;
     },
     workspacePreviewController: {
+      createDiagramPreviewDocument(language, source) {
+        return `${language}:${source}`;
+      },
       getPreviewSource() {
         return 'live-session-content';
       },
@@ -44,9 +44,6 @@ test('workspaceFeature accepts static preview documents that use API path field'
 test('workspaceFeature matches static preview documents against current workspace path', () => {
   const app = {
     _staticPreviewDocument: null,
-    createDiagramPreviewDocument(language, source) {
-      return `${language}:${source}`;
-    },
     currentFilePath: 'docs/current-name.md',
     getStaticPreviewDocument: workspaceFeature.getStaticPreviewDocument,
     isMermaidFile() {
@@ -56,6 +53,9 @@ test('workspaceFeature matches static preview documents against current workspac
       return false;
     },
     workspacePreviewController: {
+      createDiagramPreviewDocument(language, source) {
+        return `${language}:${source}`;
+      },
       getPreviewSource() {
         return 'live-session-content';
       },
@@ -226,30 +226,6 @@ test('workspaceFeature keeps non-preview layout requests local for draw.io text 
 
   assert.equal(workspaceFeature.handleLayoutViewRequest.call(app, 'editor'), true);
   assert.equal(workspaceFeature.handleLayoutViewRequest.call(app, 'split'), true);
-});
-
-test('workspaceFeature forwards file selection reveal intent to the route controller', () => {
-  const events = [];
-  const app = {
-    workspaceRouteController: {
-      handleFileSelection(filePath, options) {
-        events.push([filePath, options]);
-      },
-    },
-  };
-
-  workspaceFeature.handleFileSelection.call(app, 'docs/guide.md', {
-    closeSidebarOnMobile: true,
-    revealInTree: true,
-  });
-
-  assert.deepEqual(events, [[
-    'docs/guide.md',
-    {
-      closeSidebarOnMobile: true,
-      revealInTree: true,
-    },
-  ]]);
 });
 
 test('workspaceFeature collapses base edits into the latest preview render', () => {

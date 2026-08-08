@@ -9,9 +9,9 @@ import * as awarenessProtocol from 'y-protocols/awareness';
 import * as decoding from 'lib0/decoding';
 import { WebsocketProvider } from 'y-websocket';
 
-import { replaceExcalidrawRoomScene } from '../../src/domain/excalidraw-room-codec.js';
-import { MSG_AWARENESS, MSG_SYNC } from '../../src/server/domain/collaboration/protocol.js';
-import { startTestServer, waitForCondition } from './helpers/test-server.js';
+import { replaceExcalidrawRoomScene } from '../../../src/domain/excalidraw-room-codec.js';
+import { MSG_AWARENESS, MSG_SYNC } from '../../../src/server/domain/collaboration/protocol.js';
+import { startTestServer, waitForCondition } from '../helpers/test-server.js';
 import {
   applySyncMessageToDoc,
   collectMessages,
@@ -25,7 +25,7 @@ import {
   waitForOpen,
   waitForProviderSync,
   waitForUnexpectedResponse,
-} from './helpers/collaboration-protocol.js';
+} from '../helpers/collaboration-protocol.js';
 
 async function fileExists(filePath) {
   try {

@@ -8,6 +8,37 @@ export {
   requestIdleRender,
 } from '../browser-utils.js';
 
+export function encodeSvgDataUrl(svgMarkup) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+}
+
+export function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener('load', () => resolve(image), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Failed to load image: ${src}`)), { once: true });
+    image.src = src;
+  });
+}
+
+export function resolveSvgDimensions(svgElement) {
+  const widthAttr = Number.parseFloat(svgElement.getAttribute('width') || '');
+  const heightAttr = Number.parseFloat(svgElement.getAttribute('height') || '');
+  const viewBoxParts = (svgElement.getAttribute('viewBox') || '')
+    .split(/\s+/u)
+    .map((value) => Number.parseFloat(value));
+
+  return {
+    height: Number.isFinite(heightAttr) && heightAttr > 0
+      ? heightAttr
+      : (Number.isFinite(viewBoxParts[3]) && viewBoxParts[3] > 0 ? viewBoxParts[3] : 800),
+    width: Number.isFinite(widthAttr) && widthAttr > 0
+      ? widthAttr
+      : (Number.isFinite(viewBoxParts[2]) && viewBoxParts[2] > 0 ? viewBoxParts[2] : 1200),
+  };
+}
+
 export function syncAttribute(target, source, name) {
   const nextValue = source.getAttribute(name);
   if (nextValue === null) {

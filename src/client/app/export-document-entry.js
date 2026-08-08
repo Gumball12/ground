@@ -6,8 +6,6 @@ import '../styles/features/preview-markdown.css';
 import '../styles/overrides/highlightjs.css';
 import '../styles/export-document.css';
 
-import { ensureRuntimeConfigLoaded } from '../infrastructure/runtime-config-loader.js';
-
 function ensureHighlightThemeStylesheet() {
   let themeStylesheet = document.getElementById('hljs-theme');
   if (!(themeStylesheet instanceof HTMLLinkElement)) {
@@ -20,6 +18,5 @@ function ensureHighlightThemeStylesheet() {
   themeStylesheet.href = lightHighlightThemeUrl;
 }
 
-await ensureRuntimeConfigLoaded();
 ensureHighlightThemeStylesheet();
 await import('../export/export-page.js');

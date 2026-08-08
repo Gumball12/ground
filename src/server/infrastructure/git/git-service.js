@@ -3,7 +3,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { createGitRequestError } from './errors.js';
+import { createRequestError as createGitRequestError } from '../http/http-errors.js';
 import { normalizeRelativeGitPath } from './path-utils.js';
 import { GitDiffService } from './diff-service.js';
 import { GitHistoryService } from './history-service.js';
@@ -207,7 +207,7 @@ export class GitService {
       throw createGitRequestError(
         409,
         'Cannot pull because local and remote commits have diverged; fast-forward only pull is not possible.',
-        'pull_diverged_ff_only',
+        { requestCode: 'pull_diverged_ff_only' },
       );
     }
 
@@ -461,7 +461,7 @@ export class GitService {
       return createGitRequestError(
         409,
         'Pull applied remote updates, but reapplying local changes caused conflicts. Review the conflicted files and the pull backup summary.',
-        'pull_conflicted_after_autostash',
+        { requestCode: 'pull_conflicted_after_autostash' },
       );
     }
 
