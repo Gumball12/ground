@@ -1,3 +1,5 @@
+import { getUserAvatarTextColor } from '../../domain/room.js';
+
 const MAX_INLINE_AVATARS = 5;
 
 function compareUserNames(left, right) {
@@ -65,7 +67,7 @@ export const presenceFeature = {
     this.globalUsers = users;
     this.syncFollowedUser();
     this.renderAvatars();
-    this.renderChat();
+    this.renderChat({ messagesChanged: false });
     this.renderPresence();
     this.syncCurrentUserName();
   },
@@ -126,6 +128,7 @@ export const presenceFeature = {
       avatar.className = 'user-avatar';
       avatar.classList.toggle('is-local', user.isLocal);
       avatar.style.backgroundColor = user.color;
+      avatar.style.color = getUserAvatarTextColor(user.color);
       avatar.classList.toggle('is-following', user.clientId === this.followedUserClientId);
 
       const initial = document.createElement('span');
@@ -267,6 +270,7 @@ export const presenceFeature = {
       const avatar = document.createElement('span');
       avatar.className = 'presence-panel-user-avatar';
       avatar.style.backgroundColor = user.color;
+      avatar.style.color = getUserAvatarTextColor(user.color);
       avatar.textContent = user.name.charAt(0).toUpperCase();
       avatar.setAttribute('aria-hidden', 'true');
 

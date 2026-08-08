@@ -9,6 +9,32 @@ const USER_COLORS = [
 ];
 export const USER_NAME_MAX_LENGTH = 24;
 const LOCAL_USER_ID_STORAGE_KEY = 'collabmd-user-id';
+const HEX_COLOR_RE = /^#(?:[\da-f]{3}|[\da-f]{6})$/iu;
+
+function colorChannelToLinear(value) {
+  const channel = value / 255;
+  return channel <= 0.04045
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4;
+}
+
+function getColorLuminance(color) {
+  const hex = color.length === 4
+    ? color.slice(1).split('').map((channel) => channel.repeat(2)).join('')
+    : color.slice(1);
+  const [red, green, blue] = hex.match(/../gu).map((channel) => parseInt(channel, 16));
+  return (
+    0.2126 * colorChannelToLinear(red)
+    + 0.7152 * colorChannelToLinear(green)
+    + 0.0722 * colorChannelToLinear(blue)
+  );
+}
+
+function getContrastRatio(firstLuminance, secondLuminance) {
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 function pickRandom(items) {
   return items[Math.floor(Math.random() * items.length)];
@@ -71,6 +97,18 @@ export function normalizeUserName(value) {
     .replace(/\s+/g, ' ')
     .slice(0, USER_NAME_MAX_LENGTH);
   return normalized || null;
+}
+
+export function getUserAvatarTextColor(value) {
+  const color = String(value ?? '').trim();
+  if (!HEX_COLOR_RE.test(color)) {
+    return '#fff';
+  }
+
+  const luminance = getColorLuminance(color.toLowerCase());
+  const whiteContrast = getContrastRatio(1, luminance);
+  const inkContrast = getContrastRatio(0, luminance);
+  return inkContrast >= whiteContrast ? '#000' : '#fff';
 }
 
 export function createRandomUser(preferredName = null) {

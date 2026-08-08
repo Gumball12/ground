@@ -111,6 +111,7 @@ export class LobbyPresence {
 
     this.provider.on('status', ({ status }) => {
       this._connected = status === 'connected';
+      this._emitChange();
     });
 
     this.provider.on('sync', (isSynced) => {

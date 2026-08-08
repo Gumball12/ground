@@ -257,6 +257,14 @@ function bindEvents() {
     void this.handleChatNotificationToggle();
   });
 
+  this.elements.chatNotificationMuteButton?.addEventListener('click', () => {
+    this.toggleChatNotificationMute();
+  });
+
+  this.elements.chatCloseButton?.addEventListener('click', () => {
+    this.closeChatPanel({ restoreFocus: true });
+  });
+
   this.elements.chatForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     this.handleChatSubmit();
@@ -373,7 +381,7 @@ function handleDocumentPointerDown(event) {
     return;
   }
 
-  this.closeChatPanel();
+  this.closeChatPanel({ restoreFocus: false });
 }
 
 /** @this {UiShellContext} */
@@ -389,7 +397,7 @@ function handleDocumentKeydown(event) {
   }
 
   if (event.key === 'Escape' && this.chatIsOpen) {
-    this.closeChatPanel();
+    this.closeChatPanel({ restoreFocus: true });
     return;
   }
 
@@ -732,6 +740,7 @@ function handleConnectionChange(state) {
     });
   }
   this.renderPresence();
+  this.renderChat({ messagesChanged: false });
 
   if (state.unreachable && !this.connectionHelpShown) {
     this.connectionHelpShown = true;

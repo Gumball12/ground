@@ -130,22 +130,24 @@
   color: var(--color-text-muted);
 }
 
-.presence-panel {
+.collaboration-popover {
   position: absolute;
   top: calc(100% + var(--space-2));
   right: 0;
   z-index: 30;
+  width: min(360px, calc(100vw - var(--space-6)));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.presence-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: min(360px, calc(100vw - var(--space-6)));
   max-height: min(72vh, 480px);
   padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: oklch(from var(--color-surface) l c h / 0.98);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(14px);
 }
 
 .presence-panel-header {

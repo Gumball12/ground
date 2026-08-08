@@ -1,3 +1,41 @@
+import { getUserAvatarTextColor } from '../../domain/room.js';
+
+const CHAT_ALERT_MUTE_STORAGE_KEY = 'collabmd-chat-alerts-muted-until';
+const CHAT_ALERT_MUTE_DURATION_MS = 60 * 60 * 1000;
+
+function getChatConnectionState(context) {
+  return context.lobby?.getConnectionState?.() ?? { status: 'connected', unreachable: false };
+}
+
+function isChatAtBottom(list) {
+  return list.scrollHeight - list.scrollTop - list.clientHeight <= 24;
+}
+
+function getChatAlertMuteUntil() {
+  try {
+    const mutedUntil = Number(globalThis.localStorage?.getItem(CHAT_ALERT_MUTE_STORAGE_KEY));
+    if (!Number.isFinite(mutedUntil) || mutedUntil <= Date.now()) {
+      globalThis.localStorage?.removeItem(CHAT_ALERT_MUTE_STORAGE_KEY);
+      return 0;
+    }
+    return mutedUntil;
+  } catch {
+    return 0;
+  }
+}
+
+function setChatAlertMuteUntil(mutedUntil) {
+  try {
+    if (mutedUntil > 0) {
+      globalThis.localStorage?.setItem(CHAT_ALERT_MUTE_STORAGE_KEY, String(mutedUntil));
+    } else {
+      globalThis.localStorage?.removeItem(CHAT_ALERT_MUTE_STORAGE_KEY);
+    }
+  } catch {
+    // Local storage can be unavailable in private or restricted browsing modes.
+  }
+}
+
 export const chatFeature = {
   updateChatMessages(messages, { initial = false } = {}) {
     const previousIds = new Set(this.chatMessageIds);
@@ -36,7 +74,7 @@ export const chatFeature = {
 
   toggleChatPanel() {
     if (this.chatIsOpen) {
-      this.closeChatPanel();
+      this.closeChatPanel({ restoreFocus: true });
       return;
     }
 
@@ -46,24 +84,28 @@ export const chatFeature = {
   openChatPanel() {
     this.chatIsOpen = true;
     this.chatUnreadCount = 0;
-    this.renderChat();
+    this.renderChat({ stickToBottom: true });
     requestAnimationFrame(() => {
       this.elements.chatInput?.focus();
       this.scrollChatToBottom();
     });
   },
 
-  closeChatPanel() {
+  closeChatPanel({ restoreFocus = false } = {}) {
     if (!this.chatIsOpen) {
       return;
     }
 
     this.chatIsOpen = false;
-    this.renderChat();
+    this.renderChat({ messagesChanged: false });
+    if (restoreFocus) {
+      requestAnimationFrame(() => this.elements.chatToggleButton?.focus());
+    }
   },
 
   handleChatSubmit() {
-    if (!this.isTabActive) {
+    const connectionState = getChatConnectionState(this);
+    if (this.isTabActive === false || connectionState.status !== 'connected') {
       return;
     }
 
@@ -84,10 +126,10 @@ export const chatFeature = {
       return;
     }
 
-    this.renderChat();
+    this.renderChat({ stickToBottom: true });
   },
 
-  renderChat() {
+  renderChat({ messagesChanged = true, stickToBottom = false } = {}) {
     this.elements.chatContainer?.classList.toggle('is-open', this.chatIsOpen);
     this.elements.chatPanel?.classList.toggle('hidden', !this.chatIsOpen);
 
@@ -95,24 +137,30 @@ export const chatFeature = {
     this.syncChatNotificationButton();
     const list = this.elements.chatMessages;
     const emptyState = this.elements.chatEmptyState;
+    const connectionState = getChatConnectionState(this);
+    const isConnected = connectionState.status === 'connected';
+    const canSend = isConnected && this.chatInitialSyncComplete && this.isTabActive !== false;
 
     if (this.elements.chatStatus) {
-      this.elements.chatStatus.textContent = this.chatInitialSyncComplete
-        ? `${this.globalUsers.length} online`
-        : 'Syncing...';
+      this.elements.chatStatus.textContent = !this.chatInitialSyncComplete
+        ? 'Syncing...'
+        : !isConnected
+          ? connectionState.unreachable ? 'Server unreachable' : 'Reconnecting...'
+          : `${this.globalUsers.length} online`;
     }
 
-    if (!list) {
+    const sendButton = this.elements.chatForm?.querySelector?.('button[type="submit"]');
+    if (sendButton) {
+      sendButton.disabled = !canSend;
+      sendButton.title = canSend ? 'Send message' : 'Chat is unavailable while disconnected';
+    }
+
+    if (!list || !this.chatIsOpen || !messagesChanged) {
       return;
     }
-
-    if (!this.chatIsOpen) {
-      return;
-    }
-
-    list.replaceChildren();
 
     if (this.chatMessages.length === 0) {
+      list.replaceChildren();
       emptyState?.classList.remove('hidden');
       list.classList.add('hidden');
       return;
@@ -121,13 +169,29 @@ export const chatFeature = {
     emptyState?.classList.add('hidden');
     list.classList.remove('hidden');
 
-    const fragment = document.createDocumentFragment();
-    this.chatMessages.forEach((message) => {
-      fragment.appendChild(this.createChatMessageElement(message));
-    });
-    list.appendChild(fragment);
+    const wasAtBottom = stickToBottom || isChatAtBottom(list);
+    const renderedIds = Array.from(list.children, (item) => item.dataset.chatMessageId);
+    const canAppend = renderedIds.length > 0
+      && renderedIds.every((id, index) => id === this.chatMessages[index]?.id)
+      && this.chatMessages.length >= renderedIds.length;
 
-    this.scrollChatToBottom();
+    if (canAppend) {
+      const fragment = document.createDocumentFragment();
+      this.chatMessages.slice(renderedIds.length).forEach((message) => {
+        fragment.appendChild(this.createChatMessageElement(message));
+      });
+      list.appendChild(fragment);
+    } else {
+      const fragment = document.createDocumentFragment();
+      this.chatMessages.forEach((message) => {
+        fragment.appendChild(this.createChatMessageElement(message));
+      });
+      list.replaceChildren(fragment);
+    }
+
+    if (wasAtBottom) {
+      this.scrollChatToBottom();
+    }
   },
 
   createChatMessageElement(message) {
@@ -135,10 +199,13 @@ export const chatFeature = {
     const isLocal = message.peerId === this.lobby.getLocalUser()?.peerId;
     item.className = 'chat-message';
     item.classList.toggle('is-local', isLocal);
+    item.dataset.chatMessageId = message.id;
 
     const avatar = document.createElement('div');
     avatar.className = 'chat-message-avatar';
-    avatar.style.backgroundColor = message.userColor || 'var(--color-primary)';
+    const avatarColor = message.userColor || 'var(--color-primary-active)';
+    avatar.style.backgroundColor = avatarColor;
+    avatar.style.color = getUserAvatarTextColor(message.userColor);
     avatar.textContent = (message.userName || '?').charAt(0).toUpperCase();
     avatar.setAttribute('aria-hidden', 'true');
 
@@ -161,7 +228,7 @@ export const chatFeature = {
     const fileLabel = this.getChatMessageFileLabel(message.filePath);
     if (fileLabel) {
       const file = document.createElement('span');
-      file.className = 'chat-message-file';
+      file.className = 'ui-pill chat-message-file';
       file.textContent = fileLabel;
       meta.append(file);
     }
@@ -215,25 +282,59 @@ export const chatFeature = {
 
   syncChatNotificationButton() {
     const button = this.elements.chatNotificationButton;
-    if (!button) {
+    const muteButton = this.elements.chatNotificationMuteButton;
+    const status = this.elements.chatNotificationStatus;
+    if (!button && !muteButton && !status) {
       return;
     }
 
     const permission = this.notifications?.getPermission?.() ?? 'unsupported';
     const enabled = permission === 'granted';
-    const unavailable = permission === 'unsupported';
+    const muted = enabled && getChatAlertMuteUntil() > 0;
 
-    button.classList.toggle('is-enabled', enabled);
-    button.classList.toggle('is-blocked', permission === 'denied');
-    button.disabled = unavailable;
-    button.hidden = unavailable;
-    button.setAttribute('aria-pressed', String(enabled));
-    button.textContent = enabled ? 'Desktop alerts on' : 'Enable desktop alerts';
-    button.title = permission === 'denied'
-      ? 'Desktop alerts are blocked in browser settings'
-      : enabled
-        ? 'Desktop alerts enabled'
-        : 'Allow desktop alerts for new chat messages';
+    if (button) {
+      button.hidden = permission !== 'default';
+      button.classList.toggle('hidden', permission !== 'default');
+      button.disabled = false;
+      button.removeAttribute('aria-pressed');
+      button.textContent = 'Enable desktop alerts';
+      button.title = 'Allow desktop alerts for new chat messages';
+    }
+
+    if (muteButton) {
+      muteButton.hidden = !enabled;
+      muteButton.classList.toggle('hidden', !enabled);
+      muteButton.disabled = false;
+      muteButton.setAttribute('aria-pressed', String(muted));
+      const muteLabel = muted ? 'Unmute desktop alerts' : 'Mute desktop alerts for one hour';
+      muteButton.setAttribute('aria-label', muteLabel);
+      muteButton.title = muteLabel;
+    }
+
+    if (status) {
+      const blocked = permission === 'denied';
+      status.hidden = !enabled && !blocked;
+      status.classList.toggle('hidden', !enabled && !blocked);
+      const statusLabel = enabled
+        ? muted ? 'Desktop alerts muted' : 'Desktop alerts enabled'
+        : blocked
+          ? 'Desktop alerts blocked in browser settings'
+          : '';
+      status.textContent = enabled
+        ? muted ? 'Alerts muted' : 'Alerts on'
+        : blocked
+          ? 'Alerts blocked'
+          : '';
+      if (statusLabel) {
+        status.setAttribute('aria-label', statusLabel);
+        status.title = statusLabel;
+      } else {
+        status.removeAttribute('aria-label');
+        status.removeAttribute('title');
+      }
+      status.classList.toggle('ui-status-badge--accent', enabled && !muted);
+      status.classList.toggle('ui-status-badge--muted', blocked || muted);
+    }
   },
 
   async handleChatNotificationToggle() {
@@ -245,13 +346,25 @@ export const chatFeature = {
     }
 
     if (permission === 'denied') {
-      this.chatToastController.show('Desktop alerts are blocked. Allow them in browser site settings.', 5000);
+      (this.chatToastController ?? this.toastController)?.show(
+        'Desktop alerts are blocked. Allow them in browser site settings.',
+        { duration: 5000, tone: 'warning' },
+      );
       return;
     }
 
     if (permission === 'unsupported') {
-      this.chatToastController.show('This browser does not support desktop alerts.', 5000);
+      (this.chatToastController ?? this.toastController)?.show(
+        'This browser does not support desktop alerts.',
+        { duration: 5000, tone: 'warning' },
+      );
     }
+  },
+
+  toggleChatNotificationMute() {
+    const mutedUntil = getChatAlertMuteUntil();
+    setChatAlertMuteUntil(mutedUntil > 0 ? 0 : Date.now() + CHAT_ALERT_MUTE_DURATION_MS);
+    this.renderChat({ messagesChanged: false });
   },
 
   syncChatToggleButton() {
@@ -266,6 +379,7 @@ export const chatFeature = {
 
     button.classList.toggle('is-active', this.chatIsOpen);
     button.classList.toggle('is-unread', shouldEmphasizeUnread);
+    button.setAttribute('aria-controls', 'chatPanel');
     button.setAttribute('aria-expanded', String(this.chatIsOpen));
     button.setAttribute(
       'aria-label',
@@ -288,21 +402,31 @@ export const chatFeature = {
       return;
     }
 
-    if (!this.isTabActive) {
+    if (this.isTabActive === false || this.chatIsOpen || getChatAlertMuteUntil() > 0) {
       return;
     }
 
-    const notification = this.notifications?.show?.({
-      body: String(message?.text ?? '').replace(/\s+/g, ' ').trim(),
-      onClick: () => {
-        window.focus?.();
-        notification?.close?.();
-        this.openChatPanel();
-      },
-      tag: `collabmd-chat-${message?.id ?? 'message'}`,
-      title: `New message from ${message?.userName || 'Someone'}`,
-    });
-    if (notification || this.chatIsOpen) {
+    const pageHidden = Boolean(
+      globalThis.document?.hidden || globalThis.document?.visibilityState === 'hidden',
+    );
+    const pageFocused = typeof globalThis.document?.hasFocus === 'function'
+      ? globalThis.document.hasFocus()
+      : !pageHidden;
+    let notification = null;
+    if (pageHidden || !pageFocused) {
+      notification = this.notifications?.show?.({
+        body: String(message?.text ?? '').replace(/\s+/g, ' ').trim(),
+        onClick: () => {
+          window.focus?.();
+          notification?.close?.();
+          this.openChatPanel();
+        },
+        tag: `collabmd-chat-${message?.id ?? 'message'}`,
+        title: `New message from ${message?.userName || 'Someone'}`,
+      });
+    }
+
+    if (notification) {
       return;
     }
 

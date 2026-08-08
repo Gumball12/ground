@@ -1677,8 +1677,22 @@ test('shows a desktop notification for a remote chat message once alerts are ena
 
   await openChat(pageB);
   await pageB.locator('#chatNotificationBtn').click();
-  await expect(pageB.locator('#chatNotificationBtn')).toHaveText('Desktop alerts on');
+  await expect(pageB.locator('#chatNotificationBtn')).toBeHidden();
+  await expect(pageB.locator('#chatNotificationStatus')).toHaveText('Alerts on');
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toBeVisible();
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toHaveAttribute(
+    'aria-label',
+    'Mute desktop alerts for one hour',
+  );
   await expect(pageB.locator('#chatToggleBtn')).toHaveAttribute('aria-expanded', 'true');
+  await pageB.locator('#chatToggleBtn').click();
+  await expect(pageB.locator('#chatToggleBtn')).toHaveAttribute('aria-expanded', 'false');
+  await pageB.evaluate(() => {
+    Object.defineProperty(document, 'hasFocus', {
+      configurable: true,
+      value: () => false,
+    });
+  });
 
   await pageA.bringToFront();
   await sendChatMessage(pageA, 'Background alert: reviewing README right now.');
@@ -1690,11 +1704,48 @@ test('shows a desktop notification for a remote chat message once alerts are ena
   const notification = await pageB.evaluate(() => window.__collabmdNotificationEvents[0]);
   expect(notification.title).toBe('New message from Sender');
   expect(notification.options.body).toBe('Background alert: reviewing README right now.');
+  await expect(pageB.locator('#chatMessages')).not.toContainText(
+    'Background alert: reviewing README right now.',
+  );
+  await expect(pageB.locator('#chatToggleBadge')).toHaveText('1');
+  await expect(pageB.locator('#chatToggleBadge')).toBeVisible();
+  await expect(pageB.locator('#chatToastContainer .toast')).toHaveCount(0);
+
+  await openChat(pageB);
   await expect(pageB.locator('#chatMessages')).toContainText(
     'Background alert: reviewing README right now.',
   );
   await expect(pageB.locator('#chatToggleBadge')).toBeHidden();
+
+  await pageB.locator('#chatNotificationMuteBtn').click();
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toHaveAttribute(
+    'aria-label',
+    'Unmute desktop alerts',
+  );
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pageB.locator('#chatNotificationStatus')).toHaveText('Alerts muted');
+  await pageB.locator('#chatToggleBtn').click();
+
+  await pageA.bringToFront();
+  await pageA.locator('#chatInput').fill('Muted alert: reviewing the final section now.');
+  await pageA.locator('#chatForm').getByRole('button', { name: 'Send' }).click();
+  await expect.poll(async () => pageB.evaluate(
+    () => window.__collabmdNotificationEvents?.length ?? 0,
+  )).toBe(1);
   await expect(pageB.locator('#chatToastContainer .toast')).toHaveCount(0);
+  await expect(pageB.locator('#chatToggleBadge')).toHaveText('1');
+
+  await openChat(pageB);
+  await expect(pageB.locator('#chatMessages')).toContainText(
+    'Muted alert: reviewing the final section now.',
+  );
+  await pageB.locator('#chatNotificationMuteBtn').click();
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toHaveAttribute(
+    'aria-label',
+    'Mute desktop alerts for one hour',
+  );
+  await expect(pageB.locator('#chatNotificationMuteBtn')).toHaveAttribute('aria-pressed', 'false');
+  await expect(pageB.locator('#chatNotificationStatus')).toHaveText('Alerts on');
 
   await pageA.close();
   await pageB.close();

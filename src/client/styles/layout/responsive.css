@@ -426,7 +426,7 @@
     right: var(--space-2);
     left: var(--space-2);
     width: auto;
-    max-height: calc(100vh - var(--toolbar-h) - var(--space-6));
+    max-height: calc(var(--app-viewport-height, 100dvh) - var(--toolbar-h) - var(--space-6));
   }
 
   .chat-form {

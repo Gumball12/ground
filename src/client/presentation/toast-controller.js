@@ -16,6 +16,9 @@ export class ToastController {
       : 0;
     const toast = document.createElement('div');
     toast.className = 'toast';
+    if (typeof normalizedOptions.tone === 'string' && normalizedOptions.tone) {
+      toast.dataset.tone = normalizedOptions.tone;
+    }
     const content = document.createElement('span');
     content.className = 'toast__message';
     content.textContent = message;

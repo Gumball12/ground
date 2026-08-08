@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { getUserAvatarTextColor } from '../../src/client/domain/room.js';
 import { LobbyPresence } from '../../src/client/infrastructure/lobby-presence.js';
 
 function installWindowStub(t) {
@@ -76,4 +77,9 @@ test('LobbyPresence emits remote workspace events once and ignores local echoes'
   assert.equal(received.length, 1);
   assert.equal(received[0].action, 'pull');
   assert.deepEqual(received[0].workspaceChange.changedPaths, ['README.md']);
+});
+
+test('avatar text color keeps room color labels readable', () => {
+  assert.equal(getUserAvatarTextColor('#eab308'), '#000');
+  assert.equal(getUserAvatarTextColor('#1e40af'), '#fff');
 });

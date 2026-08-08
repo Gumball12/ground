@@ -214,7 +214,7 @@
 
             <div class="user-avatars toolbar-presence-cluster" id="userAvatars"></div>
 
-            <section class="presence-panel hidden" id="presencePanel" aria-label="Online users" aria-hidden="true">
+            <section class="collaboration-popover presence-panel hidden" id="presencePanel" aria-label="Online users" aria-hidden="true">
               <div class="presence-panel-header">
                 <div>
                   <h2 class="presence-panel-title">Online now</h2>
@@ -225,7 +225,7 @@
             </section>
 
             <div class="chat-container" id="chatContainer">
-              <button class="ui-button ui-button--ghost ui-button--toolbar chat-toggle-btn" id="chatToggleBtn" aria-label="Open team chat" aria-expanded="false" title="Team chat">
+              <button type="button" class="ui-button ui-button--ghost ui-button--toolbar chat-toggle-btn" id="chatToggleBtn" aria-label="Open team chat" aria-controls="chatPanel" aria-expanded="false" title="Team chat">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                 </svg>
@@ -234,22 +234,45 @@
               </button>
               <div class="toast-container chat-toast-container" id="chatToastContainer" aria-live="polite" aria-atomic="true"></div>
 
-              <section class="chat-panel hidden" id="chatPanel" aria-label="Team chat">
+              <section class="collaboration-popover chat-panel hidden" id="chatPanel" role="dialog" aria-labelledby="chatPanelTitle">
                 <div class="chat-panel-header">
-                  <div>
-                    <h2 class="chat-panel-title">Team chat</h2>
-                    <p class="chat-panel-status" id="chatStatus">Syncing...</p>
+                  <div class="chat-panel-heading">
+                    <h2 class="chat-panel-title" id="chatPanelTitle">Team chat</h2>
+                    <p class="chat-panel-status" id="chatStatus" role="status" aria-live="polite" aria-atomic="true">Syncing...</p>
                   </div>
-                  <button
-                    type="button"
-                    class="ui-button ui-button--ghost ui-button--compact chat-notification-action"
-                    id="chatNotificationBtn"
-                    aria-pressed="false"
-                  >Enable desktop alerts</button>
+                  <div class="chat-panel-actions">
+                    <span class="ui-status-badge ui-status-badge--accent chat-notification-status" id="chatNotificationStatus" role="status" hidden></span>
+                    <button
+                      type="button"
+                      class="ui-button ui-button--ghost ui-button--compact chat-notification-action"
+                      id="chatNotificationBtn"
+                    >Enable desktop alerts</button>
+                    <button
+                      type="button"
+                      class="ui-icon-button chat-notification-mute-action hidden"
+                      id="chatNotificationMuteBtn"
+                      aria-label="Mute desktop alerts for one hour"
+                      aria-pressed="false"
+                      title="Mute desktop alerts for one hour"
+                      hidden
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        <path class="chat-notification-mute-slash" d="m4 4 16 16"></path>
+                      </svg>
+                    </button>
+                    <button type="button" class="ui-icon-button chat-close-btn" id="chatCloseBtn" aria-label="Close team chat" title="Close team chat">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
-                <div class="chat-empty-state" id="chatEmptyState">
-                  Temporary room chat for whoever is online right now.
+                <div class="ui-empty-state ui-empty-state--compact chat-empty-state" id="chatEmptyState">
+                  Messages are visible to everyone in this room.
                 </div>
                 <div class="chat-messages hidden" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions text"></div>
 
@@ -258,10 +281,11 @@
                     type="text"
                     class="ui-input chat-input"
                     id="chatInput"
-                    placeholder="Send a quick update..."
+                    placeholder="Message the room..."
                     autocomplete="off"
                     spellcheck="true"
                     maxlength="280"
+                    enterkeyhint="send"
                     aria-label="Team chat message"
                   >
                   <button type="submit" class="ui-button ui-button--primary chat-send-btn">Send</button>
