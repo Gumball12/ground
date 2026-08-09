@@ -1173,6 +1173,7 @@ test('HTTP server uploads every supported vault file type without changing its b
     'flow.mermaid',
     'sequence.puml',
     'sequence.plantuml',
+    'guide.pdf',
     'image.png',
     'image.jpg',
     'image.jpeg',
@@ -1254,6 +1255,29 @@ test('HTTP server downloads vault files as attachments', async (t) => {
   assert.equal(response.headers['content-type'], 'text/markdown; charset=utf-8');
   assert.match(String(response.headers['content-disposition']), /attachment; filename="test\.md"/);
   assert.match(response.body, /Hello from test vault/);
+});
+
+test('HTTP server serves uploaded PDFs inline for readonly previews', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const pdfContent = Buffer.from('%PDF-1.7\nreadonly preview\n');
+  const uploadResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: pdfContent,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/brief.pdf'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(uploadResponse.statusCode, 201);
+
+  const previewResponse = await httpRequest(`${app.baseUrl}/api/download/file?path=${encodeURIComponent('uploads/brief.pdf')}`);
+  assert.equal(previewResponse.statusCode, 200);
+  assert.equal(previewResponse.headers['content-type'], 'application/pdf');
+  assert.match(String(previewResponse.headers['content-disposition']), /inline; filename="brief\.pdf"/);
+  assert.deepEqual(previewResponse.bodyBuffer, pdfContent);
 });
 
 test('HTTP server rejects downloads that exceed configured limits', async (t) => {

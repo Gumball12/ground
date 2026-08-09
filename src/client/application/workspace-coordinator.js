@@ -28,6 +28,7 @@ export class WorkspaceCoordinator {
     isDrawioFile,
     isExcalidrawFile,
     isImageFile,
+    isPdfFile,
     isMermaidFile,
     isPlantUmlFile,
     isTabActive,
@@ -49,6 +50,7 @@ export class WorkspaceCoordinator {
     onRenderExcalidrawPreview,
     onRenderDrawioPreview,
     onRenderImagePreview,
+    onRenderPdfPreview,
     onSyncWrapToggle,
     onUpdateActiveFile,
     onUpdateCurrentFile,
@@ -75,6 +77,7 @@ export class WorkspaceCoordinator {
     this.isDrawioFile = isDrawioFile ?? (() => false);
     this.isExcalidrawFile = isExcalidrawFile ?? (() => false);
     this.isImageFile = isImageFile ?? (() => false);
+    this.isPdfFile = isPdfFile ?? (() => false);
     this.isMermaidFile = isMermaidFile ?? (() => false);
     this.isPlantUmlFile = isPlantUmlFile ?? (() => false);
     this.isTabActive = isTabActive;
@@ -96,6 +99,7 @@ export class WorkspaceCoordinator {
     this.onRenderDrawioPreview = onRenderDrawioPreview;
     this.onRenderExcalidrawPreview = onRenderExcalidrawPreview;
     this.onRenderImagePreview = onRenderImagePreview;
+    this.onRenderPdfPreview = onRenderPdfPreview;
     this.onSyncWrapToggle = onSyncWrapToggle;
     this.onUpdateActiveFile = onUpdateActiveFile;
     this.onUpdateCurrentFile = onUpdateCurrentFile;
@@ -171,12 +175,14 @@ export class WorkspaceCoordinator {
     filePath,
     isExcalidraw = false,
     isImage = false,
+    isPdf = false,
     supportsBacklinks,
   }) {
     if (isExcalidraw) this.onRenderExcalidrawPreview(filePath);
     if (isBase || isBaseFilePath(filePath)) this.onRenderBasePreview(filePath);
     if (isDrawio) this.onRenderDrawioPreview(filePath);
     if (isImage) this.onRenderImagePreview(filePath);
+    if (isPdf) this.onRenderPdfPreview(filePath);
     this.onSyncWrapToggle();
     if (supportsBacklinks) this.loadBacklinks(filePath);
   }
@@ -192,13 +198,14 @@ export class WorkspaceCoordinator {
     const isExcalidraw = this.isExcalidrawFile(filePath);
     const isBase = this.isBaseFile(filePath);
     const isImage = this.isImageFile(filePath);
+    const isPdf = this.isPdfFile(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
 
     if (
       filePath === this.stateStore.currentFilePath
       && normalizedDrawioMode === currentDrawioMode
-      && (this.session || isDrawio || isExcalidraw || isImage)
+      && (this.session || isDrawio || isExcalidraw || isImage || isPdf)
     ) {
       this.onUpdateActiveFile(filePath);
       this.onUpdateLobbyCurrentFile(filePath);
@@ -211,11 +218,11 @@ export class WorkspaceCoordinator {
     this.cleanupSession();
     const chromeState = this.prepareForFileOpen(filePath, {
       drawioMode: normalizedDrawioMode,
-      resetConnectionState: !isDrawio && !isExcalidraw && !isImage,
+      resetConnectionState: !isDrawio && !isExcalidraw && !isImage && !isPdf,
     });
     this.reportFileOpenMetric('open_started', loadToken, { filePath });
 
-    if (isDrawio || isExcalidraw || isImage) {
+    if (isDrawio || isExcalidraw || isImage || isPdf) {
       this.onSessionAssigned?.(null);
 
       if (loadToken !== this.stateStore.sessionLoadToken) {
@@ -229,6 +236,7 @@ export class WorkspaceCoordinator {
         isDrawio,
         isExcalidraw,
         isImage,
+        isPdf,
         session: null,
         supportsBacklinks: chromeState.supportsBacklinks,
       });

@@ -7,12 +7,13 @@ const CONTENT_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
 };
 
 function isVersionedAssetPath(pathname = '') {
-  return /-[A-Za-z0-9_-]{8,}\.(?:css|js|woff2?|ttf|svg)$/u.test(pathname);
+  return /-[A-Za-z0-9_-]{8,}\.(?:css|js|mjs|woff2?|ttf|svg)$/u.test(pathname);
 }
 
 function getStaticCacheControl(pathname = '', extension = '') {
@@ -33,7 +34,7 @@ function getStaticCacheControl(pathname = '', extension = '') {
       return 'public, max-age=31536000, immutable';
     }
 
-    if (extension === '.css' || extension === '.js') {
+    if (extension === '.css' || extension === '.js' || extension === '.mjs') {
       return 'public, max-age=0, must-revalidate';
     }
 

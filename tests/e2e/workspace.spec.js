@@ -17,6 +17,45 @@ import {
   stubPlantUmlRender,
 } from './helpers/app-fixture.js';
 
+function createPdfFixture({ pageCount = 1, text = 'PDF.js preview' } = {}) {
+  const contentStream = `BT /F1 18 Tf 48 180 Td (${text}) Tj ET`;
+  const pageRefs = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`).join(' ');
+  const contentStart = pageCount + 3;
+  const fontReference = contentStart + pageCount;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${pageRefs}] /Count ${pageCount} >>`,
+    ...Array.from({ length: pageCount }, (_, index) => (
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >> >>`
+    )),
+    ...Array.from({ length: pageCount }, () => (
+      `<< /Length ${Buffer.byteLength(contentStream, 'binary')} >>\nstream\n${contentStream}\nendstream`
+    )),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, 'binary'));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf, 'binary');
+  pdf += [
+    'xref',
+    `0 ${objects.length + 1}`,
+    '0000000000 65535 f ',
+    ...offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n `),
+    'trailer',
+    `<< /Size ${objects.length + 1} /Root 1 0 R >>`,
+    'startxref',
+    String(xrefOffset),
+    '%%EOF',
+  ].join('\n');
+
+  return Buffer.from(pdf, 'binary');
+}
+
 async function applyBlockToolbarAction(page, action) {
   await page.locator('[data-markdown-block-menu-toggle]').click();
   await page.locator(`[data-markdown-block-action="${action}"]`).click();
@@ -460,14 +499,35 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
       mimeType: 'image/png',
       name: 'uploaded-image.png',
     },
+    {
+      buffer: createPdfFixture({ pageCount: 5 }),
+      mimeType: 'application/pdf',
+      name: 'uploaded-guide.pdf',
+    },
   ]);
 
   await expect(page.locator('#fileTree')).toContainText('uploaded-note');
   await expect(page.locator('#fileTree')).toContainText('uploaded-diagram');
   await expect(page.locator('#fileTree')).toContainText('uploaded-image');
+  await expect(page.locator('#fileTree')).toContainText('uploaded-guide');
 
   await page.locator('#fileTree').getByText('uploaded-image').click();
   await expect(page.locator('#previewContent .image-file-preview-image')).toBeVisible();
+
+  await page.locator('#fileTree').getByText('uploaded-guide').click();
+  const pdfPreview = page.locator('#previewContent .pdf-file-preview-shell');
+  await expect(pdfPreview).toBeVisible();
+  await expect(page.locator('#previewContent .pdf-file-preview-status')).toHaveText('5 pages');
+  await expect(page.locator('#previewContent .pdf-page')).toHaveCount(5);
+  await expect(page.locator('#previewContent .pdf-page[data-page-number="1"] canvas')).toBeVisible();
+  await page.locator('#previewContainer').evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(page.locator('#previewContent .pdf-page[data-page-number="5"] canvas')).toBeVisible();
+  await expect(page.locator('#previewContent .pdf-file-preview-download')).toHaveAttribute(
+    'href',
+    /\/api\/download\/file\?path=uploaded-guide\.pdf/,
+  );
 
   const response = await page.request.get('/api/download/file?path=uploaded-note.md');
   expect(response.ok()).toBe(true);

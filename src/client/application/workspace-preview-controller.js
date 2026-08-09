@@ -18,11 +18,13 @@ export class WorkspacePreviewController {
     isExcalidrawFile,
     isBaseFile,
     isImageFile,
+    isPdfFile,
     isMermaidFile,
     isPlantUmlFile,
     layoutController,
     outlineController,
     previewRenderer,
+    pdfPreview = null,
     schedulePreviewLayoutSync,
     scrollSyncController,
     videoEmbed,
@@ -46,11 +48,13 @@ export class WorkspacePreviewController {
     this.isExcalidrawFile = isExcalidrawFile ?? (() => false);
     this.isBaseFile = isBaseFile ?? isBaseFilePath;
     this.isImageFile = isImageFile ?? (() => false);
+    this.isPdfFile = isPdfFile ?? (() => false);
     this.isMermaidFile = isMermaidFile ?? (() => false);
     this.isPlantUmlFile = isPlantUmlFile ?? (() => false);
     this.layoutController = layoutController;
     this.outlineController = outlineController;
     this.previewRenderer = previewRenderer;
+    this.pdfPreview = pdfPreview ?? { cancel() {}, render() {} };
     this.schedulePreviewLayoutSyncCallback = schedulePreviewLayoutSync;
     this.scrollSyncController = scrollSyncController;
     this.videoEmbed = videoEmbed;
@@ -81,10 +85,12 @@ export class WorkspacePreviewController {
   }
 
   resetPreviewMode() {
+    this.pdfPreview.cancel();
     this.elements.previewContent?.classList.remove('is-drawio-file-preview');
     this.elements.previewContent?.classList.remove('is-excalidraw-file-preview');
     this.elements.previewContent?.classList.remove('is-base-file-preview');
     this.elements.previewContent?.classList.remove('is-image-file-preview');
+    this.elements.previewContent?.classList.remove('is-pdf-file-preview');
     this.elements.previewContent?.classList.remove('is-mermaid-file-preview');
     this.elements.previewContent?.classList.remove('is-plantuml-file-preview');
   }
@@ -94,6 +100,7 @@ export class WorkspacePreviewController {
     const isExcalidraw = this.isExcalidrawFile(filePath);
     const isBase = this.isBaseFile(filePath);
     const isImage = this.isImageFile(filePath);
+    const isPdf = this.isPdfFile(filePath);
     const isMarkdown = isMarkdownFilePath(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
@@ -105,11 +112,11 @@ export class WorkspacePreviewController {
     this.elements.editorFindButton?.classList.toggle('hidden', !isMarkdown);
     this.elements.markdownToolbar?.classList.toggle('hidden', !isMarkdown);
     this.elements.exportMenuGroup?.classList.toggle('hidden', !isMarkdown);
-    this.elements.outlineToggle?.classList.toggle('hidden', isDiagramFile || isImage || isBase);
+    this.elements.outlineToggle?.classList.toggle('hidden', isDiagramFile || isImage || isPdf || isBase);
     this.elements.previewContent?.classList.toggle('is-mermaid-file-preview', isMermaid);
     this.elements.previewContent?.classList.toggle('is-plantuml-file-preview', isPlantUml);
 
-    if ((isDrawio && drawioMode !== 'text') || isExcalidraw || isImage || (isBase && preferPreviewForBase)) {
+    if ((isDrawio && drawioMode !== 'text') || isExcalidraw || isImage || isPdf || (isBase && preferPreviewForBase)) {
       this.layoutController.setView('preview', { persist: false });
       this.outlineController.close();
       this.backlinksPanel.clear();
@@ -232,6 +239,38 @@ export class WorkspacePreviewController {
 
     previewElement.dataset.renderPhase = 'ready';
     this.outlineController.refresh();
+    this.scrollSyncController.setLargeDocumentMode(false);
+    this.scrollSyncController.invalidatePreviewBlocks();
+    this.videoEmbed?.reconcileEmbeds(previewElement);
+    this.schedulePreviewLayoutSyncCallback({ delayMs: 0 });
+  }
+
+  renderPdfFilePreview(filePath) {
+    const previewElement = this.elements.previewContent;
+    if (!previewElement) {
+      return;
+    }
+
+    this.videoEmbed?.detachForCommit();
+    this.drawioEmbed.detachForCommit();
+    this.excalidrawEmbed.detachForCommit();
+    this.resetPreviewMode();
+    previewElement.classList.add('is-pdf-file-preview');
+    const renderHost = this.previewRenderer.ensureRenderHost();
+    this.previewRenderer.normalizePreviewChildren(renderHost);
+
+    if (renderHost) {
+      this.pdfPreview.render({
+        displayName: this.getDisplayName(filePath),
+        filePath,
+        renderHost,
+      });
+      renderHost.style.minHeight = '';
+    }
+
+    previewElement.dataset.renderPhase = 'ready';
+    this.outlineController.close();
+    this.backlinksPanel.clear();
     this.scrollSyncController.setLargeDocumentMode(false);
     this.scrollSyncController.invalidatePreviewBlocks();
     this.videoEmbed?.reconcileEmbeds(previewElement);

@@ -5,6 +5,7 @@ import {
   isExcalidrawFilePath,
   isImageAttachmentFilePath,
   isMermaidFilePath,
+  isPdfFilePath,
   isPlantUmlFilePath,
   stripVaultFileExtension,
 } from '../../../domain/file-kind.js';
@@ -14,6 +15,7 @@ export const workspaceFeature = {
   isDrawioFile: isDrawioFilePath,
   isExcalidrawFile: isExcalidrawFilePath,
   isImageFile: isImageAttachmentFilePath,
+  isPdfFile: isPdfFilePath,
   isMermaidFile: isMermaidFilePath,
   isPlantUmlFile: isPlantUmlFilePath,
 
@@ -61,7 +63,7 @@ export const workspaceFeature = {
 
   supportsFileHistory(filePath) {
     const kind = getVaultFileKind(filePath);
-    return kind !== null && kind !== 'image';
+    return kind !== null && kind !== 'image' && kind !== 'pdf';
   },
 
   getDisplayName(filePath) {

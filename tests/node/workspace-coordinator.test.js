@@ -105,6 +105,9 @@ function createCoordinator(overrides = {}) {
     onRenderImagePreview: () => {
       events.push('render-image');
     },
+    onRenderPdfPreview: () => {
+      events.push('render-pdf');
+    },
     onSyncWrapToggle: () => {
       events.push('sync-wrap');
     },
@@ -310,6 +313,24 @@ test('WorkspaceCoordinator skips creating an editor session for image attachment
   assert.equal(coordinator.getSession(), null);
   assert.ok(events.includes('open-ready'));
   assert.ok(events.includes('render-image'));
+});
+
+test('WorkspaceCoordinator skips creating an editor session for PDF files', async () => {
+  let createSessionCalls = 0;
+  const { coordinator, events } = createCoordinator({
+    createEditorSession: () => {
+      createSessionCalls += 1;
+      return { destroy() {} };
+    },
+    isPdfFile: (filePath) => filePath?.endsWith('.pdf'),
+  });
+
+  await coordinator.openFile('docs/brief.pdf');
+
+  assert.equal(createSessionCalls, 0);
+  assert.equal(coordinator.getSession(), null);
+  assert.ok(events.includes('open-ready'));
+  assert.ok(events.includes('render-pdf'));
 });
 
 test('WorkspaceCoordinator opens base files in the editor and renders the base preview', async () => {

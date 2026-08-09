@@ -731,7 +731,7 @@ function toggleToolbarOverflowMenu() {
 /** @this {UiShellContext} */
 function handleThemeChange(theme) {
   this.previewRenderer.applyTheme(theme);
-  if (!this.isExcalidrawFile(this.currentFilePath) && !this.isImageFile?.(this.currentFilePath)) {
+  if (!this.isExcalidrawFile(this.currentFilePath) && !this.isImageFile?.(this.currentFilePath) && !this.isPdfFile?.(this.currentFilePath)) {
     this.previewRenderer.queueRender();
   }
   this.session?.applyTheme(theme);

@@ -524,6 +524,10 @@ body.excalidraw-maximized-open .resizer {
   color: var(--color-primary);
 }
 
+.file-tree-file.is-pdf .file-tree-icon {
+  color: var(--color-danger);
+}
+
 .file-tree-file.is-mermaid .file-tree-icon {
   color: oklch(from var(--color-primary) calc(l * 0.96) calc(c * 0.86) 215);
 }

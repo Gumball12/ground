@@ -13,8 +13,9 @@ function getConnectedPresenceState(context) {
   const isDrawioRoute = Boolean(context.currentFilePath && context.isDrawioFile?.(context.currentFilePath));
   const isExcalidrawRoute = Boolean(context.currentFilePath && context.isExcalidrawFile?.(context.currentFilePath));
   const isImageRoute = Boolean(context.currentFilePath && context.isImageFile?.(context.currentFilePath));
+  const isPdfRoute = Boolean(context.currentFilePath && context.isPdfFile?.(context.currentFilePath));
   const shouldUseLobbyState = !hasEditorSession
-    && (!context.currentFilePath || isDrawioRoute || isExcalidrawRoute || isImageRoute);
+    && (!context.currentFilePath || isDrawioRoute || isExcalidrawRoute || isImageRoute || isPdfRoute);
   return shouldUseLobbyState
     ? context.lobby?.getConnectionState?.() ?? context.connectionState
     : context.connectionState;

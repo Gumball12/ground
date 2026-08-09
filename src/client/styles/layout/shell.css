@@ -217,6 +217,18 @@
   padding: var(--space-4);
 }
 
+.preview-content.is-pdf-file-preview {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: var(--space-3);
+}
+
 .preview-content.is-base-file-preview {
   width: 100%;
   min-height: 100%;
@@ -262,6 +274,7 @@
 .preview-content.is-drawio-file-preview [data-preview-render-host='true'],
 .preview-content.is-excalidraw-file-preview [data-preview-render-host='true'],
 .preview-content.is-image-file-preview [data-preview-render-host='true'],
+.preview-content.is-pdf-file-preview [data-preview-render-host='true'],
 .preview-content.is-base-file-preview [data-preview-render-host='true'] {
   display: flex;
   flex: 1;
@@ -287,6 +300,83 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-lg);
+}
+
+.pdf-file-preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  gap: var(--space-3);
+}
+
+.pdf-file-preview-toolbar {
+  position: sticky;
+  top: var(--space-3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 960px);
+  min-height: 32px;
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.pdf-file-preview-status {
+  color: var(--color-text-muted);
+  font-size: var(--text-meta);
+}
+
+.pdf-file-preview-download {
+  color: var(--color-primary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.pdf-file-preview-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-4);
+  padding: 0 var(--space-2) var(--space-8);
+}
+
+.pdf-page {
+  width: min(100%, 960px);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.pdf-page-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--color-surface);
+}
+
+.pdf-file-preview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: min(100%, 960px);
+  min-height: 240px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 .preview-content.is-mermaid-file-preview .mermaid-shell,

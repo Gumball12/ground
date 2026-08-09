@@ -67,6 +67,7 @@ const TEXT_FILE_MIME_TYPES = Object.freeze({
   excalidraw: 'application/json; charset=utf-8',
   markdown: 'text/markdown; charset=utf-8',
   mermaid: 'text/plain; charset=utf-8',
+  pdf: 'application/pdf',
   plantuml: 'text/plain; charset=utf-8',
 });
 

@@ -65,12 +65,12 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 - **Local-files-first** — your filesystem remains the source of truth
 - **Realtime collaboration** — multiple people can edit the same file at the same time via Yjs
 - **External edit sync** — changes made from tools like Obsidian or direct file writes are reflected back into open documents and the file explorer
-- **File upload** — import multiple supported Markdown, Base, diagram, and image files into the vault from the file explorer
+- **File upload** — import multiple supported Markdown, Base, diagram, image, and PDF files into the vault from the file explorer
 - **Markdown with context** — live preview, wiki-links, backlinks, outline, quick switcher, and scroll sync
 - **Global text search** — search text across supported vault files with ripgrep-backed results grouped by file
 - **Source-anchored comments** — comment on lines or selected text with inline markers, preview bubbles, and thread cards
 - **Collaboration built in** — collaborator presence, follow mode, and team chat
-- **Diagram-friendly** — Mermaid fences and standalone `.mmd` / `.mermaid`, PlantUML `.puml` / `.plantuml`, `.excalidraw`, `.drawio`, and public video embeds in Markdown
+- **Diagram-friendly** — Mermaid fences and standalone `.mmd` / `.mermaid`, PlantUML `.puml` / `.plantuml`, `.excalidraw`, `.drawio`, readonly PDF previews, and public video embeds in Markdown
 - **Easy browser access** — optional Cloudflare Tunnel support makes a running session easy to share
 
 ## Best fit for
@@ -180,14 +180,14 @@ collabmd ~/my-vault --no-tunnel
 
 CollabMD starts a local server, scans the vault, and opens a browser-based editor with:
 
-- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.excalidraw`, `.drawio`, and supported image files plus folders
+- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
 - **Live preview** — rendered as you type, with syntax-highlighted code blocks, public video embeds, plus Mermaid and PlantUML diagrams
 - **Anchored comments** — add comments from the editor, open threads from inline markers or preview bubbles, and review them from the comments drawer
 - **`[[wiki-links]]` + backlinks** — jump between notes and inspect linked mentions
 - **Room chat** — discuss changes without leaving the workspace
 - **Presence + follow mode** — see who is online and follow another collaborator's active cursor
 - **Quick switcher, global text search, and outline** — move around large vaults and long documents faster
-- **Standalone diagram files** — open `.mmd` / `.mermaid` or `.puml` / `.plantuml` files in side-by-side editor + preview, `.excalidraw` files in direct preview mode, and `.drawio` files in an embedded diagrams.net editor/viewer
+- **Standalone diagram files** — open `.mmd` / `.mermaid` or `.puml` / `.plantuml` files in side-by-side editor + preview, `.excalidraw` files in direct preview mode, `.drawio` files in an embedded diagrams.net editor/viewer, and `.pdf` files in a readonly browser preview
 
 Comment threads are source-anchored and currently supported for markdown, Mermaid, and PlantUML text files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or the preview bubble. Excalidraw and draw.io files are currently excluded from comments.
 
@@ -197,7 +197,7 @@ Draw.io collaboration is intentionally conservative in this release: one connect
 
 Markdown video embeds are opt-in and use standard image syntax such as `![Video](https://www.youtube.com/watch?v=...)` or `![Video](https://cdn.example.com/demo.webm)`. The preview currently supports public YouTube URLs plus direct public `https` video files ending in `.mp4`, `.webm`, or `.ogg`. The editor toolbar also includes a `Video` action that inserts the same Markdown syntax for you.
 
-Your filesystem is the source of truth. CollabMD reads files from disk, uses Yjs for realtime collaboration, and continuously writes plain text back to disk as you type. External changes from tools like Obsidian, direct file writes, or git-driven file updates are watched and reconciled back into live rooms and the explorer. The file explorer can import multiple supported vault files at once; uploads preserve their names and bytes, reject duplicates, and do not currently include PDF files.
+Your filesystem is the source of truth. CollabMD reads files from disk, uses Yjs for realtime collaboration, and continuously writes plain text back to disk as you type. External changes from tools like Obsidian, direct file writes, or git-driven file updates are watched and reconciled back into live rooms and the explorer. The file explorer can import multiple supported vault files at once; uploads preserve their names and bytes, reject duplicates, and include PDF files for readonly preview.
 
 ## Usage
 

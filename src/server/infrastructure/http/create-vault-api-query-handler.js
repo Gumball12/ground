@@ -3,7 +3,7 @@ import { readdir } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { join } from 'node:path';
 
-import { isImageAttachmentFilePath } from '../../../domain/file-kind.js';
+import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { isIgnoredVaultEntry } from '../persistence/path-utils.js';
 import { parseJsonBody } from './request-body.js';
 import {
@@ -65,10 +65,10 @@ function createAttachmentHeaders(attachment) {
   return headers;
 }
 
-function createDownloadHeaders(fileName, contentType) {
+function createDownloadHeaders(fileName, contentType, { inline = false } = {}) {
   return {
     'Cache-Control': 'no-store',
-    'Content-Disposition': `attachment; filename="${createSafeAsciiFilename(fileName)}"; filename*=UTF-8''${encodeContentDispositionFilename(fileName)}`,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${createSafeAsciiFilename(fileName)}"; filename*=UTF-8''${encodeContentDispositionFilename(fileName)}`,
     'Content-Type': contentType,
     'X-Content-Type-Options': 'nosniff',
   };
@@ -334,6 +334,7 @@ async function handleFileDownload(req, res, requestUrl, { config, vaultFileStore
       headers: createDownloadHeaders(
         basename(String(download.path ?? 'download')),
         download.mimeType || 'application/octet-stream',
+        { inline: getVaultFileKind(download.path) === 'pdf' },
       ),
       statusCode: 200,
       stream: download.stream,

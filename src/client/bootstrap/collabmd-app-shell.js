@@ -1,3 +1,4 @@
+import { PdfPreviewController } from '../application/pdf-preview-controller.js';
 import { PreviewRenderer } from '../application/preview-renderer.js';
 import { ensureQuickSwitcherInstance, toggleQuickSwitcherInstance } from '../application/quick-switcher-loader.js';
 import { WorkspaceRouteController } from '../application/workspace-route-controller.js';
@@ -288,6 +289,9 @@ export class CollabMdAppShell {
       previewElement: this.elements.previewContent,
       scrollEditorToLine: (lineNumber, viewportRatio) => this.session?.scrollToLine(lineNumber, viewportRatio),
     });
+    this.pdfPreview = new PdfPreviewController({
+      previewContainer: this.elements.previewContainer,
+    });
     this.backlinksPanel = new BacklinksPanel({
       headerPanelElement: this.elements.backlinksHeaderPanel,
       inlinePanelElement: this.elements.backlinksInlinePanel,
@@ -363,10 +367,12 @@ export class CollabMdAppShell {
       isDrawioFile: (filePath) => this.isDrawioFile(filePath),
       isExcalidrawFile: (filePath) => this.isExcalidrawFile(filePath),
       isImageFile: (filePath) => this.isImageFile(filePath),
+      isPdfFile: (filePath) => this.isPdfFile(filePath),
       isMermaidFile: (filePath) => this.isMermaidFile(filePath),
       isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
       layoutController: this.layoutController,
       outlineController: this.outlineController,
+      pdfPreview: this.pdfPreview,
       previewRenderer: this.previewRenderer,
       schedulePreviewLayoutSync: (options) => this.schedulePreviewLayoutSync(options),
       scrollSyncController: this.scrollSyncController,
@@ -457,6 +463,7 @@ export class CollabMdAppShell {
       isDrawioFile: (filePath) => this.isDrawioFile(filePath),
       isExcalidrawFile: (filePath) => this.isExcalidrawFile(filePath),
       isImageFile: (filePath) => this.isImageFile(filePath),
+      isPdfFile: (filePath) => this.isPdfFile(filePath),
       isMermaidFile: (filePath) => this.isMermaidFile(filePath),
       isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
       isTabActive: () => this.isTabActive,
@@ -517,6 +524,7 @@ export class CollabMdAppShell {
       onRenderBasePreview: (filePath) => this.renderBaseFilePreview(filePath),
       onRenderExcalidrawPreview: (filePath) => this.workspacePreviewController.renderExcalidrawFilePreview(filePath),
       onRenderImagePreview: (filePath) => this.workspacePreviewController.renderImageFilePreview(filePath),
+      onRenderPdfPreview: (filePath) => this.workspacePreviewController.renderPdfFilePreview(filePath),
       onSyncWrapToggle: () => this.syncWrapToggle(),
       onUpdateActiveFile: (filePath) => this.fileExplorer.setActiveFile(filePath),
       onUpdateCurrentFile: (filePath) => {

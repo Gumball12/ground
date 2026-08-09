@@ -25,10 +25,14 @@ test('client build emits hashed entry assets and the main bundle references the 
   const workerReference = workerBundle
     .map(({ content }) => content.match(/\bpreview-render-worker-[A-Za-z0-9_-]+\.js\b/u)?.[0] || null)
     .find(Boolean);
+  const pdfWorkerReference = assetFileNames
+    .find((fileName) => /^pdf\.worker-[A-Za-z0-9_-]+\.mjs$/u.test(fileName));
 
   assert.ok(workerReference, 'expected built JS assets to reference hashed preview worker');
+  assert.ok(pdfWorkerReference, 'expected build to emit the PDF.js worker');
   await access(resolve(clientDistDir, mainAssetPath), fsConstants.R_OK);
   await access(resolve(clientDistDir, 'assets', workerReference), fsConstants.R_OK);
+  await access(resolve(clientDistDir, 'assets', pdfWorkerReference), fsConstants.R_OK);
   await access(resolve(clientDistDir, mainStylesheetPath), fsConstants.R_OK);
   assert.match(indexHtml, /src="\.\/app-config\.js"/);
   assert.doesNotMatch(indexHtml, /assets\/vendor\/highlight\/github-dark\.min\.css/);
