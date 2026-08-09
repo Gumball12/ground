@@ -1,5 +1,11 @@
 /* ===== FOUNDATION / THEMES ===== */
 
+:root {
+  --pdf-highlight-bg: rgb(180 0 170 / 25%);
+  --pdf-highlight-selected-bg: rgb(0 100 0 / 25%);
+  --pdf-selection-bg: rgb(0 90 255 / 25%);
+}
+
 :root,
 [data-theme="light"] {
   --color-bg: #f6f8fa;

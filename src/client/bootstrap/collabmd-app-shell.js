@@ -290,6 +290,7 @@ export class CollabMdAppShell {
       scrollEditorToLine: (lineNumber, viewportRatio) => this.session?.scrollToLine(lineNumber, viewportRatio),
     });
     this.pdfPreview = new PdfPreviewController({
+      outlineController: this.outlineController,
       previewContainer: this.elements.previewContainer,
     });
     this.backlinksPanel = new BacklinksPanel({

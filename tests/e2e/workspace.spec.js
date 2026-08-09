@@ -17,13 +17,19 @@ import {
   stubPlantUmlRender,
 } from './helpers/app-fixture.js';
 
-function createPdfFixture({ pageCount = 1, text = 'PDF.js preview' } = {}) {
+function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = [] } = {}) {
   const contentStream = `BT /F1 18 Tf 48 180 Td (${text}) Tj ET`;
-  const pageRefs = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`).join(' ');
+  const pageReferences = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`);
+  const pageRefs = pageReferences.join(' ');
   const contentStart = pageCount + 3;
   const fontReference = contentStart + pageCount;
+  const outlineRootReference = outline.length > 0 ? (2 * pageCount) + 4 : null;
+  const outlineItemReferences = outline.map((_, index) => outlineRootReference + index + 1);
+  const catalog = outlineRootReference
+    ? `<< /Type /Catalog /Pages 2 0 R /Outlines ${outlineRootReference} 0 R /PageMode /UseOutlines >>`
+    : '<< /Type /Catalog /Pages 2 0 R >>';
   const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
+    catalog,
     `<< /Type /Pages /Kids [${pageRefs}] /Count ${pageCount} >>`,
     ...Array.from({ length: pageCount }, (_, index) => (
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >> >>`
@@ -33,6 +39,17 @@ function createPdfFixture({ pageCount = 1, text = 'PDF.js preview' } = {}) {
     )),
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
   ];
+  if (outlineRootReference) {
+    objects.push(
+      `<< /Type /Outlines /First ${outlineItemReferences[0]} 0 R /Last ${outlineItemReferences.at(-1)} 0 R /Count ${outline.length} >>`,
+      ...outline.map((entry, index) => {
+        const previous = index > 0 ? ` /Prev ${outlineItemReferences[index - 1]} 0 R` : '';
+        const next = index < outlineItemReferences.length - 1 ? ` /Next ${outlineItemReferences[index + 1]} 0 R` : '';
+        const pageReference = pageReferences[Math.max(0, Math.min(pageCount - 1, entry.page - 1))];
+        return `<< /Title (${entry.title}) /Parent ${outlineRootReference} 0 R /Dest [${pageReference} /Fit]${previous}${next} >>`;
+      }),
+    );
+  }
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -500,7 +517,13 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
       name: 'uploaded-image.png',
     },
     {
-      buffer: createPdfFixture({ pageCount: 5 }),
+      buffer: createPdfFixture({
+        pageCount: 5,
+        outline: [
+          { title: 'Introduction', page: 1 },
+          { title: 'Chapter 2', page: 3 },
+        ],
+      }),
       mimeType: 'application/pdf',
       name: 'uploaded-guide.pdf',
     },
@@ -519,6 +542,43 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   await expect(pdfPreview).toBeVisible();
   await expect(page.locator('#previewContent .pdf-file-preview-status')).toHaveText('5 pages');
   await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  await expect(page.locator('#outlineToggle')).toBeVisible();
+  await page.locator('#outlineToggle').click();
+  await expect(page.locator('#outlinePanel')).toBeVisible();
+  await expect(page.locator('#outlineNav .outline-item')).toHaveCount(2);
+  await expect(page.locator('#outlineNav')).toContainText('Introduction');
+  await expect(page.locator('#outlineNav')).toContainText('Chapter 2');
+  const initialPdfScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
+  await page.locator('#outlineNav .outline-item', { hasText: 'Chapter 2' }).click();
+  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeGreaterThan(initialPdfScrollTop);
+  await expect(page.locator('#previewContent .pdf-page[data-page-number="3"] .textLayer')).toBeVisible();
+  await expect(page.locator('#previewContent .pdf-file-preview-toolbar')).toHaveCSS('position', 'sticky');
+  await page.locator('#previewContainer').evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const firstPageTextLayer = page.locator('#previewContent .pdf-page[data-page-number="1"] .textLayer');
+  await expect(firstPageTextLayer).toBeVisible();
+  await expect(firstPageTextLayer).toContainText('PDF.js preview');
+  const selectedPdfText = await firstPageTextLayer.evaluate((textLayer) => {
+    const textSpan = Array.from(textLayer.querySelectorAll('span')).find((span) => span.textContent.includes('PDF.js preview'));
+    if (!textSpan) {
+      return '';
+    }
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(textSpan);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return selection?.toString() || '';
+  });
+  expect(selectedPdfText).toContain('PDF.js preview');
+  const pdfFindInput = page.locator('#previewContent .pdf-file-preview-find-input');
+  await pdfFindInput.fill('PDF.js preview');
+  await expect(page.locator('#previewContent .pdf-file-preview-find-status')).toHaveText('1 of 5');
+  await expect(firstPageTextLayer.locator('.highlight')).toBeVisible();
+  await page.locator('#previewContent .pdf-file-preview-find-button[aria-label="Next match"]').click();
+  await expect(page.locator('#previewContent .pdf-file-preview-find-status')).toHaveText('2 of 5');
   await page.locator('#previewContent .pdf-file-preview-pages').dispatchEvent('wheel', { ctrlKey: true, deltaY: -10 });
   await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('110%');
   expect(await page.locator('#previewContent .pdf-file-preview-pages').evaluate((element) => getComputedStyle(element).transform)).not.toBe('none');

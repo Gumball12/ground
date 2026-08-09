@@ -14,17 +14,22 @@ const PDF_ZOOM = Object.freeze({
   step: 0.25,
   wheelSensitivity: 0.01,
 });
-
 function isRenderingCancellation(error) {
-  return error?.name === 'RenderingCancelledException';
+  return error?.name === 'RenderingCancelledException' || error?.name === 'AbortException';
 }
 
 export class PdfPreviewController {
-  constructor({ previewContainer }) {
+  constructor({ previewContainer, outlineController = null }) {
     this.previewContainer = previewContainer;
+    this.outlineController = outlineController;
     this.pdfJsPromise = null;
+    this.pdfJsApi = null;
+    this.pdfViewerApi = null;
     this.loadingTask = null;
     this.pdfDocument = null;
+    this.findEventBus = null;
+    this.findController = null;
+    this.pdfLinkService = null;
     this.intersectionObserver = null;
     this.resizeObserver = null;
     this.pageStates = new Map();
@@ -33,6 +38,9 @@ export class PdfPreviewController {
     this.shell = null;
     this.zoom = PDF_ZOOM.default;
     this.zoomControls = null;
+    this.searchControls = null;
+    this.findState = null;
+    this.currentPageNumber = 1;
     this.zoomRenderTimerId = 0;
     this.pageFitWidth = DEFAULT_PAGE_WIDTH;
     this.pageLayoutZoom = PDF_ZOOM.default;
@@ -42,12 +50,14 @@ export class PdfPreviewController {
 
   async loadPdfJs() {
     if (!this.pdfJsPromise) {
-      this.pdfJsPromise = import('pdfjs-dist').then((pdfjs) => {
+      this.pdfJsPromise = import('pdfjs-dist').then(async (pdfjs) => {
         pdfjs.GlobalWorkerOptions.workerSrc = new URL(
           'pdfjs-dist/build/pdf.worker.mjs',
           import.meta.url,
         ).toString();
-        return pdfjs;
+        globalThis.pdfjsLib = pdfjs;
+        const pdfViewer = await import('pdfjs-dist/web/pdf_viewer.mjs');
+        return { pdfjs, pdfViewer };
       });
     }
 
@@ -60,18 +70,22 @@ export class PdfPreviewController {
     this.pageLayoutZoom = PDF_ZOOM.default;
     this.pinchStartDistance = 0;
     this.pinchStartZoom = PDF_ZOOM.default;
+    this.currentPageNumber = 1;
+    this.outlineController?.clearPdfOutline?.();
     const url = resolveApiUrl(`/download/file?path=${encodeURIComponent(filePath)}`);
     const shell = this.createShell({ displayName, filePath, url });
     renderHost.replaceChildren(shell);
     this.shell = shell;
 
     try {
-      const { getDocument } = await this.loadPdfJs();
+      const { pdfjs, pdfViewer } = await this.loadPdfJs();
+      this.pdfJsApi = pdfjs;
+      this.pdfViewerApi = pdfViewer;
       if (token !== this.renderToken) {
         return;
       }
 
-      this.loadingTask = getDocument({ url });
+      this.loadingTask = pdfjs.getDocument({ url });
       const pdfDocument = await this.loadingTask.promise;
       if (token !== this.renderToken) {
         await pdfDocument.destroy();
@@ -79,9 +93,14 @@ export class PdfPreviewController {
       }
 
       this.pdfDocument = pdfDocument;
+      this.initializeFindController(pdfDocument, pdfViewer);
+      void this.loadPdfOutline(pdfDocument, token);
       this.buildPageStates(pdfDocument.numPages, shell.querySelector('.pdf-file-preview-pages'));
       this.setStatus(`${pdfDocument.numPages} ${pdfDocument.numPages === 1 ? 'page' : 'pages'}`);
       this.observePages(token);
+      if (this.searchControls?.input.value.trim()) {
+        this.dispatchFind();
+      }
     } catch (error) {
       if (token === this.renderToken && !isRenderingCancellation(error)) {
         this.showError(shell);
@@ -91,6 +110,208 @@ export class PdfPreviewController {
         this.loadingTask = null;
       }
     }
+  }
+
+  async loadPdfOutline(pdfDocument, token) {
+    try {
+      const outline = typeof pdfDocument.getOutline === 'function'
+        ? await pdfDocument.getOutline()
+        : null;
+      if (token !== this.renderToken || this.pdfDocument !== pdfDocument) {
+        return;
+      }
+
+      if (!Array.isArray(outline) || outline.length === 0) {
+        this.outlineController?.clearPdfOutline?.();
+        return;
+      }
+
+      this.outlineController?.setPdfOutline?.(
+        outline,
+        (item) => this.navigateToPdfOutline(item, pdfDocument, token),
+      );
+    } catch {
+      if (token === this.renderToken && this.pdfDocument === pdfDocument) {
+        this.outlineController?.clearPdfOutline?.();
+      }
+    }
+  }
+
+  async navigateToPdfOutline(item, pdfDocument, token) {
+    if (token !== this.renderToken || this.pdfDocument !== pdfDocument) {
+      return;
+    }
+
+    const url = typeof item?.url === 'string' ? item.url.trim() : '';
+    if (url) {
+      try {
+        const parsedUrl = new URL(url, window.location.href);
+        if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+          window.open(parsedUrl.href, '_blank', 'noopener,noreferrer');
+        }
+      } catch {
+        // Ignore malformed PDF outline URLs.
+      }
+      return;
+    }
+
+    const linkService = this.pdfLinkService;
+    if (!linkService || linkService.pdfDocument !== pdfDocument || item?.dest == null) {
+      return;
+    }
+
+    try {
+      await linkService.goToDestination(item.dest);
+    } catch {
+      // Ignore outline entries with invalid destinations.
+    }
+  }
+
+  initializeFindController(pdfDocument, pdfViewer) {
+    const previewController = this;
+    const eventBus = new pdfViewer.EventBus();
+    const setPage = (value) => {
+      if (previewController.pdfDocument !== pdfDocument) {
+        return;
+      }
+
+      previewController.currentPageNumber = clamp(
+        Number(value) || 1,
+        1,
+        pdfDocument.numPages,
+      );
+      previewController.scrollToPage(previewController.currentPageNumber);
+    };
+    const pageViewer = {
+      get currentPageNumber() {
+        return previewController.currentPageNumber;
+      },
+      set currentPageNumber(value) {
+        setPage(value);
+      },
+      scrollPageIntoView({ pageNumber }) {
+        setPage(pageNumber);
+      },
+    };
+    const linkService = new pdfViewer.PDFLinkService({ eventBus });
+    linkService.setDocument(pdfDocument);
+    linkService.setViewer(pageViewer);
+    const findController = new pdfViewer.PDFFindController({
+      eventBus,
+      linkService,
+      delay: 0,
+      updateMatchesCountOnProgress: true,
+    });
+
+    this.findState = pdfViewer.FindState.FOUND;
+    findController.onIsPageVisible = (pageNumber) => this.visiblePages.has(pageNumber);
+    eventBus.on('updatefindmatchescount', ({ matchesCount }) => (
+      this.updateFindStatus(matchesCount, true)
+    ));
+    eventBus.on('updatefindcontrolstate', ({ state, matchesCount }) => {
+      this.findState = state;
+      this.updateFindStatus(matchesCount);
+    });
+
+    this.findEventBus = eventBus;
+    this.findController = findController;
+    this.pdfLinkService = linkService;
+    findController.setDocument(pdfDocument);
+    this.updateFindControls();
+  }
+
+  scrollToPage(pageNumber) {
+    const pageShell = this.pageStates.get(pageNumber)?.pageShell;
+    pageShell?.scrollIntoView?.({
+      behavior: 'auto',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+
+  setFindStatus(text) {
+    if (this.searchControls?.status) {
+      this.searchControls.status.textContent = text;
+    }
+  }
+
+  updateFindStatus(matchesCount, showProgress = false) {
+    if (!this.searchControls?.input.value.trim()) {
+      this.setFindStatus('');
+      return;
+    }
+
+    const current = Number(matchesCount?.current) || 0;
+    const total = Number(matchesCount?.total) || 0;
+    const pending = this.findState === this.pdfViewerApi?.FindState.PENDING;
+    const status = pending && (!showProgress || total === 0)
+      ? 'Searching…'
+      : total > 0
+        ? `${current} of ${total}`
+        : 'No matches';
+    this.setFindStatus(status);
+  }
+
+  updateFindControls() {
+    const controls = this.searchControls;
+    if (!controls) {
+      return;
+    }
+
+    const disabled = !controls.input.value.trim() || !this.findController;
+    controls.previousButton.disabled = disabled;
+    controls.nextButton.disabled = disabled;
+  }
+
+  dispatchFind() {
+    const query = this.searchControls?.input.value.trim() || '';
+    if (!query) {
+      this.findState = this.pdfViewerApi?.FindState.FOUND ?? null;
+      this.findEventBus?.dispatch('findbarclose', { source: this });
+      this.setFindStatus('');
+      this.updateFindControls();
+      return;
+    }
+
+    if (!this.findEventBus || !this.findController) {
+      this.setFindStatus('Loading…');
+      this.updateFindControls();
+      return;
+    }
+
+    this.findState = this.pdfViewerApi?.FindState.PENDING ?? null;
+    this.setFindStatus('Searching…');
+    this.updateFindControls();
+    this.findEventBus.dispatch('find', {
+      source: this,
+      type: '',
+      query,
+      phraseSearch: true,
+      caseSensitive: false,
+      entireWord: false,
+      highlightAll: true,
+      findPrevious: false,
+      matchDiacritics: false,
+    });
+  }
+
+  dispatchFindAgain(findPrevious = false) {
+    const query = this.searchControls?.input.value.trim() || '';
+    if (!query || !this.findEventBus || !this.findController) {
+      return;
+    }
+
+    this.findEventBus.dispatch('find', {
+      source: this,
+      type: 'again',
+      query,
+      phraseSearch: true,
+      caseSensitive: false,
+      entireWord: false,
+      highlightAll: true,
+      findPrevious,
+      matchDiacritics: false,
+    });
   }
 
   createShell({ displayName, filePath, url }) {
@@ -141,9 +362,63 @@ export class PdfPreviewController {
     download.textContent = 'Download';
     download.setAttribute('aria-label', `Download ${displayName}`);
 
+    const findControls = document.createElement('div');
+    findControls.className = 'pdf-file-preview-find-controls';
+
+    const findInput = document.createElement('input');
+    findInput.type = 'search';
+    findInput.className = 'pdf-file-preview-find-input';
+    findInput.placeholder = 'Find in PDF';
+    findInput.setAttribute('aria-label', 'Find in PDF');
+    findInput.addEventListener('input', () => this.dispatchFind());
+    findInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        findInput.value = '';
+        this.dispatchFind();
+        findInput.blur();
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.dispatchFindAgain(event.shiftKey);
+      }
+    });
+
+    const findStatus = document.createElement('span');
+    findStatus.className = 'pdf-file-preview-find-status';
+    findStatus.setAttribute('role', 'status');
+    findStatus.setAttribute('aria-live', 'polite');
+
+    const previousButton = document.createElement('button');
+    previousButton.type = 'button';
+    previousButton.className = 'pdf-file-preview-find-button ui-preview-action';
+    previousButton.setAttribute('aria-label', 'Previous match');
+    previousButton.title = 'Previous match';
+    previousButton.textContent = '‹';
+    previousButton.addEventListener('click', () => this.dispatchFindAgain(true));
+
+    const nextButton = document.createElement('button');
+    nextButton.type = 'button';
+    nextButton.className = 'pdf-file-preview-find-button ui-preview-action';
+    nextButton.setAttribute('aria-label', 'Next match');
+    nextButton.title = 'Next match';
+    nextButton.textContent = '›';
+    nextButton.addEventListener('click', () => this.dispatchFindAgain());
+
+    findControls.append(findInput, findStatus, previousButton, nextButton);
+    this.searchControls = {
+      input: findInput,
+      nextButton,
+      previousButton,
+      status: findStatus,
+    };
+    this.updateFindControls();
+
     const toolbarStart = document.createElement('div');
     toolbarStart.className = 'pdf-file-preview-toolbar-start';
-    toolbarStart.append(status, zoomControls);
+    toolbarStart.append(status, zoomControls, findControls);
     toolbar.append(toolbarStart, download);
 
     const pages = document.createElement('div');
@@ -179,6 +454,7 @@ export class PdfPreviewController {
         renderPromise: null,
         renderTask: null,
         renderedWidth: 0,
+        pageView: null,
       });
     }
 
@@ -207,7 +483,7 @@ export class PdfPreviewController {
 
     if (typeof ResizeObserver === 'function') {
       this.resizeObserver = new ResizeObserver(() => {
-        this.commitPageZoom();
+        this.commitPageZoom({ preserveLiveZoom: Boolean(this.zoomRenderTimerId) });
         this.scheduleVisiblePageRender();
       });
       this.resizeObserver.observe(pagesElement);
@@ -223,6 +499,7 @@ export class PdfPreviewController {
       const pageNumber = Number(entry.target.dataset.pageNumber);
       if (entry.isIntersecting) {
         this.visiblePages.add(pageNumber);
+        this.currentPageNumber = Math.min(...this.visiblePages);
         void this.renderPage(pageNumber, token);
         return;
       }
@@ -230,6 +507,21 @@ export class PdfPreviewController {
       this.visiblePages.delete(pageNumber);
       this.releasePage(pageNumber);
     });
+  }
+
+  disposePageView(state, pageView = state.pageView) {
+    if (!pageView) {
+      return;
+    }
+
+    pageView.reset?.();
+    pageView.div?.remove();
+    if (state.pageView === pageView) {
+      state.pageView = null;
+      state.canvas = null;
+      state.renderTask = null;
+      state.renderedWidth = 0;
+    }
   }
 
   async renderPage(pageNumber, token) {
@@ -249,7 +541,8 @@ export class PdfPreviewController {
 
     state.needsRender = false;
     state.renderPromise = (async () => {
-      let renderTask = null;
+      let pageView = null;
+      let committed = false;
       try {
         const page = state.page ?? await this.pdfDocument.getPage(pageNumber);
         if (token !== this.renderToken) {
@@ -261,47 +554,68 @@ export class PdfPreviewController {
         state.pageShell.style.aspectRatio = `${baseViewport.width} / ${baseViewport.height}`;
         const scale = width / baseViewport.width;
         const viewport = page.getViewport({ scale });
-        const outputScale = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
-        const canvas = document.createElement('canvas');
-        canvas.className = 'pdf-page-canvas';
-        canvas.setAttribute('aria-label', `Rendered page ${pageNumber}`);
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = '100%';
-        canvas.style.height = 'auto';
+        const userUnit = viewport.userUnit || 1;
+        state.pageShell.style.setProperty('--scale-factor', String(viewport.scale));
+        state.pageShell.style.setProperty('--user-unit', String(userUnit));
+        state.pageShell.style.setProperty('--total-scale-factor', String(viewport.scale * userUnit));
+        state.pageShell.style.setProperty('--scale-round-x', '1px');
+        state.pageShell.style.setProperty('--scale-round-y', '1px');
 
-        const context = canvas.getContext('2d', { alpha: false });
-        renderTask = page.render({
-          canvasContext: context,
-          transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0],
-          viewport,
+        this.disposePageView(state);
+        pageView = new this.pdfViewerApi.PDFPageView({
+          annotationMode: this.pdfJsApi.AnnotationMode.DISABLE,
+          container: state.pageShell,
+          defaultViewport: viewport,
+          enableAutoLinking: false,
+          eventBus: this.findEventBus,
+          id: pageNumber,
+          layerProperties: {
+            findController: this.findController,
+            linkService: this.pdfLinkService,
+          },
+          maxCanvasPixels: Math.ceil(
+            viewport.width * viewport.height * MAX_DEVICE_PIXEL_RATIO ** 2,
+          ),
+          scale: viewport.scale / this.pdfJsApi.PixelsPerInch.PDF_TO_CSS_UNITS,
+          textLayerMode: 1,
         });
-        state.renderTask = renderTask;
-        await renderTask.promise;
+        pageView.setPdfPage(page);
+        state.pageView = pageView;
+        const drawPromise = pageView.draw();
+        state.renderTask = pageView.renderTask;
+        await drawPromise;
+
+        if (pageView.canvas) {
+          pageView.canvas.className = 'pdf-page-canvas';
+          pageView.canvas.setAttribute('aria-label', `Rendered page ${pageNumber}`);
+        }
 
         const isCurrentRender = token === this.renderToken
           && this.visiblePages.has(pageNumber)
+          && state.pageView === pageView
+          && pageView.canvas
           && Math.abs(this.getPageWidth(state.pageShell) - width) < 1;
         if (!isCurrentRender) {
+          this.disposePageView(state, pageView);
           if (token === this.renderToken && this.visiblePages.has(pageNumber)) {
             this.scheduleVisiblePageRender();
           }
           return;
         }
 
-        state.canvas?.remove();
-        state.canvas = canvas;
+        state.canvas = pageView.canvas;
         state.renderedWidth = width;
-        state.pageShell.replaceChildren(canvas);
+        committed = true;
       } catch (error) {
+        if (pageView && !committed) {
+          this.disposePageView(state, pageView);
+        }
         if (!isRenderingCancellation(error) && token === this.renderToken) {
-          state.canvas?.remove();
-          state.canvas = null;
-          state.renderedWidth = 0;
+          state.pageShell.replaceChildren();
           this.setStatus(`Unable to render page ${pageNumber}`);
         }
       } finally {
-        if (state.renderTask === renderTask) {
+        if (state.pageView === pageView) {
           state.renderTask = null;
         }
       }
@@ -394,7 +708,7 @@ export class PdfPreviewController {
       }
 
       state.needsRender = false;
-      state.renderTask?.cancel();
+      this.disposePageView(state);
     });
   }
 
@@ -460,7 +774,7 @@ export class PdfPreviewController {
     pagesElement.style.willChange = 'transform';
   }
 
-  commitPageZoom({ measure = true } = {}) {
+  commitPageZoom({ measure = true, preserveLiveZoom = false } = {}) {
     const pagesElement = this.shell?.querySelector('.pdf-file-preview-pages');
     if (!pagesElement) {
       return;
@@ -477,10 +791,15 @@ export class PdfPreviewController {
       );
     }
 
+    const layoutZoom = preserveLiveZoom ? this.pageLayoutZoom : this.zoom;
     pagesElement.style.setProperty(
       '--pdf-page-width',
-      `${Math.max(1, this.pageFitWidth * this.zoom)}px`,
+      `${Math.max(1, this.pageFitWidth * layoutZoom)}px`,
     );
+    if (preserveLiveZoom) {
+      return;
+    }
+
     this.pageLayoutZoom = this.zoom;
     pagesElement.style.removeProperty('transform');
     pagesElement.style.removeProperty('transform-origin');
@@ -501,11 +820,7 @@ export class PdfPreviewController {
     }
 
     state.needsRender = true;
-    state.renderTask?.cancel();
-    state.renderTask = null;
-    state.canvas?.remove();
-    state.canvas = null;
-    state.renderedWidth = 0;
+    this.disposePageView(state);
     state.pageShell.replaceChildren();
   }
 
@@ -540,19 +855,27 @@ export class PdfPreviewController {
     this.resizeObserver?.disconnect();
     this.intersectionObserver = null;
     this.resizeObserver = null;
-    this.pageStates.forEach((state) => {
-      state.renderTask?.cancel();
-      state.renderTask = null;
-    });
+    this.pageStates.forEach((state) => this.disposePageView(state));
+    this.findEventBus?.dispatch('findbarclose', { source: this });
+    this.findController?.setDocument(null);
+    this.outlineController?.clearPdfOutline?.();
     const loadingTaskDestroy = this.loadingTask?.destroy?.();
     loadingTaskDestroy?.catch?.(() => {});
     const pdfDocumentDestroy = this.pdfDocument?.destroy?.();
     pdfDocumentDestroy?.catch?.(() => {});
     this.loadingTask = null;
     this.pdfDocument = null;
+    this.findEventBus = null;
+    this.findController = null;
+    this.pdfLinkService = null;
+    this.pdfJsApi = null;
+    this.pdfViewerApi = null;
     this.pageStates.clear();
     this.visiblePages.clear();
     this.zoomControls = null;
+    this.searchControls = null;
+    this.findState = null;
+    this.currentPageNumber = 1;
     this.zoom = PDF_ZOOM.default;
     this.pageFitWidth = DEFAULT_PAGE_WIDTH;
     this.pageLayoutZoom = PDF_ZOOM.default;
