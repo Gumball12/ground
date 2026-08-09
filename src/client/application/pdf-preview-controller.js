@@ -38,7 +38,9 @@ export class PdfPreviewController {
     this.shell = null;
     this.zoom = PDF_ZOOM.default;
     this.zoomControls = null;
+    this.navigationControls = null;
     this.searchControls = null;
+    this.pdfNavigationStack = [];
     this.findState = null;
     this.currentPageNumber = 1;
     this.zoomRenderTimerId = 0;
@@ -71,6 +73,7 @@ export class PdfPreviewController {
     this.pinchStartDistance = 0;
     this.pinchStartZoom = PDF_ZOOM.default;
     this.currentPageNumber = 1;
+    this.pdfNavigationStack = [];
     this.outlineController?.clearPdfOutline?.();
     const url = resolveApiUrl(`/download/file?path=${encodeURIComponent(filePath)}`);
     const shell = this.createShell({ displayName, filePath, url });
@@ -189,7 +192,10 @@ export class PdfPreviewController {
       set currentPageNumber(value) {
         setPage(value);
       },
-      scrollPageIntoView({ pageNumber }) {
+      scrollPageIntoView({ pageNumber, destArray }) {
+        if (destArray) {
+          previewController.recordPdfNavigation(previewController.currentPageNumber, pageNumber);
+        }
         setPage(pageNumber);
       },
     };
@@ -227,6 +233,35 @@ export class PdfPreviewController {
       block: 'center',
       inline: 'nearest',
     });
+  }
+
+  recordPdfNavigation(fromPageNumber, toPageNumber) {
+    if (!Number.isInteger(fromPageNumber)
+      || !Number.isInteger(toPageNumber)
+      || fromPageNumber === toPageNumber) {
+      return;
+    }
+
+    this.pdfNavigationStack.push(fromPageNumber);
+    this.updateNavigationControls();
+  }
+
+  goBack() {
+    const pageNumber = this.pdfNavigationStack.pop();
+    if (!Number.isInteger(pageNumber)) {
+      this.updateNavigationControls();
+      return;
+    }
+
+    this.currentPageNumber = pageNumber;
+    this.scrollToPage(pageNumber);
+    this.updateNavigationControls();
+  }
+
+  updateNavigationControls() {
+    if (this.navigationControls?.backButton) {
+      this.navigationControls.backButton.disabled = this.pdfNavigationStack.length === 0;
+    }
   }
 
   setFindStatus(text) {
@@ -355,6 +390,16 @@ export class PdfPreviewController {
     this.zoomControls = { zoomInButton, zoomLabel, zoomOutButton };
     this.updateZoomControls();
 
+    const backButton = document.createElement('button');
+    backButton.type = 'button';
+    backButton.className = 'pdf-file-preview-back-button ui-preview-action';
+    backButton.setAttribute('aria-label', 'Back to previous page');
+    backButton.title = 'Back to previous page';
+    backButton.textContent = '←';
+    backButton.addEventListener('click', () => this.goBack());
+    this.navigationControls = { backButton };
+    this.updateNavigationControls();
+
     const download = document.createElement('a');
     download.className = 'pdf-file-preview-download';
     download.href = url;
@@ -418,7 +463,7 @@ export class PdfPreviewController {
 
     const toolbarStart = document.createElement('div');
     toolbarStart.className = 'pdf-file-preview-toolbar-start';
-    toolbarStart.append(status, zoomControls, findControls);
+    toolbarStart.append(backButton, status, zoomControls, findControls);
     toolbar.append(toolbarStart, download);
 
     const pages = document.createElement('div');
@@ -563,7 +608,7 @@ export class PdfPreviewController {
 
         this.disposePageView(state);
         pageView = new this.pdfViewerApi.PDFPageView({
-          annotationMode: this.pdfJsApi.AnnotationMode.DISABLE,
+          annotationMode: this.pdfJsApi.AnnotationMode.ENABLE,
           container: state.pageShell,
           defaultViewport: viewport,
           enableAutoLinking: false,
@@ -873,7 +918,9 @@ export class PdfPreviewController {
     this.pageStates.clear();
     this.visiblePages.clear();
     this.zoomControls = null;
+    this.navigationControls = null;
     this.searchControls = null;
+    this.pdfNavigationStack = [];
     this.findState = null;
     this.currentPageNumber = 1;
     this.zoom = PDF_ZOOM.default;

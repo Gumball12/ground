@@ -17,7 +17,7 @@ import {
   stubPlantUmlRender,
 } from './helpers/app-fixture.js';
 
-function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = [] } = {}) {
+function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = [], internalLink = null } = {}) {
   const contentStream = `BT /F1 18 Tf 48 180 Td (${text}) Tj ET`;
   const pageReferences = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`);
   const pageRefs = pageReferences.join(' ');
@@ -25,15 +25,25 @@ function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = []
   const fontReference = contentStart + pageCount;
   const outlineRootReference = outline.length > 0 ? (2 * pageCount) + 4 : null;
   const outlineItemReferences = outline.map((_, index) => outlineRootReference + index + 1);
+  const linkReference = internalLink
+    ? (outlineRootReference ? outlineRootReference + outline.length + 1 : (2 * pageCount) + 4)
+    : null;
+  const linkSourcePage = internalLink
+    ? Math.max(0, Math.min(pageCount - 1, Number(internalLink.fromPage) - 1 || 0))
+    : -1;
+  const linkTargetPage = internalLink
+    ? Math.max(0, Math.min(pageCount - 1, Number(internalLink.toPage) - 1 || 0))
+    : -1;
   const catalog = outlineRootReference
     ? `<< /Type /Catalog /Pages 2 0 R /Outlines ${outlineRootReference} 0 R /PageMode /UseOutlines >>`
     : '<< /Type /Catalog /Pages 2 0 R >>';
   const objects = [
     catalog,
     `<< /Type /Pages /Kids [${pageRefs}] /Count ${pageCount} >>`,
-    ...Array.from({ length: pageCount }, (_, index) => (
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >> >>`
-    )),
+    ...Array.from({ length: pageCount }, (_, index) => {
+      const annotations = index === linkSourcePage ? ` /Annots [${linkReference} 0 R]` : '';
+      return `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >>${annotations} >>`;
+    }),
     ...Array.from({ length: pageCount }, () => (
       `<< /Length ${Buffer.byteLength(contentStream, 'binary')} >>\nstream\n${contentStream}\nendstream`
     )),
@@ -48,6 +58,11 @@ function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = []
         const pageReference = pageReferences[Math.max(0, Math.min(pageCount - 1, entry.page - 1))];
         return `<< /Title (${entry.title}) /Parent ${outlineRootReference} 0 R /Dest [${pageReference} /Fit]${previous}${next} >>`;
       }),
+    );
+  }
+  if (linkReference) {
+    objects.push(
+      `<< /Type /Annot /Subtype /Link /Rect [48 160 220 205] /Border [0 0 1] /Dest [${pageReferences[linkTargetPage]} /Fit] >>`,
     );
   }
   let pdf = '%PDF-1.4\n';
@@ -519,6 +534,7 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
     {
       buffer: createPdfFixture({
         pageCount: 5,
+        internalLink: { fromPage: 1, toPage: 3 },
         outline: [
           { title: 'Introduction', page: 1 },
           { title: 'Chapter 2', page: 3 },
@@ -542,6 +558,8 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   await expect(pdfPreview).toBeVisible();
   await expect(page.locator('#previewContent .pdf-file-preview-status')).toHaveText('5 pages');
   await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  const pdfBackButton = page.locator('#previewContent .pdf-file-preview-back-button');
+  await expect(pdfBackButton).toBeDisabled();
   await expect(page.locator('#outlineToggle')).toBeVisible();
   await page.locator('#outlineToggle').click();
   await expect(page.locator('#outlinePanel')).toBeVisible();
@@ -552,6 +570,9 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   await page.locator('#outlineNav .outline-item', { hasText: 'Chapter 2' }).click();
   await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeGreaterThan(initialPdfScrollTop);
   await expect(page.locator('#previewContent .pdf-page[data-page-number="3"] .textLayer')).toBeVisible();
+  await expect(pdfBackButton).toBeEnabled();
+  await pdfBackButton.click();
+  await expect(pdfBackButton).toBeDisabled();
   await expect(page.locator('#previewContent .pdf-file-preview-toolbar')).toHaveCSS('position', 'sticky');
   await page.locator('#previewContainer').evaluate((element) => {
     element.scrollTop = 0;
@@ -559,6 +580,20 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   const firstPageTextLayer = page.locator('#previewContent .pdf-page[data-page-number="1"] .textLayer');
   await expect(firstPageTextLayer).toBeVisible();
   await expect(firstPageTextLayer).toContainText('PDF.js preview');
+  const pdfInternalLink = page.locator('#previewContent .pdf-page[data-page-number="1"] .annotationLayer .linkAnnotation a');
+  await expect(pdfInternalLink).toHaveCount(1);
+  const initialLinkScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
+  await pdfInternalLink.click();
+  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeGreaterThan(initialLinkScrollTop);
+  await expect(page.locator('#previewContent .pdf-page[data-page-number="3"] .textLayer')).toBeVisible();
+  await expect(pdfBackButton).toBeEnabled();
+  const redirectedScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
+  await pdfBackButton.click();
+  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeLessThan(redirectedScrollTop);
+  await expect(pdfBackButton).toBeDisabled();
+  await page.locator('#previewContainer').evaluate((element) => {
+    element.scrollTop = 0;
+  });
   const selectedPdfText = await firstPageTextLayer.evaluate((textLayer) => {
     const textSpan = Array.from(textLayer.querySelectorAll('span')).find((span) => span.textContent.includes('PDF.js preview'));
     if (!textSpan) {

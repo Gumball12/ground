@@ -357,7 +357,8 @@
   gap: 4px;
 }
 
-.pdf-file-preview-zoom-button {
+.pdf-file-preview-zoom-button,
+.pdf-file-preview-back-button {
   width: 28px;
   min-width: 28px;
   height: 28px;
@@ -503,6 +504,26 @@
   word-spacing: normal;
   transform-origin: 0 0;
   caret-color: CanvasText;
+}
+
+.pdf-page .annotationLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.pdf-page .annotationLayer section {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.pdf-page .annotationLayer :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton) > a {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
 }
 
 .pdf-page .textLayer :is(span, br) {
