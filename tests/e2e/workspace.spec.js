@@ -518,6 +518,73 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   const pdfPreview = page.locator('#previewContent .pdf-file-preview-shell');
   await expect(pdfPreview).toBeVisible();
   await expect(page.locator('#previewContent .pdf-file-preview-status')).toHaveText('5 pages');
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  await page.locator('#previewContent .pdf-file-preview-pages').dispatchEvent('wheel', { ctrlKey: true, deltaY: -10 });
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('110%');
+  expect(await page.locator('#previewContent .pdf-file-preview-pages').evaluate((element) => getComputedStyle(element).transform)).not.toBe('none');
+  await page.locator('#previewContent .pdf-file-preview-pages').dispatchEvent('wheel', { ctrlKey: true, deltaY: 10 });
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  const pinchResult = await page.locator('#previewContent .pdf-file-preview-pages').evaluate((pages) => {
+    const dispatchTouchEvent = (type, touches) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: touches });
+      pages.dispatchEvent(event);
+      return event;
+    };
+
+    dispatchTouchEvent('touchstart', [
+      { clientX: 60, clientY: 100 },
+      { clientX: 160, clientY: 100 },
+    ]);
+    const pinchMove = dispatchTouchEvent('touchmove', [
+      { clientX: 47.5, clientY: 100 },
+      { clientX: 172.5, clientY: 100 },
+    ]);
+    dispatchTouchEvent('touchend', [{ clientX: 47.5, clientY: 100 }]);
+    const oneFingerMove = dispatchTouchEvent('touchmove', [{ clientX: 47.5, clientY: 120 }]);
+
+    return {
+      pinchPrevented: pinchMove.defaultPrevented,
+      oneFingerPrevented: oneFingerMove.defaultPrevented,
+      zoom: document.querySelector('#previewContent .pdf-file-preview-zoom-label')?.textContent,
+    };
+  });
+  expect(pinchResult).toEqual({ pinchPrevented: true, oneFingerPrevented: false, zoom: '125%' });
+  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom out"]').click();
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  const initialPageWidth = await page.locator('#previewContent .pdf-page[data-page-number="1"]').evaluate((element) => element.getBoundingClientRect().width);
+  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom in"]').click();
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('125%');
+  await expect.poll(async () => page.locator('#previewContent .pdf-page[data-page-number="1"]').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(initialPageWidth);
+  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom out"]').click();
+  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
+  const renderedCanvases = await page.evaluate(async () => {
+    const pages = document.querySelector('#previewContent .pdf-file-preview-pages');
+    const pageShell = document.querySelector('#previewContent .pdf-page[data-page-number="1"]');
+    if (!(pages instanceof HTMLElement) || !(pageShell instanceof HTMLElement)) {
+      return null;
+    }
+
+    let count = 0;
+    const observer = new MutationObserver((records) => {
+      count += records.reduce((total, record) => total + Array.from(record.addedNodes)
+        .filter((node) => node instanceof HTMLCanvasElement).length, 0);
+    });
+    observer.observe(pageShell, { childList: true });
+
+    for (let index = 0; index < 10; index += 1) {
+      pages.dispatchEvent(new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        deltaY: -4,
+      }));
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 600));
+    observer.disconnect();
+    return count;
+  });
+  expect(renderedCanvases).toBeLessThanOrEqual(2);
   await expect(page.locator('#previewContent .pdf-page')).toHaveCount(5);
   await expect(page.locator('#previewContent .pdf-page[data-page-number="1"] canvas')).toBeVisible();
   await page.locator('#previewContainer').evaluate((element) => {

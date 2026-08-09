@@ -1,9 +1,19 @@
+import { clamp } from '../domain/vault-utils.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 
 const DEFAULT_PAGE_WIDTH = 612;
 const DEFAULT_PAGE_HEIGHT = 792;
+const MAX_PAGE_WIDTH = 960;
 const PAGE_RENDER_ROOT_MARGIN = '720px 0px';
 const MAX_DEVICE_PIXEL_RATIO = 2;
+const PDF_ZOOM = Object.freeze({
+  default: 1,
+  max: 2,
+  min: 0.5,
+  renderDebounceMs: 100,
+  step: 0.25,
+  wheelSensitivity: 0.01,
+});
 
 function isRenderingCancellation(error) {
   return error?.name === 'RenderingCancelledException';
@@ -21,6 +31,13 @@ export class PdfPreviewController {
     this.visiblePages = new Set();
     this.renderToken = 0;
     this.shell = null;
+    this.zoom = PDF_ZOOM.default;
+    this.zoomControls = null;
+    this.zoomRenderTimerId = 0;
+    this.pageFitWidth = DEFAULT_PAGE_WIDTH;
+    this.pageLayoutZoom = PDF_ZOOM.default;
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = PDF_ZOOM.default;
   }
 
   async loadPdfJs() {
@@ -39,6 +56,10 @@ export class PdfPreviewController {
 
   async render({ filePath, renderHost, displayName }) {
     const token = this.renderToken;
+    this.zoom = PDF_ZOOM.default;
+    this.pageLayoutZoom = PDF_ZOOM.default;
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = PDF_ZOOM.default;
     const url = resolveApiUrl(`/download/file?path=${encodeURIComponent(filePath)}`);
     const shell = this.createShell({ displayName, filePath, url });
     renderHost.replaceChildren(shell);
@@ -86,6 +107,33 @@ export class PdfPreviewController {
     status.setAttribute('aria-live', 'polite');
     status.textContent = 'Loading PDF preview…';
 
+    const zoomControls = document.createElement('div');
+    zoomControls.className = 'pdf-file-preview-zoom-controls';
+
+    const zoomOutButton = document.createElement('button');
+    zoomOutButton.type = 'button';
+    zoomOutButton.className = 'pdf-file-preview-zoom-button ui-preview-action';
+    zoomOutButton.setAttribute('aria-label', 'Zoom out');
+    zoomOutButton.title = 'Zoom out';
+    zoomOutButton.textContent = '−';
+    zoomOutButton.addEventListener('click', () => this.setZoom(this.zoom - PDF_ZOOM.step));
+
+    const zoomLabel = document.createElement('span');
+    zoomLabel.className = 'pdf-file-preview-zoom-label';
+    zoomLabel.setAttribute('aria-live', 'polite');
+
+    const zoomInButton = document.createElement('button');
+    zoomInButton.type = 'button';
+    zoomInButton.className = 'pdf-file-preview-zoom-button ui-preview-action';
+    zoomInButton.setAttribute('aria-label', 'Zoom in');
+    zoomInButton.title = 'Zoom in';
+    zoomInButton.textContent = '+';
+    zoomInButton.addEventListener('click', () => this.setZoom(this.zoom + PDF_ZOOM.step));
+
+    zoomControls.append(zoomOutButton, zoomLabel, zoomInButton);
+    this.zoomControls = { zoomInButton, zoomLabel, zoomOutButton };
+    this.updateZoomControls();
+
     const download = document.createElement('a');
     download.className = 'pdf-file-preview-download';
     download.href = url;
@@ -93,11 +141,20 @@ export class PdfPreviewController {
     download.textContent = 'Download';
     download.setAttribute('aria-label', `Download ${displayName}`);
 
-    toolbar.append(status, download);
+    const toolbarStart = document.createElement('div');
+    toolbarStart.className = 'pdf-file-preview-toolbar-start';
+    toolbarStart.append(status, zoomControls);
+    toolbar.append(toolbarStart, download);
 
     const pages = document.createElement('div');
     pages.className = 'pdf-file-preview-pages';
     pages.setAttribute('aria-label', 'PDF pages');
+    pages.addEventListener('wheel', (event) => this.handleWheelZoom(event), { passive: false });
+    pages.addEventListener('touchstart', (event) => this.handleTouchStart(event), { passive: true });
+    pages.addEventListener('touchmove', (event) => this.handleTouchMove(event), { passive: false });
+    const finishPinch = (event) => this.handleTouchEnd(event);
+    pages.addEventListener('touchend', finishPinch, { passive: true });
+    pages.addEventListener('touchcancel', finishPinch, { passive: true });
     shell.append(toolbar, pages);
     return shell;
   }
@@ -124,6 +181,8 @@ export class PdfPreviewController {
         renderedWidth: 0,
       });
     }
+
+    this.commitPageZoom();
   }
 
   observePages(token) {
@@ -148,9 +207,8 @@ export class PdfPreviewController {
 
     if (typeof ResizeObserver === 'function') {
       this.resizeObserver = new ResizeObserver(() => {
-        this.visiblePages.forEach((pageNumber) => {
-          void this.renderPage(pageNumber, token);
-        });
+        this.commitPageZoom();
+        this.scheduleVisiblePageRender();
       });
       this.resizeObserver.observe(pagesElement);
     }
@@ -182,6 +240,7 @@ export class PdfPreviewController {
 
     const width = this.getPageWidth(state.pageShell);
     if (state.canvas && Math.abs(state.renderedWidth - width) < 1) {
+      state.needsRender = false;
       return;
     }
     if (state.renderPromise) {
@@ -211,11 +270,6 @@ export class PdfPreviewController {
         canvas.style.width = '100%';
         canvas.style.height = 'auto';
 
-        state.canvas?.remove();
-        state.canvas = canvas;
-        state.renderedWidth = width;
-        state.pageShell.replaceChildren(canvas);
-
         const context = canvas.getContext('2d', { alpha: false });
         renderTask = page.render({
           canvasContext: context,
@@ -224,6 +278,21 @@ export class PdfPreviewController {
         });
         state.renderTask = renderTask;
         await renderTask.promise;
+
+        const isCurrentRender = token === this.renderToken
+          && this.visiblePages.has(pageNumber)
+          && Math.abs(this.getPageWidth(state.pageShell) - width) < 1;
+        if (!isCurrentRender) {
+          if (token === this.renderToken && this.visiblePages.has(pageNumber)) {
+            this.scheduleVisiblePageRender();
+          }
+          return;
+        }
+
+        state.canvas?.remove();
+        state.canvas = canvas;
+        state.renderedWidth = width;
+        state.pageShell.replaceChildren(canvas);
       } catch (error) {
         if (!isRenderingCancellation(error) && token === this.renderToken) {
           state.canvas?.remove();
@@ -248,8 +317,179 @@ export class PdfPreviewController {
     return state.renderPromise;
   }
 
+  handleWheelZoom(event) {
+    if (!event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const deltaY = Number.isFinite(event.deltaY) ? event.deltaY : 0;
+    const wheelDelta = clamp(
+      -deltaY * PDF_ZOOM.wheelSensitivity,
+      -PDF_ZOOM.step / 2,
+      PDF_ZOOM.step / 2,
+    );
+    if (wheelDelta !== 0) {
+      this.setZoom(this.zoom + wheelDelta);
+    }
+  }
+
+  getPinchDistance(touches) {
+    if (!touches || touches.length !== 2) {
+      return 0;
+    }
+
+    const [first, second] = touches;
+    const distance = Math.hypot(
+      second.clientX - first.clientX,
+      second.clientY - first.clientY,
+    );
+    return Number.isFinite(distance) && distance > 0 ? distance : 0;
+  }
+
+  handleTouchStart(event) {
+    if (event.touches?.length !== 2) {
+      return;
+    }
+
+    const distance = this.getPinchDistance(event.touches);
+    if (distance > 0) {
+      this.pinchStartDistance = distance;
+      this.pinchStartZoom = this.zoom;
+    }
+  }
+
+  handleTouchMove(event) {
+    if (event.touches?.length !== 2) {
+      return;
+    }
+
+    if (!this.pinchStartDistance) {
+      this.handleTouchStart(event);
+    }
+
+    const distance = this.getPinchDistance(event.touches);
+    if (!distance || !this.pinchStartDistance) {
+      return;
+    }
+
+    this.setZoom(this.pinchStartZoom * (distance / this.pinchStartDistance));
+    event.preventDefault();
+  }
+
+  handleTouchEnd(event) {
+    if (event.touches?.length === 2) {
+      return;
+    }
+
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = this.zoom;
+  }
+
+  cancelVisiblePageRenders() {
+    this.visiblePages.forEach((pageNumber) => {
+      const state = this.pageStates.get(pageNumber);
+      if (!state) {
+        return;
+      }
+
+      state.needsRender = false;
+      state.renderTask?.cancel();
+    });
+  }
+
+  scheduleVisiblePageRender() {
+    if (this.zoomRenderTimerId) {
+      window.clearTimeout(this.zoomRenderTimerId);
+    }
+
+    this.zoomRenderTimerId = window.setTimeout(() => {
+      this.zoomRenderTimerId = 0;
+      this.commitPageZoom({ measure: false });
+      this.visiblePages.forEach((pageNumber) => {
+        const state = this.pageStates.get(pageNumber);
+        if (state) {
+          state.needsRender = true;
+        }
+        void this.renderPage(pageNumber, this.renderToken);
+      });
+    }, PDF_ZOOM.renderDebounceMs);
+  }
+
+  setZoom(zoom) {
+    const nextZoom = clamp(zoom, PDF_ZOOM.min, PDF_ZOOM.max);
+    if (nextZoom === this.zoom) {
+      return;
+    }
+
+    this.cancelVisiblePageRenders();
+    this.zoom = nextZoom;
+    this.updateZoomControls();
+    this.applyLivePageZoom();
+    this.scheduleVisiblePageRender();
+  }
+
+  updateZoomControls() {
+    if (!this.zoomControls) {
+      return;
+    }
+
+    const percentage = `${Math.round(this.zoom * 100)}%`;
+    this.zoomControls.zoomLabel.textContent = percentage;
+    this.zoomControls.zoomLabel.setAttribute('aria-label', `Zoom ${percentage}`);
+    this.zoomControls.zoomOutButton.disabled = this.zoom <= PDF_ZOOM.min;
+    this.zoomControls.zoomInButton.disabled = this.zoom >= PDF_ZOOM.max;
+  }
+
+  applyLivePageZoom() {
+    const pagesElement = this.shell?.querySelector('.pdf-file-preview-pages');
+    if (!pagesElement) {
+      return;
+    }
+
+    const scale = this.pageLayoutZoom > 0 ? this.zoom / this.pageLayoutZoom : 1;
+    if (Math.abs(scale - 1) < 0.001) {
+      pagesElement.style.removeProperty('transform');
+      pagesElement.style.removeProperty('transform-origin');
+      pagesElement.style.removeProperty('will-change');
+      return;
+    }
+
+    pagesElement.style.transformOrigin = 'top center';
+    pagesElement.style.transform = `scale(${scale})`;
+    pagesElement.style.willChange = 'transform';
+  }
+
+  commitPageZoom({ measure = true } = {}) {
+    const pagesElement = this.shell?.querySelector('.pdf-file-preview-pages');
+    if (!pagesElement) {
+      return;
+    }
+
+    if (measure) {
+      const styles = window.getComputedStyle(pagesElement);
+      const horizontalPadding = Number.parseFloat(styles.paddingLeft || '0')
+        + Number.parseFloat(styles.paddingRight || '0');
+      const availableWidth = pagesElement.clientWidth - horizontalPadding;
+      this.pageFitWidth = Math.min(
+        MAX_PAGE_WIDTH,
+        availableWidth > 0 ? availableWidth : (this.previewContainer?.clientWidth || DEFAULT_PAGE_WIDTH),
+      );
+    }
+
+    pagesElement.style.setProperty(
+      '--pdf-page-width',
+      `${Math.max(1, this.pageFitWidth * this.zoom)}px`,
+    );
+    this.pageLayoutZoom = this.zoom;
+    pagesElement.style.removeProperty('transform');
+    pagesElement.style.removeProperty('transform-origin');
+    pagesElement.style.removeProperty('will-change');
+  }
+
   getPageWidth(pageShell) {
-    return pageShell.getBoundingClientRect().width
+    return pageShell.offsetWidth
+      || pageShell.getBoundingClientRect().width
       || this.previewContainer?.clientWidth
       || DEFAULT_PAGE_WIDTH;
   }
@@ -292,6 +532,10 @@ export class PdfPreviewController {
 
   cancel() {
     this.renderToken += 1;
+    if (this.zoomRenderTimerId) {
+      window.clearTimeout(this.zoomRenderTimerId);
+      this.zoomRenderTimerId = 0;
+    }
     this.intersectionObserver?.disconnect();
     this.resizeObserver?.disconnect();
     this.intersectionObserver = null;
@@ -308,6 +552,12 @@ export class PdfPreviewController {
     this.pdfDocument = null;
     this.pageStates.clear();
     this.visiblePages.clear();
+    this.zoomControls = null;
+    this.zoom = PDF_ZOOM.default;
+    this.pageFitWidth = DEFAULT_PAGE_WIDTH;
+    this.pageLayoutZoom = PDF_ZOOM.default;
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = PDF_ZOOM.default;
     this.shell = null;
   }
 
