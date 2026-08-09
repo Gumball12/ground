@@ -1183,11 +1183,14 @@ test('HTTP server uploads every supported vault file type without changing its b
   ];
 
   for (const filePath of files) {
-    const content = Buffer.from(`uploaded:${filePath}`);
+    const isPdf = filePath.endsWith('.pdf');
+    const content = Buffer.from(isPdf
+      ? `%PDF-1.7\nuploaded:${filePath}\n%%EOF\n`
+      : `uploaded:${filePath}`);
     const response = await httpRequest(`${app.baseUrl}/api/file/upload`, {
       body: content,
       headers: {
-        'Content-Type': 'application/octet-stream',
+        'Content-Type': isPdf ? 'application/pdf' : 'application/octet-stream',
         'X-CollabMD-File-Path': encodeURIComponent(`uploads/${filePath}`),
       },
       method: 'POST',
@@ -1216,6 +1219,90 @@ test('HTTP server uploads every supported vault file type without changing its b
     method: 'POST',
   });
   assert.equal(duplicateResponse.statusCode, 409);
+});
+
+test('HTTP server gives only PDF uploads the larger upload limit', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const pdfContent = Buffer.concat([
+    Buffer.from('%PDF-1.7\nlarge upload\n'),
+    Buffer.alloc(8_388_608, 0x20),
+    Buffer.from('\n%%EOF\n'),
+  ]);
+  const pdfResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: pdfContent,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/large.pdf'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(pdfResponse.statusCode, 201);
+  assert.deepEqual(await readFile(join(app.vaultDir, 'uploads', 'large.pdf')), pdfContent);
+
+  const nonPdfResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.alloc(8_388_609, 0x61),
+    headers: {
+      'Content-Type': 'text/markdown',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/large.md'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(nonPdfResponse.statusCode, 413);
+  assert.match(nonPdfResponse.body, /Request body too large/);
+});
+
+test('HTTP server enforces the configured PDF upload limit', async (t) => {
+  const app = await startTestServer({ maxPdfUploadBytes: 32 });
+  t.after(() => app.close());
+
+  const response = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(32)]),
+    headers: {
+      'Content-Type': 'application/pdf',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/too-large.pdf'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(response.statusCode, 413);
+  assert.match(response.body, /Request body too large/);
+});
+
+test('HTTP server validates PDF uploads before creating files', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const wrongMimeResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.from('%PDF-1.7\n%%EOF\n'),
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/wrong-mime.pdf'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(wrongMimeResponse.statusCode, 400);
+  assert.match(wrongMimeResponse.body, /PDF uploads must use application\/pdf/);
+
+  const invalidSignatureResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.from('not a PDF'),
+    headers: {
+      'Content-Type': 'application/pdf',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/invalid.pdf'),
+    },
+    method: 'POST',
+  });
+
+  assert.equal(invalidSignatureResponse.statusCode, 400);
+  assert.match(invalidSignatureResponse.body, /Invalid PDF file/);
+  await assert.rejects(
+    () => readFile(join(app.vaultDir, 'uploads', 'invalid.pdf')),
+    { code: 'ENOENT' },
+  );
 });
 
 test('HTTP server auto-orients JPEG uploads before serving converted WebP attachments', async (t) => {

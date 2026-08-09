@@ -683,6 +683,7 @@ vite.config.mjs            Vite multi-page build and dev-server proxy config
 | `COLLABMD_WIKI_LINK_AUTO_CREATE` | Create missing markdown files when clicking unresolved wiki-links; set to `false` to disable | `true` |
 | `COLLABMD_SEARCH_MAX_FILE_SIZE` | Maximum size of each file considered by global text search; supports bytes or `K`, `M`, and `G` suffixes | `1M` |
 | `COLLABMD_SEARCH_MAX_BUFFER_BYTES` | Maximum ripgrep output buffer for one global text search | `2097152` |
+| `COLLABMD_MAX_PDF_UPLOAD_BYTES` | Maximum size of a PDF upload in bytes; other uploads remain limited to the default 8 MiB request-body limit | `52428800` |
 | `COLLABMD_VAULT_DIR` | Vault directory path | CLI: current directory, server entrypoint: `data/vault`, Docker: `/data` |
 | `COLLABMD_GIT_ENABLED` | Enable or disable git integration in the UI and API | `true` |
 | `COLLABMD_GIT_REPO_URL` | Remote git repository used to bootstrap the vault checkout | |

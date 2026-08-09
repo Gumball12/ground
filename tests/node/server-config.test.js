@@ -44,6 +44,22 @@ test('loadConfig configures global text search limits', () => {
   }
 });
 
+test('loadConfig configures the PDF upload limit', () => {
+  const previousValue = process.env.COLLABMD_MAX_PDF_UPLOAD_BYTES;
+  process.env.COLLABMD_MAX_PDF_UPLOAD_BYTES = '67108864';
+
+  try {
+    const config = loadConfig({ vaultDir: process.cwd() });
+    assert.equal(config.maxPdfUploadBytes, 64 * 1024 * 1024);
+  } finally {
+    if (previousValue === undefined) {
+      delete process.env.COLLABMD_MAX_PDF_UPLOAD_BYTES;
+    } else {
+      process.env.COLLABMD_MAX_PDF_UPLOAD_BYTES = previousValue;
+    }
+  }
+});
+
 test('loadConfig rejects invalid global text search file sizes', () => {
   const previousMaxFileSize = process.env.COLLABMD_SEARCH_MAX_FILE_SIZE;
   process.env.COLLABMD_SEARCH_MAX_FILE_SIZE = 'not-a-size';

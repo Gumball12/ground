@@ -78,6 +78,7 @@ export function createRequestHandler(
   });
   const handleVaultApiCommand = createVaultApiCommandHandler({
     backlinkIndex,
+    maxPdfUploadBytes: config.maxPdfUploadBytes,
     renderDocx,
     roomRegistry,
     vaultFileStore,
