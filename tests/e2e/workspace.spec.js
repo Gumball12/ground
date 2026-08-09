@@ -438,6 +438,42 @@ test('block toolbar converts bullet lists to numbered lists without duplicating 
   await expect(page.locator('.cm-content').first()).not.toContainText('1. - alpha');
 });
 
+test('file explorer uploads multiple supported vault files', async ({ page }) => {
+  await openHome(page);
+
+  const fileChooserPromise = page.waitForEvent('filechooser');
+  await chooseCreateAction(page, 'Upload files');
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles([
+    {
+      buffer: Buffer.from('# Uploaded note\n'),
+      mimeType: 'text/markdown',
+      name: 'uploaded-note.md',
+    },
+    {
+      buffer: Buffer.from('<mxfile />'),
+      mimeType: 'application/xml',
+      name: 'uploaded-diagram.drawio',
+    },
+    {
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGPgF9f6D8IMMAYAKWgFPch3sv8AAAAASUVORK5CYII=', 'base64'),
+      mimeType: 'image/png',
+      name: 'uploaded-image.png',
+    },
+  ]);
+
+  await expect(page.locator('#fileTree')).toContainText('uploaded-note');
+  await expect(page.locator('#fileTree')).toContainText('uploaded-diagram');
+  await expect(page.locator('#fileTree')).toContainText('uploaded-image');
+
+  await page.locator('#fileTree').getByText('uploaded-image').click();
+  await expect(page.locator('#previewContent .image-file-preview-image')).toBeVisible();
+
+  const response = await page.request.get('/api/download/file?path=uploaded-note.md');
+  expect(response.ok()).toBe(true);
+  expect(await response.text()).toBe('# Uploaded note\n');
+});
+
 test('image toolbar uploads a vault attachment and inserts inline markdown', async ({ page }) => {
   await openFile(page, 'README.md');
   await waitForCollaborativeEditor(page);

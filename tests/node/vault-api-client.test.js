@@ -48,6 +48,11 @@ test('VaultApiClient prefixes vault endpoints with the configured base path', as
     fileName: 'résumé screen.png',
     sourcePath: 'notes/hari ini.md',
   });
+  await client.uploadFile({
+    file: new Blob(['diagram-bytes'], { type: 'application/xml' }),
+    path: 'diagrams/architecture.drawio',
+    requestId: 'upload-1',
+  });
 
   assert.deepEqual(
     requests.map(({ options, url }) => ({
@@ -86,6 +91,16 @@ test('VaultApiClient prefixes vault endpoints with the configured base path', as
         },
         method: 'POST',
         url: '/app/api/attachments',
+      },
+      {
+        body: '[blob]',
+        headers: {
+          'Content-Type': 'application/xml',
+          'X-CollabMD-File-Path': 'diagrams%2Farchitecture.drawio',
+          'X-CollabMD-Request-Id': 'upload-1',
+        },
+        method: 'POST',
+        url: '/app/api/file/upload',
       },
     ],
   );

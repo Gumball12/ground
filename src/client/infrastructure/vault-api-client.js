@@ -261,6 +261,18 @@ export class VaultApiClient {
     return parseApiResponse(response, 'Failed to upload image');
   }
 
+  async uploadFile({ file, path, requestId = null }) {
+    const response = await fetch(resolveApiUrl('/file/upload'), {
+      body: file,
+      headers: createRequestHeaders(requestId, {
+        'Content-Type': file?.type || 'application/octet-stream',
+        'X-CollabMD-File-Path': encodeHeaderMetadata(path),
+      }),
+      method: 'POST',
+    });
+    return parseApiResponse(response, 'Failed to upload file');
+  }
+
   async downloadFile(path) {
     const fallbackFileName = getVaultPathLeaf(path) || 'download';
     return triggerDownload(resolveApiUrl(`/download/file?path=${encodeURIComponent(path)}`), {

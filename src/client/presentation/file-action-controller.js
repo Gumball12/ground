@@ -1,6 +1,9 @@
 import {
   getVaultFileExtension,
+  isVaultFilePath,
+  VAULT_FILE_EXTENSIONS,
 } from '../../domain/file-kind.js';
+import { pickFiles } from '../browser-utils.js';
 import {
   createBaseStarter,
   composeVaultChildPath,
@@ -27,6 +30,8 @@ function replacePathPrefix(pathValue, oldPrefix, newPrefix) {
 function formatCount(value, singularLabel, pluralLabel) {
   return `${value} ${value === 1 ? singularLabel : pluralLabel}`;
 }
+
+const VAULT_FILE_PICKER_ACCEPT = VAULT_FILE_EXTENSIONS.join(',');
 
 function createEmptyExcalidrawScene() {
   return JSON.stringify({
@@ -116,6 +121,18 @@ export class FileActionController {
 
   getCreateActions({ parentDir = '' } = {}) {
     return [
+      {
+        contextLabel: 'Upload files',
+        group: 'File',
+        hint: 'Supported vault files',
+        icon: this.getCreateActionIcon('upload'),
+        id: 'upload',
+        label: 'Upload files',
+        meta: 'Multiple',
+        onSelect: () => {
+          void this.handleUploadFiles({ parentDir });
+        },
+      },
       {
         contextLabel: 'New markdown file',
         group: 'Note',
@@ -241,6 +258,8 @@ export class FileActionController {
 
   getCreateActionIcon(kind) {
     switch (kind) {
+      case 'upload':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>';
       case 'base':
         return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M14 4v5h5"/><path d="M8 13h8"/><path d="M8 17h6"/><path d="M8 9h3"/></svg>';
       case 'drawio':
@@ -474,6 +493,47 @@ export class FileActionController {
       this.actionInput.focus();
       this.actionInput.select();
     }
+  }
+
+  async uploadVaultFiles(files = [], { parentDir = '' } = {}) {
+    const normalizedParentDir = normalizeVaultPathInput(parentDir);
+    let uploaded = false;
+
+    for (const file of Array.from(files ?? [])) {
+      const fileName = getVaultPathLeaf(file?.name);
+      const filePath = composeVaultChildPath(normalizedParentDir, fileName);
+      if (!fileName || !isVaultFilePath(filePath)) {
+        this.showToast(`Unsupported file type: ${fileName || 'unnamed file'}`);
+        continue;
+      }
+
+      try {
+        await this.runWorkspaceMutation((requestId) => this.vaultClient.uploadFile({
+          file,
+          path: filePath,
+          requestId,
+        }));
+        uploaded = true;
+        this.state.expandDirectoryPath(filePath, { includeLeaf: false });
+      } catch (error) {
+        this.showToast(`${fileName}: ${error?.message || 'Failed to upload file'}`);
+      }
+    }
+
+    if (uploaded) {
+      await this.refresh();
+    }
+
+    return uploaded;
+  }
+
+  async handleUploadFiles({ parentDir = '' } = {}) {
+    const files = await pickFiles({ accept: VAULT_FILE_PICKER_ACCEPT, multiple: true });
+    if (files.length === 0) {
+      return false;
+    }
+
+    return this.uploadVaultFiles(files, { parentDir });
   }
 
   async createVaultFile(filePath, content, { openAfterCreate = false, errorMessage = 'Failed to create file' } = {}) {

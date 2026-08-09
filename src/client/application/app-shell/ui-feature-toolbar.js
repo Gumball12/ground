@@ -1,4 +1,5 @@
 import { isMarkdownFilePath } from '../../../domain/file-kind.js';
+import { pickFiles } from '../../browser-utils.js';
 import {
   getMarkdownBlockActionLabel,
   getMarkdownBlockMenuActions,
@@ -91,7 +92,6 @@ function renderMarkdownToolbarMarkup(activeAction) {
  * @property {{ show(message: string): void }} toastController
  * @property {{ uploadImageAttachment(payload: { file: File, fileName: string, sourcePath: string }): Promise<{ markdown?: string, path?: string }>} } vaultApiClient
  * @property {{ applyMarkdownToolbarAction(action: string): boolean, insertText(text: string): void, runEditorCommand?(commandId: string): boolean } | null} session
- * @property {() => Promise<File | null>} pickImageFile
  * @property {(file: File) => Promise<boolean>} handleEditorImageInsert
  * @property {() => Promise<void>} handleToolbarImageInsert
  */
@@ -395,61 +395,12 @@ function runEditorCommand(commandId) {
 
 /** @this {UiToolbarContext} */
 async function handleToolbarImageInsert() {
-  const file = await this.pickImageFile();
+  const [file] = await pickFiles({ accept: IMAGE_FILE_PICKER_ACCEPT });
   if (!file) {
     return;
   }
 
   await this.handleEditorImageInsert(file);
-}
-
-/** @this {UiToolbarContext} */
-function pickImageFile() {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = IMAGE_FILE_PICKER_ACCEPT;
-    input.style.position = 'fixed';
-    input.style.left = '-9999px';
-    document.body.appendChild(input);
-    let settled = false;
-    let focusTimer = null;
-
-    const cleanup = (value) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      if (focusTimer) {
-        window.clearTimeout(focusTimer);
-      }
-      window.removeEventListener('focus', handleWindowFocus);
-      input.remove();
-      resolve(value);
-    };
-
-    const handleWindowFocus = () => {
-      focusTimer = window.setTimeout(() => {
-        if (settled || input.files?.length) {
-          return;
-        }
-
-        cleanup(null);
-      }, 250);
-    };
-
-    input.addEventListener('change', () => {
-      cleanup(input.files?.[0] ?? null);
-    }, { once: true });
-
-    input.addEventListener('cancel', () => {
-      cleanup(null);
-    }, { once: true });
-
-    window.addEventListener('focus', handleWindowFocus, { once: true });
-    input.click();
-  });
 }
 
 /** @this {UiToolbarContext} */
@@ -526,7 +477,6 @@ export const uiFeatureToolbarMethods = {
   openMarkdownBlockMenu,
   positionMarkdownBlockMenu,
   renderMarkdownBlockMenuPopover,
-  pickImageFile,
   renderMarkdownToolbar,
   runEditorCommand,
   setActiveMarkdownBlockAction,

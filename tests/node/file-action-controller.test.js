@@ -76,6 +76,14 @@ function createController(t, overrides = {}) {
 
       calls.push(['create-file', path, content]);
     },
+    async uploadFile({ file, path, requestId }) {
+      if (requestId) {
+        calls.push(['upload-file', path, file.name, requestId]);
+        return;
+      }
+
+      calls.push(['upload-file', path, file.name]);
+    },
     async deleteFile(path, options = {}) {
       if (options.requestId) {
         calls.push(['delete-file', path, options.requestId]);
@@ -142,6 +150,23 @@ test('FileActionController creates files and expands parent directories', async 
     ['select', 'plans/q1.md'],
   ]);
   assert.deepEqual([...state.expandedDirs], ['plans']);
+});
+
+test('FileActionController uploads supported vault files into a target folder', async (t) => {
+  const { calls, controller, state } = createController(t);
+
+  const uploaded = await controller.uploadVaultFiles([
+    { name: 'flow.mmd', type: 'text/plain' },
+    { name: 'architecture.drawio', type: 'application/xml' },
+  ], { parentDir: 'diagrams' });
+
+  assert.equal(uploaded, true);
+  assert.deepEqual(calls, [
+    ['upload-file', 'diagrams/flow.mmd', 'flow.mmd'],
+    ['upload-file', 'diagrams/architecture.drawio', 'architecture.drawio'],
+    ['refresh'],
+  ]);
+  assert.equal(state.expandedDirs.has('diagrams'), true);
 });
 
 test('FileActionController renames and moves the active file and notifies selection listeners', async (t) => {
@@ -302,6 +327,7 @@ test('FileActionController shares the create registry across menus and includes 
   const contextItems = controller.createContextMenuItems();
 
   assert.deepEqual(createActions.map((item) => item.id), [
+    'upload',
     'markdown',
     'base',
     'excalidraw',

@@ -1158,6 +1158,65 @@ test('HTTP server uploads and serves vault-owned image attachments', async (t) =
   assert.match(treeResponse.body, /"name":"assets"/);
 });
 
+test('HTTP server uploads every supported vault file type without changing its bytes', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const files = [
+    'guide.md',
+    'guide.markdown',
+    'guide.mdx',
+    'view.base',
+    'scene.excalidraw',
+    'diagram.drawio',
+    'flow.mmd',
+    'flow.mermaid',
+    'sequence.puml',
+    'sequence.plantuml',
+    'image.png',
+    'image.jpg',
+    'image.jpeg',
+    'image.webp',
+    'image.gif',
+    'image.svg',
+  ];
+
+  for (const filePath of files) {
+    const content = Buffer.from(`uploaded:${filePath}`);
+    const response = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+      body: content,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-CollabMD-File-Path': encodeURIComponent(`uploads/${filePath}`),
+      },
+      method: 'POST',
+    });
+
+    assert.equal(response.statusCode, 201, filePath);
+    assert.deepEqual(await readFile(join(app.vaultDir, 'uploads', filePath)), content);
+  }
+
+  const invalidPathResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.from('not supported'),
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/readme.txt'),
+    },
+    method: 'POST',
+  });
+  assert.equal(invalidPathResponse.statusCode, 400);
+
+  const duplicateResponse = await httpRequest(`${app.baseUrl}/api/file/upload`, {
+    body: Buffer.from('duplicate'),
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-CollabMD-File-Path': encodeURIComponent('uploads/guide.md'),
+    },
+    method: 'POST',
+  });
+  assert.equal(duplicateResponse.statusCode, 409);
+});
+
 test('HTTP server auto-orients JPEG uploads before serving converted WebP attachments', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());

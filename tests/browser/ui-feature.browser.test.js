@@ -327,7 +327,6 @@ describe('uiFeature browser helpers', () => {
       },
       fileExplorer: { refresh: vi.fn(async () => {}) },
       handleToolbarImageInsert: uiFeatureToolbarMethods.handleToolbarImageInsert,
-      pickImageFile: vi.fn(async () => null),
       session: {
         applyMarkdownToolbarAction: vi.fn(() => true),
         insertText: vi.fn(),

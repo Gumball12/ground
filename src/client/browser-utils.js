@@ -2,6 +2,50 @@ function getWindowRef() {
   return typeof window === 'undefined' ? globalThis : window;
 }
 
+export function pickFiles({ accept = '', multiple = false } = {}) {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    const windowRef = getWindowRef();
+    input.type = 'file';
+    input.accept = accept;
+    input.multiple = multiple;
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    document.body.appendChild(input);
+    let settled = false;
+    let focusTimer = null;
+
+    const cleanup = (files = []) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      if (focusTimer) {
+        windowRef.clearTimeout(focusTimer);
+      }
+      windowRef.removeEventListener('focus', handleWindowFocus);
+      input.remove();
+      resolve(Array.from(files ?? []));
+    };
+
+    const handleWindowFocus = () => {
+      focusTimer = windowRef.setTimeout(() => {
+        if (settled || input.files?.length) {
+          return;
+        }
+
+        cleanup();
+      }, 250);
+    };
+
+    input.addEventListener('change', () => cleanup(input.files), { once: true });
+    input.addEventListener('cancel', () => cleanup(), { once: true });
+    windowRef.addEventListener('focus', handleWindowFocus, { once: true });
+    input.click();
+  });
+}
+
 export function requestIdleRender(callback, timeout) {
   const windowRef = getWindowRef();
   if (typeof windowRef.requestIdleCallback === 'function') {

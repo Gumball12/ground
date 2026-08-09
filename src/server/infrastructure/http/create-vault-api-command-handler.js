@@ -23,7 +23,7 @@ function createDocxDownloadHeaders(filePath) {
   };
 }
 
-function decodeHeaderMetadata(value) {
+function decodeHeaderMetadata(value, label = 'attachment') {
   const normalized = String(value ?? '').trim();
   if (!normalized) {
     return '';
@@ -32,7 +32,7 @@ function decodeHeaderMetadata(value) {
   try {
     return decodeURIComponent(normalized);
   } catch {
-    throw createRequestError(400, 'Invalid attachment metadata header encoding');
+    throw createRequestError(400, `Invalid ${label} metadata header encoding`);
   }
 }
 
@@ -125,6 +125,37 @@ async function handleUploadAttachment({ workspaceMutationCoordinator }, req, res
     });
   } catch (error) {
     handleApiError(req, res, error, '[api] Failed to upload attachment:', 'Failed to upload attachment');
+  }
+  return true;
+}
+
+async function handleUploadFile({ workspaceMutationCoordinator }, req, res) {
+  try {
+    const filePath = decodeHeaderMetadata(req.headers['x-collabmd-file-path'], 'file upload');
+    if (!filePath) {
+      jsonResponse(req, res, 400, { error: 'Missing file path' });
+      return true;
+    }
+
+    if (typeof workspaceMutationCoordinator?.createFile !== 'function') {
+      jsonResponse(req, res, 503, { error: 'File upload is unavailable' });
+      return true;
+    }
+
+    const content = await readBinaryRequestBody(req);
+    const result = await workspaceMutationCoordinator.createFile({
+      content,
+      path: filePath,
+      requestId: readRequestId(req),
+    });
+    if (!result.ok) {
+      jsonResponse(req, res, result.error === 'File already exists' ? 409 : 400, { error: result.error });
+      return true;
+    }
+
+    jsonResponse(req, res, 201, { ok: true, path: filePath });
+  } catch (error) {
+    handleApiError(req, res, error, '[api] Failed to upload file:', 'Failed to upload file');
   }
   return true;
 }
@@ -280,6 +311,7 @@ const ROUTE_TABLE = [
   { method: 'POST', path: '/api/export/docx', handler: handleExportDocx },
   { method: 'PUT', path: '/api/file', handler: handleWriteFile },
   { method: 'POST', path: '/api/attachments', handler: handleUploadAttachment },
+  { method: 'POST', path: '/api/file/upload', handler: handleUploadFile },
   { method: 'POST', path: '/api/file', handler: handleCreateFile },
   { method: 'DELETE', path: '/api/file', handler: handleDeleteFile },
   { method: 'PATCH', path: '/api/file', handler: handleRenameFile },
