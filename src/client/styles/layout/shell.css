@@ -598,7 +598,8 @@
   top: 0;
 }
 
-.pdf-file-preview-error {
+.pdf-file-preview-error,
+.pdf-file-preview-password-prompt {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -612,6 +613,35 @@
   border-radius: var(--radius-lg);
   color: var(--color-text-muted);
   text-align: center;
+}
+
+.pdf-file-preview-password-prompt {
+  box-sizing: border-box;
+  align-items: stretch;
+  width: min(100%, 440px);
+  background: var(--color-surface);
+}
+
+.pdf-file-preview-password-title,
+.pdf-file-preview-password-copy {
+  margin: 0;
+}
+
+.pdf-file-preview-password-title {
+  color: var(--color-text);
+  font-size: var(--text-lg);
+}
+
+.pdf-file-preview-password-field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-meta);
+  text-align: left;
+}
+
+.pdf-file-preview-password-field .ui-input {
+  width: 100%;
 }
 
 .preview-content.is-mermaid-file-preview .mermaid-shell,

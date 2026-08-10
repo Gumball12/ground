@@ -89,6 +89,14 @@ export class PdfPreviewController {
       }
 
       this.loadingTask = pdfjs.getDocument({ url });
+      this.loadingTask.onPassword = (updatePassword, reason) => {
+        if (token !== this.renderToken || this.shell !== shell) {
+          updatePassword(new Error('PDF preview cancelled'));
+          return;
+        }
+
+        this.showPasswordPrompt(shell, updatePassword, reason);
+      };
       const pdfDocument = await this.loadingTask.promise;
       if (token !== this.renderToken) {
         await pdfDocument.destroy();
@@ -113,6 +121,56 @@ export class PdfPreviewController {
         this.loadingTask = null;
       }
     }
+  }
+
+  showPasswordPrompt(shell, updatePassword, reason) {
+    const pages = shell.querySelector('.pdf-file-preview-pages');
+    if (!pages) {
+      return;
+    }
+
+    const isIncorrectPassword = reason === this.pdfJsApi?.PasswordResponses?.INCORRECT_PASSWORD;
+    this.setStatus(isIncorrectPassword ? 'Incorrect password' : 'Password required');
+
+    const prompt = document.createElement('form');
+    prompt.className = 'pdf-file-preview-password-prompt';
+
+    const heading = document.createElement('h2');
+    heading.className = 'pdf-file-preview-password-title';
+    heading.textContent = isIncorrectPassword ? 'Incorrect PDF password' : 'Password required';
+
+    const copy = document.createElement('p');
+    copy.className = 'pdf-file-preview-password-copy';
+    copy.textContent = isIncorrectPassword
+      ? 'The password was incorrect. Try again.'
+      : 'Enter the password to preview this PDF.';
+
+    const label = document.createElement('label');
+    label.className = 'pdf-file-preview-password-field';
+    label.textContent = 'PDF password';
+
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.className = 'ui-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'PDF password');
+    label.appendChild(input);
+
+    const submit = document.createElement('button');
+    submit.type = 'submit';
+    submit.className = 'ui-button ui-button--primary';
+    submit.textContent = 'Unlock PDF';
+    prompt.addEventListener('submit', (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      input.disabled = true;
+      updatePassword(input.value);
+    });
+
+    prompt.append(heading, copy, label, submit);
+    pages.replaceChildren(prompt);
+    input.focus();
   }
 
   async loadPdfOutline(pdfDocument, token) {
