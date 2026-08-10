@@ -12,6 +12,7 @@ import {
   createReferenceTargetAliasMap,
 } from '../markdown-reference-extractor.js';
 import { mapWithConcurrency } from '../../shared/async-utils.js';
+import { isPlainObject } from './base-definition.js';
 import { createLinkValue, dedupeLinkValues } from './base-expression-runtime.js';
 
 const INLINE_TAG_RE = /(^|[\s(])#([A-Za-z0-9/_-]+)/g;
@@ -37,10 +38,6 @@ function createRowCacheKey(filePath, workspaceState, fileSetSignature) {
     Number.isFinite(metadata?.size) ? metadata.size : '',
     fileSetSignature,
   ].join('\0');
-}
-
-function isPlainObject(value) {
-  return Object.prototype.toString.call(value) === '[object Object]';
 }
 
 function normalizeTags(value) {

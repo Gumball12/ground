@@ -2,7 +2,7 @@ import { dump as dumpYaml, loadAll as loadAllYaml } from 'js-yaml';
 
 const SUPPORTED_VIEW_TYPES = new Set(['cards', 'list', 'table']);
 
-function isPlainObject(value) {
+export function isPlainObject(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
 }
 

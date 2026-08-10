@@ -1,6 +1,28 @@
 import { getRequestErrorStatusCode } from './http-errors.js';
 import { jsonResponse } from './http-response.js';
 
+export function stripBasePath(pathname, basePath) {
+  if (!basePath) {
+    return pathname;
+  }
+
+  if (pathname === basePath) {
+    return '/';
+  }
+
+  if (pathname.startsWith(`${basePath}/`)) {
+    return pathname.slice(basePath.length) || '/';
+  }
+
+  return pathname;
+}
+
+export function createRequestUrlWithPathname(requestUrl, pathname) {
+  const nextUrl = new URL(requestUrl.toString());
+  nextUrl.pathname = pathname || '/';
+  return nextUrl;
+}
+
 export function readRequestId(req) {
   const value = String(req.headers['x-collabmd-request-id'] || '').trim();
   return value ? value.slice(0, 120) : null;

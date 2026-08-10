@@ -6,7 +6,6 @@ import * as decoding from 'lib0/decoding';
 
 import { MSG_AWARENESS, MSG_SYNC } from './protocol.js';
 import { CollaborationDocumentStore } from './collaboration-document-store.js';
-import { RoomPersistenceController } from './room-persistence-controller.js';
 import { logPerfEvent } from '../../config/perf-logging.js';
 import { populateCommentThreads, serializeCommentThreads } from '../../../domain/comment-threads.js';
 import { getVaultFileKind } from '../../../domain/file-kind.js';
@@ -215,15 +214,10 @@ export class CollaborationRoom {
       lastHydrate: null,
       lastInitialSyncAt: 0,
     };
-    this.persistence = new RoomPersistenceController({
-      idleGraceMs: this.idleGraceMs,
-      onDestroy: () => {
-        this.awareness.destroy();
-        this.doc.destroy();
-        this.onEmpty?.(this.name);
-      },
-      onPersist: () => this.persist(),
-    });
+    this.persistTimer = null;
+    this.destroyTimer = null;
+    this.finalizePromise = null;
+    this.shutdownGeneration = 0;
 
     this.awareness.setLocalState(null);
     this.registerDocListeners();
@@ -476,11 +470,12 @@ export class CollaborationRoom {
       return;
     }
 
-    this.persistence.schedulePersist(async () => {
+    clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
       this.persist().catch((error) => {
         console.error(`[room:${this.name}] Failed to persist document:`, error.message);
       });
-    });
+    }, 500);
   }
 
   async persist() {
@@ -621,9 +616,17 @@ export class CollaborationRoom {
     this.documentStore?.rename(nextName);
   }
 
+  cancelPersistenceTimers() {
+    this.shutdownGeneration += 1;
+    clearTimeout(this.persistTimer);
+    clearTimeout(this.destroyTimer);
+    this.persistTimer = null;
+    this.destroyTimer = null;
+  }
+
   markDeleted() {
     this.deleted = true;
-    this.persistence.cancelAll();
+    this.cancelPersistenceTimers();
     if (this.clients.size === 0) {
       this.finalizeIfIdle();
     }
@@ -670,7 +673,9 @@ export class CollaborationRoom {
   }
 
   async addClient(ws, { sendInitialSync: shouldSendInitialSync = true } = {}) {
-    this.persistence.markActivity();
+    this.shutdownGeneration += 1;
+    clearTimeout(this.destroyTimer);
+    this.destroyTimer = null;
     await this.hydrate();
 
     this.ensureClientState(ws);
@@ -722,9 +727,9 @@ export class CollaborationRoom {
     }
 
     this.destroyed = true;
-    this.persistence.cancelAll();
+    this.cancelPersistenceTimers();
     await Promise.allSettled([
-      this.persistence.finalizePromise,
+      this.finalizePromise,
       this.activePersistPromise,
     ]);
 
@@ -746,12 +751,40 @@ export class CollaborationRoom {
   }
 
   finalizeIfIdle() {
-    return this.persistence.finalizeIfIdle({
-      isIdle: () => this.clients.size === 0,
-      onPersistError: (error) => {
+    if (this.clients.size > 0 || this.finalizePromise) {
+      return;
+    }
+
+    const generation = ++this.shutdownGeneration;
+    this.finalizePromise = (async () => {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+
+      try {
+        await this.persist();
+      } catch (error) {
         console.error(`[room:${this.name}] Failed to persist final room state:`, error.message);
-      },
+      }
+
+      if (this.clients.size > 0 || generation !== this.shutdownGeneration) {
+        return;
+      }
+
+      this.destroyTimer = setTimeout(() => {
+        if (this.clients.size > 0 || generation !== this.shutdownGeneration) {
+          return;
+        }
+
+        this.awareness.destroy();
+        this.doc.destroy();
+        this.onEmpty?.(this.name);
+      }, this.idleGraceMs);
+      this.destroyTimer.unref?.();
+    })().finally(() => {
+      this.finalizePromise = null;
     });
+
+    return this.finalizePromise;
   }
 
   clearEphemeralExcalidrawHistory() {

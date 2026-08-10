@@ -1,9 +1,6 @@
 import { isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { resolveVaultRelativePath } from '../../../domain/vault-paths.js';
-
-function isPlainObject(value) {
-  return Object.prototype.toString.call(value) === '[object Object]';
-}
+import { isPlainObject } from './base-definition.js';
 
 export function createLinkValue(target, {
   display = '',

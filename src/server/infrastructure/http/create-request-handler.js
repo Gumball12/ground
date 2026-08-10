@@ -8,6 +8,10 @@ import { createVaultApiCommandHandler } from './create-vault-api-command-handler
 import { createVaultApiQueryHandler } from './create-vault-api-query-handler.js';
 import { parseJsonBody } from './request-body.js';
 import {
+  createRequestUrlWithPathname,
+  stripBasePath,
+} from './http-request-helpers.js';
+import {
   applyCorsHeaders,
   jsonResponse,
   SECURITY_HEADERS,
@@ -15,28 +19,6 @@ import {
   isSameOriginWriteRequest,
   WRITE_METHODS,
 } from './http-response.js';
-
-function stripBasePath(pathname, basePath) {
-  if (!basePath) {
-    return pathname;
-  }
-
-  if (pathname === basePath) {
-    return '/';
-  }
-
-  if (pathname.startsWith(`${basePath}/`)) {
-    return pathname.slice(basePath.length) || '/';
-  }
-
-  return pathname;
-}
-
-function createRequestUrlWithPathname(requestUrl, pathname) {
-  const nextUrl = new URL(requestUrl.toString());
-  nextUrl.pathname = pathname || '/';
-  return nextUrl;
-}
 
 export function createRequestHandler(
   config,

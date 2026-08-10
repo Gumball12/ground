@@ -2,14 +2,11 @@ import { dump as dumpYaml } from 'js-yaml';
 
 import {
   findView,
+  isPlainObject,
   normalizeBaseDefinition,
   normalizeRawDefinitionForWrite,
   parseBaseSource,
 } from './base-definition.js';
-
-function isPlainObject(value) {
-  return Object.prototype.toString.call(value) === '[object Object]';
-}
 
 function cloneRawSource(source = '') {
   const parsed = parseBaseSource(source);

@@ -357,6 +357,7 @@ test('opens the quick switcher from the top toolbar search action', async ({ pag
 test('export docx uses the export page and posts the rendered snapshot html', async ({ page, context }) => {
   await restoreReadmeTestDocument(page);
   await openFile(page, 'README.md', { waitFor: 'preview' });
+  await expect(page.locator('#exportMenuGroup')).not.toHaveClass(/hidden/);
 
   let exportRequestBody = null;
   await context.route('**/api/export/docx', async (route) => {

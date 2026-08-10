@@ -1,6 +1,10 @@
 import { WebSocketServer } from 'ws';
 
 import { normalizeHostedEmail } from '../../domain/hosted-workspace-contract.js';
+import {
+  createRequestUrlWithPathname,
+  stripBasePath,
+} from '../http/http-request-helpers.js';
 import { ClientSocketSession } from './client-socket-session.js';
 
 function rejectUpgrade(socket, statusCode, statusMessage, {
@@ -23,28 +27,6 @@ function rejectUpgrade(socket, statusCode, statusMessage, {
 function extractRoomName(pathname, wsBasePath) {
   const roomSegment = pathname.slice(wsBasePath.length + 1);
   return decodeURIComponent(roomSegment || 'default');
-}
-
-function stripBasePath(pathname, basePath) {
-  if (!basePath) {
-    return pathname;
-  }
-
-  if (pathname === basePath) {
-    return '/';
-  }
-
-  if (pathname.startsWith(`${basePath}/`)) {
-    return pathname.slice(basePath.length) || '/';
-  }
-
-  return pathname;
-}
-
-function createRequestUrlWithPathname(requestUrl, pathname) {
-  const nextUrl = new URL(requestUrl.toString());
-  nextUrl.pathname = pathname || '/';
-  return nextUrl;
 }
 
 export function attachCollaborationGateway({

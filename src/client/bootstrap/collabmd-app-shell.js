@@ -147,13 +147,9 @@ export class CollabMdAppShell {
     });
     this.workspaceSync = new WorkspaceSyncClient({
       onTreeChange: (tree, metadata = {}) => {
-        const wasReady = this.fileExplorerReady;
         this.fileExplorer.setTree(tree, metadata);
         this.handleCommentOverviewWorkspaceTreeChange?.();
         this.fileExplorerReady = true;
-        if (!wasReady && this.isTabActive) {
-          void this.workspaceRouteController.handleHashChange();
-        }
       },
       onWorkspaceEvent: (event) => {
         void this.handleIncomingWorkspaceEvent(event);
