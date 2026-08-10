@@ -13,6 +13,7 @@ test('FileTreeState flattens tree nodes and filters search matches for files and
         { name: 'architecture.drawio', path: 'docs/architecture.drawio', type: 'drawio' },
         { name: 'diagram.puml', path: 'docs/diagram.puml', type: 'plantuml' },
         { name: 'diagram.png', path: 'docs/diagram.png', type: 'image' },
+        { name: 'guide.pdf', path: 'docs/guide.pdf', type: 'pdf' },
       ],
       name: 'docs',
       path: 'docs',
@@ -28,6 +29,7 @@ test('FileTreeState flattens tree nodes and filters search matches for files and
     'docs/architecture.drawio',
     'docs/diagram.puml',
     'docs/diagram.png',
+    'docs/guide.pdf',
     'sketch.excalidraw',
   ]);
   assert.deepEqual(state.getSearchMatches(), [

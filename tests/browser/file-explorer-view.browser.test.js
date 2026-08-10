@@ -353,6 +353,30 @@ describe('File explorer reveal behavior', () => {
     expect(item.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
   });
 
+  it('includes PDFs in file lists used by wiki links and file search', () => {
+    document.body.innerHTML = `
+      <input id="fileSearchInput">
+      <nav id="fileTree"></nav>
+    `;
+
+    const controller = new FileExplorerController({
+      mobileBreakpointQuery: { matches: true },
+      onFileDelete: vi.fn(),
+      onFileSelect: vi.fn(),
+      toastController: { show: vi.fn() },
+      vaultClient: { readTree: vi.fn() },
+    });
+
+    controller.setTree([{ name: 'guide.pdf', path: 'docs/guide.pdf', type: 'pdf' }], { reset: true });
+
+    expect(controller.flatFiles).toEqual(['docs/guide.pdf']);
+    expect(controller.flatDocumentFiles).toEqual(['docs/guide.pdf']);
+    controller.state.setSearchQuery('guide');
+    expect(controller.state.getSearchMatches()).toEqual([
+      { name: 'guide.pdf', path: 'docs/guide.pdf', type: 'pdf' },
+    ]);
+  });
+
   it('clears tree search before revealing a quick-switcher file', () => {
     document.body.innerHTML = `
       <input id="fileSearchInput">

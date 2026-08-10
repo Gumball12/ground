@@ -93,6 +93,24 @@ test('QuickSwitcherController keeps a bounded top-30 result set and rebuilds cor
   assert.deepEqual(controller.filteredFiles, ['archive/guide-special.md']);
 });
 
+test('QuickSwitcherController searches file extensions', (t) => {
+  const elements = installDocumentStub(t);
+  const controller = new QuickSwitcherController({
+    getFileList: () => ['docs/guide.pdf', 'notes/guide.md'],
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.input.value = 'pdf';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, ['docs/guide.pdf']);
+
+  controller.input.value = '.md';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, ['notes/guide.md']);
+});
+
 test('QuickSwitcherController keeps path-only matches visible and reports capped results', (t) => {
   const elements = installDocumentStub(t);
   const files = [

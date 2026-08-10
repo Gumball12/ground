@@ -1,5 +1,6 @@
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { escapeHtml } from '../domain/vault-utils.js';
+import { getVaultFileIconSvg } from './file-icon-svg.js';
 import {
   DEFAULT_SEARCH_DEBOUNCE_MS,
   QuickSwitcherTextSearchRunner,
@@ -19,6 +20,7 @@ function getRawFileName(filePath) {
 function createCorpusEntry(filePath) {
   const displayName = stripVaultFileExtension(filePath);
   const fileName = displayName.split('/').pop() || displayName;
+  const rawFileName = getRawFileName(filePath);
 
   return {
     displayName,
@@ -27,6 +29,7 @@ function createCorpusEntry(filePath) {
     lowerDisplayName: displayName.toLowerCase(),
     lowerFileName: fileName.toLowerCase(),
     lowerPath: String(filePath).toLowerCase(),
+    lowerRawFileName: rawFileName.toLowerCase(),
   };
 }
 
@@ -91,6 +94,25 @@ function findCorpusMatch(entry, query) {
     return {
       indices: createRangeIndices(pathIndex, query.length),
       score: 50 + (1 / entry.displayName.length),
+    };
+  }
+
+  const rawFileIndex = entry.lowerRawFileName.indexOf(query);
+  if (rawFileIndex >= 0) {
+    return {
+      indices: createRangeIndices(
+        rawFileIndex + (entry.displayName.length - entry.fileName.length),
+        query.length,
+      ),
+      score: 40 + (1 / entry.lowerRawFileName.length),
+    };
+  }
+
+  const rawPathIndex = entry.lowerPath.indexOf(query);
+  if (rawPathIndex >= 0) {
+    return {
+      indices: createRangeIndices(rawPathIndex, query.length),
+      score: 25 + (1 / entry.lowerPath.length),
     };
   }
 
@@ -174,7 +196,6 @@ export class QuickSwitcherController {
 
     this.filteredFiles = [];
     this.fileMatches = new Map();
-    this.fileNameCounts = new Map();
     this.fileMatchCount = 0;
     this.fileResultsTruncated = false;
     this.fileCorpus = [];
@@ -370,11 +391,6 @@ export class QuickSwitcherController {
     if (allFiles !== this.lastFileListRef) {
       this.lastFileListRef = allFiles;
       this.fileCorpus = allFiles.map((filePath) => createCorpusEntry(filePath));
-      this.fileNameCounts = new Map();
-      this.fileCorpus.forEach((entry) => {
-        const count = this.fileNameCounts.get(entry.lowerFileName) ?? 0;
-        this.fileNameCounts.set(entry.lowerFileName, count + 1);
-      });
     }
 
     this.fileMatches.clear();
@@ -495,19 +511,15 @@ export class QuickSwitcherController {
       item.setAttribute('aria-selected', index === this.selectedIndex ? 'true' : 'false');
       item.dataset.index = String(index);
 
-      const fileName = getFileName(filePath);
-      const rawFileName = getRawFileName(filePath);
+      const fileName = getRawFileName(filePath);
       const dirPath = getDirPath(filePath);
       const match = this.fileMatches.get(filePath);
       const corpusEntry = this.fileCorpus.find((entry) => entry.filePath === filePath);
       const matchIndices = corpusEntry ? splitMatchIndices(corpusEntry, match?.indices) : { dirPath: [], fileName: [] };
-      const displayFileName = (this.fileNameCounts.get(fileName.toLowerCase()) ?? 0) > 1
-        ? rawFileName
-        : fileName;
 
       item.innerHTML = `
-        <svg class="qs-result-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span class="qs-result-name">${highlightText(displayFileName, matchIndices.fileName)}</span>
+        ${getVaultFileIconSvg(filePath, { className: 'qs-result-icon' })}
+        <span class="qs-result-name">${highlightText(fileName, matchIndices.fileName)}</span>
         ${dirPath ? `<span class="qs-result-path">${highlightText(dirPath, matchIndices.dirPath)}</span>` : ''}
       `;
 
