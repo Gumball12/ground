@@ -7,6 +7,7 @@ import {
   isMermaidFilePath,
   isPdfFilePath,
   isPlantUmlFilePath,
+  isStructurizrFilePath,
   stripVaultFileExtension,
 } from '../../../domain/file-kind.js';
 
@@ -18,6 +19,8 @@ export const workspaceFeature = {
   isPdfFile: isPdfFilePath,
   isMermaidFile: isMermaidFilePath,
   isPlantUmlFile: isPlantUmlFilePath,
+  isStructurizrFile: isStructurizrFilePath,
+  isStructurizrWorkspaceFile: isStructurizrFilePath,
 
   getPreviewSource() {
     const previewDocument = this.getStaticPreviewDocument?.();

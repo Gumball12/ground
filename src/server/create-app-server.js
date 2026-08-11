@@ -1,4 +1,5 @@
 import { createServer } from 'http';
+import { resolve } from 'node:path';
 
 import { loadConfig } from './config/env.js';
 import { createAuthService } from './auth/create-auth-service.js';
@@ -13,6 +14,7 @@ import { GitHubAppClient } from './infrastructure/github/github-app-client.js';
 import { GitHubSetupFlow } from './infrastructure/github/github-setup-flow.js';
 import { HostedWorkspaceService } from './domain/hosted-workspace.js';
 import { PlantUmlRenderer } from './infrastructure/plantuml/plantuml-renderer.js';
+import { StructurizrWorkspaceService } from './infrastructure/structurizr/structurizr-workspace-service.js';
 import { RoomRegistry } from './domain/collaboration/room-registry.js';
 import { RipgrepSearchService } from './domain/ripgrep-search-service.js';
 import { createRequestHandler } from './infrastructure/http/create-request-handler.js';
@@ -82,6 +84,12 @@ export function createAppServer(config = loadConfig()) {
   });
   const plantUmlRenderer = new PlantUmlRenderer({
     serverUrl: config.plantumlServerUrl,
+  });
+  const structurizrWorkspaceService = new StructurizrWorkspaceService({
+    mirrorDir: config.structurizr?.mirrorDir || resolve(config.vaultDir, '.collabmd/structurizr'),
+    serverUrl: config.structurizr?.serverUrl || '',
+    trustedExecutableDsl: config.structurizr?.trustedExecutableDsl,
+    vaultDir: config.vaultDir,
   });
   const gitService = new GitService({
     commandEnv: config.git?.commandEnv,
@@ -155,6 +163,7 @@ export function createAppServer(config = loadConfig()) {
     fileSystemSyncService,
     hostedWorkspaceService,
     githubSetupFlow,
+    structurizrWorkspaceService,
   );
   const httpServer = createServer((req, res) => {
     requestHandler(req, res).catch((error) => {
@@ -317,6 +326,7 @@ export function createAppServer(config = loadConfig()) {
     gitService,
     hostedWorkspaceService,
     searchService,
+    structurizrWorkspaceService,
     setTestHydrateDelayMs(delayMs = 0) {
       testControls.wsRoomHydrateDelayMs = Math.max(0, Number(delayMs) || 0);
     },

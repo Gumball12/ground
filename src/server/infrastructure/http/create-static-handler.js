@@ -54,6 +54,7 @@ function buildRuntimeConfig({
   nodeEnv,
   publicWsBaseUrl,
   search,
+  structurizr,
   wikiLinkAutoCreate,
   wsBasePath,
 }) {
@@ -69,6 +70,7 @@ function buildRuntimeConfig({
     },
     publicWsBaseUrl,
     search,
+    structurizrEnabled: Boolean(structurizr?.enabled ?? structurizr?.serverUrl),
     wikiLinkAutoCreate,
     wsBasePath,
   })};\n`;

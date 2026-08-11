@@ -4,6 +4,7 @@ import { ensureQuickSwitcherInstance, toggleQuickSwitcherInstance } from '../app
 import { WorkspaceRouteController } from '../application/workspace-route-controller.js';
 import { WikiLinkFileController } from '../application/wiki-link-file-controller.js';
 import { WorkspacePreviewController } from '../application/workspace-preview-controller.js';
+import { StructurizrPreviewController } from '../application/structurizr-preview-controller.js';
 import { WorkspaceCoordinator } from '../application/workspace-coordinator.js';
 import { bindAppShellElements } from '../application/app-shell-elements.js';
 import { chatFeature } from '../application/app-shell/chat-feature.js';
@@ -353,6 +354,10 @@ export class CollabMdAppShell {
       onToggleReaction: (threadId, messageId, emoji) => this.session?.toggleCommentReaction(threadId, messageId, emoji),
       onResolveThread: (threadId) => this.resolveCommentThread(threadId),
     });
+    this.structurizrPreview = new StructurizrPreviewController({
+      enabled: this.runtimeConfig.structurizrEnabled === true,
+      syncWorkspace: (payload) => this.vaultApiClient.syncStructurizrWorkspace(payload),
+    });
     this.workspacePreviewController = new WorkspacePreviewController({
       backlinksPanel: this.backlinksPanel,
       basesPreview: this.basesPreview,
@@ -369,6 +374,7 @@ export class CollabMdAppShell {
       isMermaidFile: (filePath) => this.isMermaidFile(filePath),
       isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
       layoutController: this.layoutController,
+      structurizrPreview: this.structurizrPreview,
       outlineController: this.outlineController,
       pdfPreview: this.pdfPreview,
       previewRenderer: this.previewRenderer,
@@ -466,6 +472,7 @@ export class CollabMdAppShell {
       isPdfFile: (filePath) => this.isPdfFile(filePath),
       isMermaidFile: (filePath) => this.isMermaidFile(filePath),
       isPlantUmlFile: (filePath) => this.isPlantUmlFile(filePath),
+      isStructurizrWorkspaceFile: (filePath) => this.isStructurizrWorkspaceFile(filePath),
       isTabActive: () => this.isTabActive,
       loadBootstrapContent: async (filePath) => {
         const response = await this.vaultApiClient.readFile(filePath);
@@ -486,10 +493,18 @@ export class CollabMdAppShell {
         this.clearInitialFileBootstrap();
       },
       onConnectionChange: (state) => this.handleConnectionChange(state),
-      onContentChange: ({ isBase, isMermaid, isPlantUml }) => {
+      onContentChange: ({ isBase, isMermaid, isPlantUml, isStructurizrWorkspace }) => {
         this.handleCommentEditorContentChange();
         if (isBase) {
           this.scheduleBaseFilePreview(this.currentFilePath, {
+            source: this.session?.getText?.() ?? '',
+          });
+          return;
+        }
+
+        if (isStructurizrWorkspace) {
+          this.structurizrPreview.queueSync({
+            filePath: this.currentFilePath,
             source: this.session?.getText?.() ?? '',
           });
           return;
@@ -525,6 +540,7 @@ export class CollabMdAppShell {
       onRenderExcalidrawPreview: (filePath) => this.workspacePreviewController.renderExcalidrawFilePreview(filePath),
       onRenderImagePreview: (filePath) => this.workspacePreviewController.renderImageFilePreview(filePath),
       onRenderPdfPreview: (filePath) => this.workspacePreviewController.renderPdfFilePreview(filePath),
+      onRenderStructurizrPreview: (filePath, options) => this.workspacePreviewController.renderStructurizrFilePreview(filePath, options),
       onSyncWrapToggle: () => this.syncWrapToggle(),
       onUpdateActiveFile: (filePath) => this.fileExplorer.setActiveFile(filePath),
       onUpdateCurrentFile: (filePath) => {

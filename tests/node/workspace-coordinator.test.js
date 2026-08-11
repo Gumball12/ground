@@ -70,6 +70,7 @@ function createCoordinator(overrides = {}) {
     isExcalidrawFile: () => false,
     isMermaidFile: () => false,
     isPlantUmlFile: () => false,
+    isStructurizrWorkspaceFile: () => false,
     isTabActive: () => true,
     loadBootstrapContent: async () => null,
     loadEditorSessionClass: async () => EditorSession,
@@ -107,6 +108,9 @@ function createCoordinator(overrides = {}) {
     },
     onRenderPdfPreview: () => {
       events.push('render-pdf');
+    },
+    onRenderStructurizrPreview: () => {
+      events.push('render-structurizr');
     },
     onSyncWrapToggle: () => {
       events.push('sync-wrap');
@@ -153,6 +157,20 @@ test('EditorSession emitContentChange deduplicates repeated content', () => {
   session.getText = () => 'hello world';
   assert.equal(session.emitContentChange(), true);
   assert.deepEqual(notifications, ['change', 'change']);
+});
+
+test('WorkspaceCoordinator renders an arbitrary .dsl workspace root', async () => {
+  let renderedPath = null;
+  const { coordinator } = createCoordinator({
+    isStructurizrWorkspaceFile: (filePath) => filePath.endsWith('.dsl'),
+    onRenderStructurizrPreview: (filePath) => {
+      renderedPath = filePath;
+    },
+  });
+
+  await coordinator.openFile('test.dsl');
+
+  assert.equal(renderedPath, 'test.dsl');
 });
 
 test('WorkspaceCoordinator marks file open before post-paint work completes', async () => {

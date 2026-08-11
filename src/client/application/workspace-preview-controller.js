@@ -2,6 +2,7 @@ import {
   isBaseFilePath,
   isDiagramFilePath,
   isMarkdownFilePath,
+  isStructurizrFilePath,
 } from '../../domain/file-kind.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 
@@ -27,6 +28,7 @@ export class WorkspacePreviewController {
     pdfPreview = null,
     schedulePreviewLayoutSync,
     scrollSyncController,
+    structurizrPreview = null,
     videoEmbed,
   }) {
     this.backlinksPanel = backlinksPanel;
@@ -57,6 +59,11 @@ export class WorkspacePreviewController {
     this.pdfPreview = pdfPreview ?? { cancel() {}, render() {} };
     this.schedulePreviewLayoutSyncCallback = schedulePreviewLayoutSync;
     this.scrollSyncController = scrollSyncController;
+    this.structurizrPreview = structurizrPreview ?? {
+      queueSync() {},
+      render: async () => false,
+      reset() {},
+    };
     this.videoEmbed = videoEmbed;
   }
 
@@ -94,6 +101,8 @@ export class WorkspacePreviewController {
     this.elements.previewContent?.classList.remove('is-pdf-file-preview');
     this.elements.previewContent?.classList.remove('is-mermaid-file-preview');
     this.elements.previewContent?.classList.remove('is-plantuml-file-preview');
+    this.elements.previewContent?.classList.remove('is-structurizr-file-preview');
+    this.structurizrPreview.reset();
   }
 
   syncFileChrome(filePath, { drawioMode = null, preferPreviewForBase = false } = {}) {
@@ -105,6 +114,7 @@ export class WorkspacePreviewController {
     const isMarkdown = isMarkdownFilePath(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
+    const isStructurizr = isStructurizrFilePath(filePath);
     const isDiagramFile = isDiagramFilePath(filePath);
     const usesHeaderBacklinks = isExcalidraw || (isDrawio && drawioMode !== 'text');
 
@@ -116,6 +126,12 @@ export class WorkspacePreviewController {
     this.elements.outlineToggle?.classList.toggle('hidden', isDiagramFile || isImage || isPdf || isBase);
     this.elements.previewContent?.classList.toggle('is-mermaid-file-preview', isMermaid);
     this.elements.previewContent?.classList.toggle('is-plantuml-file-preview', isPlantUml);
+    this.elements.previewContent?.classList.toggle('is-structurizr-file-preview', isStructurizr);
+
+    if (isStructurizr) {
+      this.outlineController.close();
+      this.backlinksPanel.clear();
+    }
 
     if ((isDrawio && drawioMode !== 'text') || isExcalidraw || isImage || isPdf || (isBase && preferPreviewForBase)) {
       this.layoutController.setView('preview', { persist: false });
@@ -307,6 +323,35 @@ export class WorkspacePreviewController {
 
     previewElement.dataset.renderPhase = 'ready';
     this.outlineController.close();
+    this.scrollSyncController.setLargeDocumentMode(false);
+    this.scrollSyncController.invalidatePreviewBlocks();
+    this.videoEmbed?.reconcileEmbeds(previewElement);
+    this.schedulePreviewLayoutSyncCallback({ delayMs: 0 });
+  }
+
+  async renderStructurizrFilePreview(filePath, { source = null } = {}) {
+    const previewElement = this.elements.previewContent;
+    if (!previewElement) {
+      return;
+    }
+
+    this.videoEmbed?.detachForCommit();
+    this.drawioEmbed.detachForCommit();
+    this.excalidrawEmbed.detachForCommit();
+    this.resetPreviewMode();
+    previewElement.classList.add('is-structurizr-file-preview');
+    const renderHost = this.previewRenderer.ensureRenderHost();
+    this.previewRenderer.normalizePreviewChildren(renderHost);
+
+    await this.structurizrPreview.render({
+      filePath,
+      renderHost,
+      source: typeof source === 'string' ? source : (this.getSession()?.getText?.() ?? ''),
+    });
+
+    previewElement.dataset.renderPhase = 'ready';
+    this.outlineController.close();
+    this.backlinksPanel.clear();
     this.scrollSyncController.setLargeDocumentMode(false);
     this.scrollSyncController.invalidatePreviewBlocks();
     this.videoEmbed?.reconcileEmbeds(previewElement);

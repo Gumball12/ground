@@ -20,6 +20,7 @@ function flattenTree(nodes, files = [], searchEntries = [], fileEntries = []) {
       || node.type === 'drawio'
       || node.type === 'mermaid'
       || node.type === 'plantuml'
+      || node.type === 'structurizr'
       || node.type === 'pdf'
       || node.type === 'image'
     ) {

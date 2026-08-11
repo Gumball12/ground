@@ -464,6 +464,7 @@ export class FileExplorerView {
     const isPdf = fileType === 'pdf';
     const isMermaid = fileType === 'mermaid';
     const isPlantUml = fileType === 'plantuml';
+    const isStructurizr = fileType === 'structurizr';
 
     if (isBase) {
       button.classList.add('is-base');
@@ -485,6 +486,9 @@ export class FileExplorerView {
     }
     if (isPlantUml) {
       button.classList.add('is-plantuml');
+    }
+    if (isStructurizr) {
+      button.classList.add('is-structurizr');
     }
     if (filePath === activeFilePath) {
       button.classList.add('active');

@@ -446,6 +446,18 @@ export const gitFeature = {
       showToast: true,
     });
 
+    const structurizrDependencyChanged = [
+      ...workspaceChange.changedPaths,
+      ...workspaceChange.deletedPaths,
+      ...workspaceChange.renamedPaths.flatMap((entry) => [entry.oldPath, entry.newPath]),
+    ].some((pathValue) => /(?:\.dsl$|(?:^|\/)workspace\.json$)/iu.test(pathValue));
+    if (this.currentFilePath && this.isStructurizrWorkspaceFile?.(this.currentFilePath) && structurizrDependencyChanged) {
+      this.structurizrPreview?.queueSync({
+        filePath: this.currentFilePath,
+        source: this.session?.getText?.() ?? '',
+      });
+    }
+
     if (
       event.origin === 'filesystem'
       && this.currentFilePath

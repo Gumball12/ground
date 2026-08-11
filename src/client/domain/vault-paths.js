@@ -3,6 +3,7 @@ import {
   isDrawioFilePath,
   isMermaidFilePath,
   isPlantUmlFilePath,
+  isStructurizrFilePath,
   stripVaultFileExtension,
 } from '../../domain/file-kind.js';
 
@@ -130,6 +131,53 @@ export function createPlantUmlStarter(filePath) {
       '@startuml',
       'Alice -> Bob: Hello',
       '@enduml',
+      '',
+    ].join('\n'),
+    path: nextPath,
+  };
+}
+
+export function createStructurizrStarter(filePath) {
+  const normalizedPath = normalizeVaultPathInput(filePath);
+  const nextPath = isStructurizrFilePath(normalizedPath)
+    ? normalizedPath
+    : `${normalizedPath}.dsl`;
+  return {
+    content: [
+      'workspace "CollabMD Example" "A small Structurizr workspace" {',
+      '  model {',
+      '    user = person "User" "Uses the system"',
+      '    system = softwareSystem "Example System" "The system being documented" {',
+      '      web = container "Web Application" "Serves the user interface" "JavaScript" {',
+      '        home = component "Home Page" "Shows the landing page" "React"',
+      '        editor = component "Editor" "Edits workspace content" "React"',
+      '      }',
+      '      api = container "API" "Handles requests" "Node.js"',
+      '    }',
+      '    user -> system "Uses"',
+      '    web -> api "Calls" "HTTPS/JSON"',
+      '    home -> editor "Links to"',
+      '  }',
+      '  views {',
+      '    systemContext system "Context" {',
+      '      include *',
+      '      autoLayout',
+      '    }',
+      '    container system "Containers" {',
+      '      include *',
+      '      autoLayout',
+      '    }',
+      '    component web "Components" {',
+      '      include *',
+      '      autoLayout',
+      '    }',
+      '    styles {',
+      '      element "Person" {',
+      '        shape person',
+      '      }',
+      '    }',
+      '  }',
+      '}',
       '',
     ].join('\n'),
     path: nextPath,

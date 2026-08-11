@@ -18,6 +18,7 @@
     "docker-compose.yml",
     "scripts/cloudflare-tunnel.mjs",
     "scripts/local-plantuml-compose.mjs",
+    "scripts/local-structurizr-compose.mjs",
     "src/"
   ],
   "bin": {
@@ -34,8 +35,11 @@
     "lint": "eslint .",
     "plantuml:up": "node scripts/local-plantuml-compose.mjs up",
     "plantuml:down": "node scripts/local-plantuml-compose.mjs down",
+    "structurizr:up": "node scripts/local-structurizr-compose.mjs up",
+    "structurizr:down": "node scripts/local-structurizr-compose.mjs down",
     "start": "npm run build && node bin/collabmd.js",
     "start:local-plantuml": "npm run build && node bin/collabmd.js --local-plantuml",
+    "start:local-structurizr": "npm run build && node bin/collabmd.js --local-structurizr",
     "start:prod": "node bin/collabmd.js",
     "test": "npm run test:guardrails && npm run test:unit && npm run test:integration:prebuilt && npm run test:browser && npm run test:e2e:prebuilt",
     "test:browser": "vitest run --config vitest.config.mjs --browser=chromium",

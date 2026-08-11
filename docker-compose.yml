@@ -3,6 +3,7 @@ services:
     image: ${COLLABMD_IMAGE:-ghcr.io/andes90/collabmd:latest}
     depends_on:
       - plantuml
+      - structurizr
     environment:
       HOST: 0.0.0.0
       PORT: 1234
@@ -19,6 +20,9 @@ services:
       BASE_PATH: ${BASE_PATH:-}
       PUBLIC_WS_BASE_URL: ${PUBLIC_WS_BASE_URL:-}
       PLANTUML_SERVER_URL: http://plantuml:8080
+      STRUCTURIZR_SERVER_URL: http://structurizr:8080
+      STRUCTURIZR_MIRROR_DIR: ${COLLABMD_VAULT_DIR:-/data}/.collabmd/structurizr
+      STRUCTURIZR_TRUSTED_EXECUTABLE_DSL: ${STRUCTURIZR_TRUSTED_EXECUTABLE_DSL:-false}
       COLLABMD_WIKI_LINK_AUTO_CREATE: ${COLLABMD_WIKI_LINK_AUTO_CREATE:-true}
       COLLABMD_MAX_PDF_UPLOAD_BYTES: ${COLLABMD_MAX_PDF_UPLOAD_BYTES:-52428800}
       COLLABMD_VAULT_DIR: ${COLLABMD_VAULT_DIR:-/data}
@@ -37,6 +41,9 @@ services:
     ports:
       - "${COLLABMD_HOST_PORT:-1234}:1234"
     restart: unless-stopped
+    networks:
+      - default
+      - diagram-private
     volumes:
       - type: bind
         source: ${HOST_VAULT_DIR:-./data/vault}
@@ -53,6 +60,40 @@ services:
 
   plantuml:
     image: plantuml/plantuml-server:jetty
+    networks:
+      - diagram-private
     ports:
       - "127.0.0.1:${PLANTUML_HOST_PORT:-18080}:8080"
     restart: unless-stopped
+
+  structurizr:
+    image: structurizr/structurizr:2026.06.28
+    command: ["local", "/data"]
+    environment:
+      STRUCTURIZR_EDITABLE: "false"
+      STRUCTURIZR_AUTOREFRESHINTERVAL: "0"
+      STRUCTURIZR_AUTOSAVEINTERVAL: "0"
+      STRUCTURIZR_NETWORK_URLS_ALLOWED: ${STRUCTURIZR_NETWORK_URLS_ALLOWED:-}
+    networks:
+      - diagram-private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 256
+    read_only: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${STRUCTURIZR_HOST_PORT:-19090}:8080"
+    tmpfs:
+      - /tmp
+    volumes:
+      - type: bind
+        source: ${HOST_VAULT_DIR:-./data/vault}/.collabmd/structurizr
+        target: /data
+
+networks:
+  diagram-private:
+    driver: bridge

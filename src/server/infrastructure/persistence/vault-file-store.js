@@ -31,6 +31,7 @@ const EDITABLE_VAULT_CONTENT_PATH_ERRORS = {
   markdown: 'Invalid file path',
   mermaid: 'Invalid file path — must end in .mmd or .mermaid',
   plantuml: 'Invalid file path — must end in .puml or .plantuml',
+  structurizr: 'Invalid file path — must end in .dsl',
 };
 
 function getEditableVaultContentKind(filePath) {
@@ -69,6 +70,7 @@ const TEXT_FILE_MIME_TYPES = Object.freeze({
   mermaid: 'text/plain; charset=utf-8',
   pdf: 'application/pdf',
   plantuml: 'text/plain; charset=utf-8',
+  structurizr: 'text/plain; charset=utf-8',
 });
 
 function createTransactionalPath(targetPath, label) {

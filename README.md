@@ -20,7 +20,7 @@ Throughout this guide, **vault** simply means a regular folder on your computer 
 - Your filesystem stays the source of truth: CollabMD does not move, rename, or delete files unless you explicitly do that in the app
 - Realtime editing with Yjs
 - External filesystem edits sync back into the app and connected browsers
-- Mermaid, PlantUML, Excalidraw, and draw.io support
+- Mermaid, PlantUML, Structurizr DSL, Excalidraw, and draw.io support
 - Source-anchored comments, chat, and presence
 - Works with plain folders, Obsidian-style vaults, and git-backed docs
 
@@ -70,7 +70,7 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 - **Global text search** — search text across supported vault files with ripgrep-backed results grouped by file
 - **Source-anchored comments** — comment on lines or selected text with inline markers, preview bubbles, and thread cards
 - **Collaboration built in** — collaborator presence, follow mode, and team chat
-- **Diagram-friendly** — Mermaid fences and standalone `.mmd` / `.mermaid`, PlantUML `.puml` / `.plantuml`, `.excalidraw`, `.drawio`, readonly PDF previews, and public video embeds in Markdown
+- **Diagram-friendly** — Mermaid fences and standalone `.mmd` / `.mermaid`, PlantUML `.puml` / `.plantuml`, Structurizr `.dsl` C4 workspaces, `.excalidraw`, `.drawio`, readonly PDF previews, and public video embeds in Markdown
 - **Easy browser access** — optional Cloudflare Tunnel support makes a running session easy to share
 
 ## Best fit for
@@ -169,7 +169,7 @@ Then share the printed URL and password with your collaborator. If `cloudflared`
 - Single-instance deployment only: collaboration room state is kept in-process and is not shared across replicas
 - `oidc` currently supports Google only
 - Hosted workspace mode currently provides the backend/API surface; Team Settings UI, invitation email delivery, GitHub callback redirect polish, and GitHub App checkout/publish wiring are still pending
-- Source-anchored comments currently support markdown, Mermaid, and PlantUML text files, but not `.excalidraw` or `.drawio`
+- Source-anchored comments currently support markdown, Mermaid, PlantUML, and Structurizr DSL text files, but not `.excalidraw` or `.drawio`
 - Windows use is supported via WSL2 rather than native Windows execution
 
 ## How it works
@@ -180,16 +180,16 @@ collabmd ~/my-vault --no-tunnel
 
 CollabMD starts a local server, scans the vault, and opens a browser-based editor with:
 
-- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
-- **Live preview** — rendered as you type, with syntax-highlighted code blocks, public video embeds, plus Mermaid and PlantUML diagrams
+- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.dsl`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
+- **Live preview** — rendered as you type, with syntax-highlighted code blocks, public video embeds, plus Mermaid, PlantUML, and Structurizr diagrams
 - **Anchored comments** — add comments from the editor, open threads from inline markers or preview bubbles, and review them from the comments drawer
 - **`[[wiki-links]]` + backlinks** — jump between notes and inspect linked mentions
 - **Room chat** — discuss changes without leaving the workspace
 - **Presence + follow mode** — see who is online and follow another collaborator's active cursor
 - **Quick switcher, global text search, and outline** — move around large vaults and long documents faster
-- **Standalone diagram files** — open `.mmd` / `.mermaid` or `.puml` / `.plantuml` files in side-by-side editor + preview, `.excalidraw` files in direct preview mode, `.drawio` files in an embedded diagrams.net editor/viewer, and `.pdf` files in a readonly browser preview
+- **Standalone diagram files** — open `.mmd` / `.mermaid`, `.puml` / `.plantuml`, or `.dsl` files in side-by-side editor + preview; Structurizr workspaces provide context → container → component navigation; `.excalidraw` files use direct preview mode, `.drawio` files use an embedded diagrams.net editor/viewer, and `.pdf` files use a readonly browser preview
 
-Comment threads are source-anchored and currently supported for markdown, Mermaid, and PlantUML text files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or the preview bubble. Excalidraw and draw.io files are currently excluded from comments.
+Comment threads are source-anchored and currently supported for markdown, Mermaid, PlantUML, and Structurizr DSL text files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or the preview bubble. Excalidraw and draw.io files are currently excluded from comments.
 
 Draw.io files use the diagrams.net embed/runtime. Opening a `.drawio` file directly mounts an interactive editor in the preview pane. Markdown embeds such as `![[architecture.drawio]]` use the diagrams.net viewer for a lighter inline preview and include an `Open` action to jump into the full file view.
 
@@ -220,6 +220,7 @@ collabmd [directory] [options]
 | `--auth` | Auth strategy: `none`, `password`, `oidc` | `none` |
 | `--auth-password` | Password for `--auth password` | generated per run |
 | `--local-plantuml` | Start the bundled local docker-compose PlantUML service | off |
+| `--local-structurizr` | Start the bundled local Structurizr renderer | off |
 | `--no-tunnel` | Don't start Cloudflare Tunnel | tunnel on |
 | `-v, --version` | Show version | |
 | `-h, --help` | Show help | |
@@ -250,6 +251,9 @@ collabmd --auth oidc --no-tunnel
 
 # Use the local docker-compose PlantUML service
 collabmd --local-plantuml
+
+# Use the local Structurizr renderer for .dsl workspaces
+collabmd --local-structurizr
 
 # Serve an Obsidian vault
 collabmd ~/Documents/Obsidian/MyVault
@@ -460,9 +464,9 @@ docker run \
   ghcr.io/andes90/collabmd:latest
 ```
 
-### Local docker-compose with a private PlantUML server
+### Local docker-compose with private diagram renderers
 
-The included `docker-compose.yml` runs a prebuilt CollabMD image together with a local `plantuml/plantuml-server:jetty` container and points `PLANTUML_SERVER_URL` at the private service automatically.
+The included `docker-compose.yml` runs a prebuilt CollabMD image together with local PlantUML and Structurizr containers. PlantUML SVG rendering and Structurizr `workspace.dsl` previews stay on the private Docker network automatically.
 
 ```bash
 mkdir -p data/vault
@@ -496,10 +500,13 @@ docker build -t collabmd:local .
 COLLABMD_IMAGE=collabmd:local docker compose up
 ```
 
-The PlantUML container is also published on loopback by default at `http://127.0.0.1:18080`, so the host-based CLI can reuse it with:
+The PlantUML container is published on loopback by default at `http://127.0.0.1:18080`, and Structurizr is published at `http://127.0.0.1:19090` for host-based CLI use:
 
 ```bash
 npm run start:local-plantuml
+
+# Start CollabMD with Structurizr DSL support
+npm run start:local-structurizr -- --no-tunnel
 ```
 
 To use an existing vault on your machine instead of `./data/vault`:
@@ -580,6 +587,7 @@ npm run dev:client            # Start the Vite dev server with API/WebSocket pro
 npm run dev:server            # Start only the backend server for local frontend development
 npm run start                 # Build + start server
 npm run start:local-plantuml  # Build + start server with local docker-compose PlantUML
+npm run start:local-structurizr # Build + start server with local Structurizr
 npm run start:prod            # Start server (expects previous build)
 npm run test                  # Run unit + e2e tests
 npm run test:unit             # Fast Node-based unit tests
@@ -587,6 +595,8 @@ npm run test:e2e              # Playwright browser tests
 npm run tunnel                # Start only the Cloudflare tunnel
 npm run plantuml:up           # Start only the local docker-compose PlantUML service
 npm run plantuml:down         # Stop only the local docker-compose PlantUML service
+npm run structurizr:up        # Start only the local Structurizr renderer
+npm run structurizr:down      # Stop only the local Structurizr renderer
 npm run capture:readme-assets # Regenerate the README screenshot and demo assets
 ```
 
@@ -679,6 +689,9 @@ vite.config.mjs            Vite multi-page build and dev-server proxy config
 | `COLLABMD_GITHUB_HTML_BASE_URL` | GitHub web base URL for installation setup | `https://github.com` |
 | `COLLABMD_GITHUB_SETUP_FLOW_COOKIE_NAME` | Signed cookie name for the GitHub App setup callback flow | `collabmd_github_setup_flow` |
 | `PLANTUML_SERVER_URL` | Upstream PlantUML server base URL used for server-side SVG rendering | `https://www.plantuml.com/plantuml` |
+| `STRUCTURIZR_SERVER_URL` | Structurizr Local-compatible sidecar base URL used for `.dsl` previews | disabled |
+| `COLLABMD_STRUCTURIZR_MIRROR_DIR` | Writable disposable mirror directory passed to Structurizr | `<vault>/.collabmd/structurizr` |
+| `COLLABMD_STRUCTURIZR_TRUSTED_EXECUTABLE_DSL` | Allow Structurizr `!script` and `!plugin` directives; keep false for untrusted vaults | `false` |
 | `COLLABMD_DRAWIO_BASE_URL` | diagrams.net base URL used for `.drawio` viewing and editing | `https://embed.diagrams.net` |
 | `COLLABMD_WIKI_LINK_AUTO_CREATE` | Create missing markdown files when clicking unresolved wiki-links; set to `false` to disable | `true` |
 | `COLLABMD_SEARCH_MAX_FILE_SIZE` | Maximum size of each file considered by global text search; supports bytes or `K`, `M`, and `G` suffixes | `1M` |
@@ -722,10 +735,11 @@ cp .env.example .env
 - If `COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE` is not set, SSH falls back to `StrictHostKeyChecking=accept-new`.
 - External filesystem edits are reconciled back into active rooms and the explorer. Ambiguous watcher bursts still fall back to batched workspace reconciliation.
 - `.obsidian`, `.git`, `.trash`, and `node_modules` directories are ignored.
-- Only `.md`, `.markdown`, and `.mdx` files are indexed.
+- Markdown, Base, Mermaid, PlantUML, Structurizr DSL, draw.io, Excalidraw, PDF, and image files are tracked by the vault tree; global text search indexes supported text formats.
 - PlantUML preview rendering is server-side and uses `PLANTUML_SERVER_URL`; point it at a self-hosted renderer if you do not want to use the public PlantUML service.
-- `docker compose up` uses the included local PlantUML service and avoids the public renderer by default. The initial git clone may also require a longer health-check grace period than a purely local vault.
-- `collabmd --local-plantuml` and `npm run start:local-plantuml` will start the local PlantUML compose service first, then run CollabMD against `http://127.0.0.1:${PLANTUML_HOST_PORT:-18080}`.
+- Structurizr previews use a read-only official Local sidecar and a disposable `.collabmd/structurizr` mirror; the authoritative vault is never mounted into the renderer as its data directory.
+- `docker compose up` uses the included local PlantUML and Structurizr services and avoids public diagram renderers by default. The initial git clone may also require a longer health-check grace period than a purely local vault.
+- `collabmd --local-plantuml` and `npm run start:local-plantuml` start the local PlantUML compose service. `collabmd --local-structurizr` starts Structurizr Local against `http://127.0.0.1:${STRUCTURIZR_HOST_PORT:-19090}`.
 
 ## License
 

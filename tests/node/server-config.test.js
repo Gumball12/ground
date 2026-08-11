@@ -3,6 +3,24 @@ import assert from 'node:assert/strict';
 
 import { loadConfig } from '../../src/server/config/env.js';
 
+test('loadConfig configures the Structurizr renderer', () => {
+  const config = loadConfig({
+    structurizr: {
+      mirrorDir: '/tmp/collabmd-structurizr',
+      serverUrl: 'http://127.0.0.1:19090',
+      trustedExecutableDsl: true,
+    },
+    vaultDir: '/tmp/collabmd-vault',
+  });
+
+  assert.deepEqual(config.structurizr, {
+    enabled: true,
+    mirrorDir: '/tmp/collabmd-structurizr',
+    serverUrl: 'http://127.0.0.1:19090',
+    trustedExecutableDsl: true,
+  });
+});
+
 test('loadConfig enables perf logging from COLLABMD_PERF_LOGGING', () => {
   const previousValue = process.env.COLLABMD_PERF_LOGGING;
   process.env.COLLABMD_PERF_LOGGING = '1';

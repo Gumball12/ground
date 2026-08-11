@@ -22,6 +22,7 @@ const TEXT_SEARCH_GLOBS = Object.freeze([
   '*.mermaid',
   '*.puml',
   '*.plantuml',
+  '*.dsl',
   '*.drawio',
   '*.excalidraw',
 ]);

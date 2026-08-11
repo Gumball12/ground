@@ -320,7 +320,7 @@ test('FileActionController rename dialog explains that file type stays fixed', (
   assert.match(dialogConfig?.hint ?? '', /\.md is kept automatically\./);
 });
 
-test('FileActionController shares the create registry across menus and includes draw.io', (t) => {
+test('FileActionController shares the create registry across menus and includes Structurizr', (t) => {
   const { controller } = createController(t);
 
   const createActions = controller.getCreateActions();
@@ -334,6 +334,7 @@ test('FileActionController shares the create registry across menus and includes 
     'drawio',
     'mermaid',
     'plantuml',
+    'structurizr',
     'folder',
   ]);
   assert.deepEqual(contextItems.map((item) => item.label), createActions.map((item) => item.contextLabel));

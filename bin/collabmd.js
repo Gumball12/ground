@@ -16,6 +16,7 @@ const { values, positionals } = parseArgs({
     'auth-password': { type: 'string' },
     help: { type: 'boolean', short: 'h', default: false },
     'local-plantuml': { type: 'boolean', default: false },
+    'local-structurizr': { type: 'boolean', default: false },
     port: { type: 'string', short: 'p', default: '1234' },
     host: { type: 'string' },
     'no-tunnel': { type: 'boolean', default: false },
@@ -45,6 +46,7 @@ if (values.help) {
     --auth <strategy>    Auth strategy: none, password, oidc (default: none)
     --auth-password <pw> Password for --auth password (default: generated per run)
     --local-plantuml     Start the bundled docker-compose PlantUML service and use it
+    --local-structurizr  Start the bundled Structurizr Local service and use it
     --no-tunnel          Don't start Cloudflare Tunnel
     -v, --version        Show version
     -h, --help           Show this help
@@ -55,6 +57,7 @@ if (values.help) {
     collabmd --port 3000            Use a custom port
     collabmd --auth password        Require a generated password to join
     collabmd --local-plantuml       Use the local docker-compose PlantUML server
+    collabmd --local-structurizr    Use the local docker-compose Structurizr renderer
     collabmd --no-tunnel            Local only, no tunnel
 `);
   process.exit(0);
@@ -64,6 +67,7 @@ const port = parseInt(values.port ?? process.env.PORT ?? '1234', 10) || 1234;
 const host = values.host || process.env.HOST || '127.0.0.1';
 const enableTunnel = !values['no-tunnel'];
 const useLocalPlantUml = values['local-plantuml'];
+const useLocalStructurizr = values['local-structurizr'];
 
 const { resolveCliVaultDir, loadConfig } = await import('../src/server/config/env.js');
 const vaultPath = resolveCliVaultDir(positionals);
@@ -96,6 +100,27 @@ if (useLocalPlantUml) {
       console.error('Error: Docker is not available. Install Docker Desktop or Docker Engine first.');
     } else {
       console.error(`Error: Failed to start local PlantUML service: ${error.message}`);
+    }
+    process.exit(1);
+  }
+}
+
+if (useLocalStructurizr) {
+  const {
+    getLocalStructurizrServerUrl,
+    startLocalStructurizrComposeService,
+  } = await import('../scripts/local-structurizr-compose.mjs');
+
+  try {
+    const localStructurizrUrl = getLocalStructurizrServerUrl();
+    console.log(`  Structurizr: starting local docker-compose service at ${localStructurizrUrl}...`);
+    await startLocalStructurizrComposeService({ vaultDir: vaultPath });
+    process.env.STRUCTURIZR_SERVER_URL = localStructurizrUrl;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.error('Error: Docker is not available. Install Docker Desktop or Docker Engine first.');
+    } else {
+      console.error(`Error: Failed to start local Structurizr service: ${error.message}`);
     }
     process.exit(1);
   }
@@ -185,9 +210,10 @@ try {
   console.log(`  ║${bannerLine}║`);
   console.log('  ╚══════════════════════════════════════╝');
   console.log('');
-  console.log(`  Vault:  ${vaultPath} (${fileCount} markdown files)`);
+  console.log(`  Vault:  ${vaultPath} (${fileCount} files)`);
   console.log(`  Local:  http://${info.host}:${info.port}`);
   console.log(`  PlantUML: ${config.plantumlServerUrl}`);
+  console.log(`  Structurizr: ${config.structurizr?.enabled ? config.structurizr.serverUrl : 'disabled'}`);
   if (config.auth.strategy === 'password') {
     console.log(`  Auth:   password`);
     console.log(`  Secret: ${config.auth.password}`);

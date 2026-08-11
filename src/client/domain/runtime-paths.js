@@ -86,6 +86,7 @@ export function getClientRuntimeConfig() {
       unavailableReason: 'ripgrep search is unavailable',
       version: '',
     },
+    structurizrEnabled: false,
     wikiLinkAutoCreate: true,
     wsBasePath: '/ws',
     ...(window.__COLLABMD_CONFIG__ ?? {}),

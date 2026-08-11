@@ -73,6 +73,30 @@ function resolveDrawioBaseUrl(value) {
   return normalizeOptionalString(value) || 'https://embed.diagrams.net';
 }
 
+function resolveStructurizrServerUrl(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return '';
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(normalized);
+  } catch {
+    throw new Error('STRUCTURIZR_SERVER_URL must be an absolute HTTP or HTTPS URL.');
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error('STRUCTURIZR_SERVER_URL must use HTTP or HTTPS.');
+  }
+
+  if (parsedUrl.search || parsedUrl.hash) {
+    throw new Error('STRUCTURIZR_SERVER_URL must not include a query string or hash.');
+  }
+
+  return normalized.replace(/\/+$/u, '');
+}
+
 function normalizeAppBasePath(basePath) {
   const normalized = normalizeOptionalString(basePath);
   if (!normalized || normalized === '/') {
@@ -295,6 +319,31 @@ function loadOidcConfig(overrides = {}, { basePath = '' } = {}) {
   };
 }
 
+function loadStructurizrConfig(overrides = {}, { vaultDir } = {}) {
+  const serverUrl = resolveStructurizrServerUrl(
+    overrides.serverUrl
+    ?? process.env.COLLABMD_STRUCTURIZR_SERVER_URL
+    ?? process.env.STRUCTURIZR_SERVER_URL,
+  );
+  const mirrorDir = resolveOptionalPath(
+    overrides.mirrorDir
+    ?? process.env.COLLABMD_STRUCTURIZR_MIRROR_DIR
+    ?? process.env.STRUCTURIZR_MIRROR_DIR,
+  ) || resolve(vaultDir, '.collabmd/structurizr');
+
+  return {
+    enabled: Boolean(serverUrl),
+    mirrorDir,
+    serverUrl,
+    trustedExecutableDsl: overrides.trustedExecutableDsl
+      ?? parseBooleanFlag(
+        process.env.COLLABMD_STRUCTURIZR_TRUSTED_EXECUTABLE_DSL
+        ?? process.env.STRUCTURIZR_TRUSTED_EXECUTABLE_DSL,
+        false,
+      ),
+  };
+}
+
 function loadHostedConfig(overrides = {}, { authStrategy, vaultDir } = {}) {
   const enabled = overrides.enabled ?? parseBooleanFlag(process.env.COLLABMD_HOSTED_ENABLED, false);
   const metadataDbPath = resolveOptionalPath(
@@ -378,6 +427,7 @@ export function loadConfig(overrides = {}) {
     : null;
   const git = loadGitConfig(overrides.git);
   const hosted = loadHostedConfig(overrides.hosted, { authStrategy, vaultDir });
+  const structurizr = loadStructurizrConfig(overrides.structurizr, { vaultDir });
   const build = loadBuildInfo({
     explicitBuildId: process.env.COLLABMD_BUILD_ID,
     projectRoot,
@@ -424,6 +474,7 @@ export function loadConfig(overrides = {}) {
     searchMaxFileSize: normalizeSearchMaxFileSize(
       overrides.searchMaxFileSize ?? process.env.COLLABMD_SEARCH_MAX_FILE_SIZE,
     ),
+    structurizr,
     perfLoggingEnabled: overrides.perfLoggingEnabled ?? isPerfLoggingEnabled(process.env.COLLABMD_PERF_LOGGING),
     port: parsePositiveInt(process.env.PORT, 1234),
     nodeEnv,

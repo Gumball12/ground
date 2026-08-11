@@ -4,6 +4,7 @@ import { createGitApiQueryHandler } from './create-git-api-query-handler.js';
 import { createHostedApiHandler } from './create-hosted-api-handler.js';
 import { createPlantUmlApiHandler } from './create-plantuml-api-handler.js';
 import { createStaticHandler } from './create-static-handler.js';
+import { createStructurizrApiHandler } from './create-structurizr-api-handler.js';
 import { createVaultApiCommandHandler } from './create-vault-api-command-handler.js';
 import { createVaultApiQueryHandler } from './create-vault-api-query-handler.js';
 import { parseJsonBody } from './request-body.js';
@@ -36,6 +37,7 @@ export function createRequestHandler(
   fileSystemSyncService = null,
   hostedWorkspaceService = null,
   githubSetupFlow = null,
+  structurizrWorkspaceService = null,
 ) {
   const handleStaticRequest = createStaticHandler(config, authService, searchService);
   const handleAuthApi = createAuthApiHandler({ authService });
@@ -67,6 +69,10 @@ export function createRequestHandler(
     workspaceMutationCoordinator,
   });
   const handlePlantUmlApi = createPlantUmlApiHandler({ plantUmlRenderer });
+  const handleStructurizrApi = createStructurizrApiHandler({
+    basePath: config.basePath,
+    service: structurizrWorkspaceService,
+  });
 
   function handleBasePathRedirect(req, res, originalRequestUrl) {
     if (
@@ -176,7 +182,7 @@ export function createRequestHandler(
       return;
     }
 
-    if (requestUrl.pathname.startsWith('/api/')) {
+    if (requestUrl.pathname.startsWith('/api/') || handleStructurizrApi.requiresAuthorization(requestUrl)) {
       const authorization = authService.authorizeApiRequest(req);
       if (!authorization.ok) {
         jsonResponse(req, res, authorization.statusCode, authorization.body);
@@ -190,6 +196,10 @@ export function createRequestHandler(
         jsonResponse(req, res, hostedAuthorization.statusCode, hostedAuthorization.body);
         return;
       }
+    }
+
+    if (await handleStructurizrApi(req, res, requestUrl)) {
+      return;
     }
 
     if (requestUrl.pathname.startsWith('/api/')) {

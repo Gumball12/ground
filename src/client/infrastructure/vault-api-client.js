@@ -51,6 +51,20 @@ export class VaultApiClient {
     return Array.isArray(data.backlinks) ? data.backlinks : [];
   }
 
+  async syncStructurizrWorkspace({ path, source }) {
+    const response = await fetch(resolveApiUrl('/structurizr/sync'), {
+      body: JSON.stringify({
+        path,
+        source,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+    });
+    return parseApiResponse(response, 'Failed to sync Structurizr workspace');
+  }
+
   async renderSvg(source) {
     const response = await fetch(resolveApiUrl('/plantuml/render'), {
       body: JSON.stringify({ source }),

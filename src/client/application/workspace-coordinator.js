@@ -32,6 +32,7 @@ export class WorkspaceCoordinator {
     isPdfFile,
     isMermaidFile,
     isPlantUmlFile,
+    isStructurizrWorkspaceFile,
     isTabActive,
     loadBootstrapContent = null,
     loadEditorSessionClass,
@@ -52,6 +53,7 @@ export class WorkspaceCoordinator {
     onRenderDrawioPreview,
     onRenderImagePreview,
     onRenderPdfPreview,
+    onRenderStructurizrPreview,
     onSyncWrapToggle,
     onUpdateActiveFile,
     onUpdateCurrentFile,
@@ -82,6 +84,7 @@ export class WorkspaceCoordinator {
     this.isPdfFile = isPdfFile ?? (() => false);
     this.isMermaidFile = isMermaidFile ?? (() => false);
     this.isPlantUmlFile = isPlantUmlFile ?? (() => false);
+    this.isStructurizrWorkspaceFile = isStructurizrWorkspaceFile ?? (() => false);
     this.isTabActive = isTabActive;
     this.loadBootstrapContent = loadBootstrapContent;
     this.loadEditorSessionClassPort = loadEditorSessionClass;
@@ -102,6 +105,7 @@ export class WorkspaceCoordinator {
     this.onRenderExcalidrawPreview = onRenderExcalidrawPreview;
     this.onRenderImagePreview = onRenderImagePreview;
     this.onRenderPdfPreview = onRenderPdfPreview;
+    this.onRenderStructurizrPreview = onRenderStructurizrPreview;
     this.onSyncWrapToggle = onSyncWrapToggle;
     this.onUpdateActiveFile = onUpdateActiveFile;
     this.onUpdateCurrentFile = onUpdateCurrentFile;
@@ -185,6 +189,11 @@ export class WorkspaceCoordinator {
     if (isDrawio) this.onRenderDrawioPreview(filePath);
     if (isImage) this.onRenderImagePreview(filePath);
     if (isPdf) this.onRenderPdfPreview(filePath);
+    if (this.isStructurizrWorkspaceFile(filePath)) {
+      this.onRenderStructurizrPreview(filePath, {
+        source: this.session?.getText?.() ?? '',
+      });
+    }
     this.onSyncWrapToggle();
     if (supportsBacklinks) this.loadBacklinks(filePath);
   }
@@ -203,6 +212,7 @@ export class WorkspaceCoordinator {
     const isPdf = this.isPdfFile(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
+    const isStructurizrWorkspace = this.isStructurizrWorkspaceFile(filePath);
 
     if (
       filePath === this.stateStore.currentFilePath
@@ -264,6 +274,7 @@ export class WorkspaceCoordinator {
           isBase,
           isMermaid,
           isPlantUml,
+          isStructurizrWorkspace,
         });
       },
       onImagePaste: (file) => this.onImagePaste?.(file),

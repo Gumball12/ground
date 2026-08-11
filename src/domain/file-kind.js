@@ -4,6 +4,8 @@ const EXCALIDRAW_FILE_EXTENSION = '.excalidraw';
 const DRAWIO_FILE_EXTENSION = '.drawio';
 const MERMAID_FILE_EXTENSIONS = Object.freeze(['.mmd', '.mermaid']);
 const PLANTUML_FILE_EXTENSIONS = Object.freeze(['.puml', '.plantuml']);
+const STRUCTURIZR_FILE_EXTENSION = '.dsl';
+const STRUCTURIZR_FILE_EXTENSIONS = Object.freeze([STRUCTURIZR_FILE_EXTENSION]);
 const PDF_FILE_EXTENSION = '.pdf';
 const IMAGE_ATTACHMENT_EXTENSIONS = Object.freeze(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 const DIAGRAM_FILE_EXTENSIONS = Object.freeze([
@@ -11,6 +13,7 @@ const DIAGRAM_FILE_EXTENSIONS = Object.freeze([
   DRAWIO_FILE_EXTENSION,
   ...MERMAID_FILE_EXTENSIONS,
   ...PLANTUML_FILE_EXTENSIONS,
+  ...STRUCTURIZR_FILE_EXTENSIONS,
 ]);
 const VAULT_FILE_EXTENSIONS = Object.freeze([
   ...MARKDOWN_FILE_EXTENSIONS,
@@ -19,7 +22,7 @@ const VAULT_FILE_EXTENSIONS = Object.freeze([
   PDF_FILE_EXTENSION,
   ...IMAGE_ATTACHMENT_EXTENSIONS,
 ]);
-const STRIP_VAULT_EXTENSION_PATTERN = /\.(?:md|markdown|mdx|base|excalidraw|drawio|mmd|mermaid|puml|plantuml|pdf|png|jpe?g|webp|gif|svg)$/i;
+const STRIP_VAULT_EXTENSION_PATTERN = /\.(?:md|markdown|mdx|base|excalidraw|drawio|mmd|mermaid|puml|plantuml|dsl|pdf|png|jpe?g|webp|gif|svg)$/i;
 
 function normalizeFilePath(filePath) {
   return String(filePath ?? '').trim().toLowerCase();
@@ -40,6 +43,8 @@ export {
   MERMAID_FILE_EXTENSIONS,
   PDF_FILE_EXTENSION,
   PLANTUML_FILE_EXTENSIONS,
+  STRUCTURIZR_FILE_EXTENSION,
+  STRUCTURIZR_FILE_EXTENSIONS,
   VAULT_FILE_EXTENSIONS,
 };
 
@@ -66,6 +71,10 @@ export function getVaultFileKind(filePath) {
 
   if (hasFileExtension(filePath, PLANTUML_FILE_EXTENSIONS)) {
     return 'plantuml';
+  }
+
+  if (hasFileExtension(filePath, STRUCTURIZR_FILE_EXTENSIONS)) {
+    return 'structurizr';
   }
 
   if (hasFileExtension(filePath, [PDF_FILE_EXTENSION])) {
@@ -125,6 +134,10 @@ export function isPlantUmlFilePath(filePath) {
   return getVaultFileKind(filePath) === 'plantuml';
 }
 
+export function isStructurizrFilePath(filePath) {
+  return getVaultFileKind(filePath) === 'structurizr';
+}
+
 export function isPdfFilePath(filePath) {
   return getVaultFileKind(filePath) === 'pdf';
 }
@@ -135,7 +148,11 @@ export function isImageAttachmentFilePath(filePath) {
 
 export function isDiagramFilePath(filePath) {
   const kind = getVaultFileKind(filePath);
-  return kind === 'excalidraw' || kind === 'drawio' || kind === 'mermaid' || kind === 'plantuml';
+  return kind === 'excalidraw'
+    || kind === 'drawio'
+    || kind === 'mermaid'
+    || kind === 'plantuml'
+    || kind === 'structurizr';
 }
 
 export function isVaultFilePath(filePath) {
@@ -147,6 +164,7 @@ export function supportsCommentsForFilePath(filePath) {
   return kind === 'markdown'
     || kind === 'mermaid'
     || kind === 'plantuml'
+    || kind === 'structurizr'
     || kind === 'excalidraw';
 }
 

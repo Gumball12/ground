@@ -408,6 +408,7 @@ test('WorkspacePreviewController delegates standalone base preview rendering', a
     ['class-remove', 'is-pdf-file-preview'],
     ['class-remove', 'is-mermaid-file-preview'],
     ['class-remove', 'is-plantuml-file-preview'],
+    ['class-remove', 'is-structurizr-file-preview'],
     ['class-add', 'is-base-file-preview'],
     ['normalize-preview', true],
     ['render-standalone', 'views/tasks.base', true, 'filters:\n  and: []\n'],

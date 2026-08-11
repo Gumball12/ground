@@ -117,6 +117,44 @@ async function createPublicDirSnapshot() {
   };
 }
 
+async function startStructurizrStub() {
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push(req.url || '');
+    if (req.url === '/api/workspace/1') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+      res.end('{"success":true}');
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+    });
+    res.end('<html><script src="/static/app.js"></script><a href="/workspace/1/diagrams#Context">Context</a></html>');
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+
+  return {
+    close: () => new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    }),
+    requests,
+    url: `http://127.0.0.1:${port}`,
+  };
+}
+
 async function startPlantUmlStub() {
   const requests = [];
   const server = createServer((req, res) => {
@@ -1173,6 +1211,7 @@ test('HTTP server uploads every supported vault file type without changing its b
     'flow.mermaid',
     'sequence.puml',
     'sequence.plantuml',
+    'workspace.dsl',
     'guide.pdf',
     'image.png',
     'image.jpg',
@@ -1641,6 +1680,79 @@ test('HTTP server reads and writes .plantuml files through /api/file', async (t)
   const updatedReadResponse = await httpRequest(`${app.baseUrl}/api/file?path=${encodeURIComponent('architecture.plantuml')}`);
   assert.equal(updatedReadResponse.statusCode, 200);
   assert.match(updatedReadResponse.body, /Bob -> Alice: Ack/);
+});
+
+test('HTTP server reads and writes .dsl files through /api/file', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const createResponse = await httpRequest(`${app.baseUrl}/api/file`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      path: 'workspace.dsl',
+      content: 'workspace "Example" {\n  model { }\n}\n',
+    }),
+  });
+  assert.equal(createResponse.statusCode, 201);
+
+  const readResponse = await httpRequest(`${app.baseUrl}/api/file?path=${encodeURIComponent('workspace.dsl')}`);
+  assert.equal(readResponse.statusCode, 200);
+  assert.match(readResponse.body, /workspace \\"Example\\"/);
+
+  const updateResponse = await httpRequest(`${app.baseUrl}/api/file`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      path: 'workspace.dsl',
+      content: 'workspace "Updated" {\n  model { }\n}\n',
+    }),
+  });
+  assert.equal(updateResponse.statusCode, 200);
+
+  const updatedReadResponse = await httpRequest(`${app.baseUrl}/api/file?path=${encodeURIComponent('workspace.dsl')}`);
+  assert.equal(updatedReadResponse.statusCode, 200);
+  assert.match(updatedReadResponse.body, /workspace \\"Updated\\"/);
+});
+
+test('HTTP server syncs and proxies Structurizr through the authenticated app route', async (t) => {
+  const structurizrStub = await startStructurizrStub();
+  t.after(() => structurizrStub.close());
+
+  const app = await startTestServer({
+    basePath: '/collab',
+    structurizr: {
+      serverUrl: structurizrStub.url,
+    },
+  });
+  t.after(() => app.close());
+
+  const source = 'workspace "Example" {\n  model { }\n}\n';
+  await writeFile(join(app.vaultDir, 'workspace.dsl'), 'authoritative\n', 'utf8');
+  const syncResponse = await httpRequest(`${app.appBaseUrl}/api/structurizr/sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      path: 'workspace.dsl',
+      source,
+    }),
+  });
+  assert.equal(syncResponse.statusCode, 200);
+  assert.equal(JSON.parse(syncResponse.body).ok, true);
+  assert.equal(await readFile(join(app.vaultDir, '.collabmd/structurizr/workspace.dsl'), 'utf8'), source);
+  assert.equal(await readFile(join(app.vaultDir, 'workspace.dsl'), 'utf8'), 'authoritative\n');
+
+  const viewerResponse = await httpRequest(`${app.appBaseUrl}/workspace/1/diagrams#Context`);
+  assert.equal(viewerResponse.statusCode, 200);
+  assert.match(viewerResponse.body, /\/collab\/static\/app\.js/);
+  assert.match(viewerResponse.body, /\/collab\/workspace\/1\/diagrams#Context/);
+  assert.deepEqual(structurizrStub.requests, ['/api/workspace/1', '/workspace/1/diagrams']);
 });
 
 test('HTTP server proxies PlantUML renders through the configured renderer', async (t) => {

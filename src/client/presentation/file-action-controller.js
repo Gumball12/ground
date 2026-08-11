@@ -11,6 +11,7 @@ import {
   createMarkdownStarter,
   createMermaidStarter,
   createPlantUmlStarter,
+  createStructurizrStarter,
   ensureVaultExtension,
   getVaultPathLeaf,
   getVaultPathParent,
@@ -194,6 +195,16 @@ export class FileActionController {
         onSelect: () => this.handleNewPlantUml({ parentDir }),
       },
       {
+        contextLabel: 'New Structurizr workspace',
+        group: 'Diagram',
+        hint: 'Structurizr DSL',
+        icon: this.getCreateActionIcon('structurizr'),
+        id: 'structurizr',
+        label: 'Structurizr workspace',
+        meta: '.dsl',
+        onSelect: () => this.handleNewStructurizr({ parentDir }),
+      },
+      {
         contextLabel: 'New folder',
         group: 'Structure',
         hint: 'Folder',
@@ -264,6 +275,7 @@ export class FileActionController {
         return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M14 4v5h5"/><path d="M8 13h8"/><path d="M8 17h6"/><path d="M8 9h3"/></svg>';
       case 'drawio':
       case 'plantuml':
+      case 'structurizr':
         return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1"/><rect x="14" y="4" width="7" height="6" rx="1"/><rect x="8.5" y="14" width="7" height="6" rx="1"/><path d="M10 7h4"/><path d="M17.5 10v2.5"/><path d="M6.5 10v2.5"/><path d="M6.5 12.5h11"/></svg>';
       case 'excalidraw':
         return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>';
@@ -1007,6 +1019,36 @@ export class FileActionController {
         const starter = createPlantUmlStarter(composeVaultChildPath(context.normalizedParentDir, normalizedPath));
         return this.createVaultFile(starter.path, starter.content, {
           errorMessage: 'Failed to create PlantUML diagram',
+          openAfterCreate: true,
+        });
+      },
+    });
+  }
+
+  handleNewStructurizr({ parentDir = '' } = {}) {
+    const context = this.getCreateContext(parentDir);
+
+    this.openActionDialog({
+      title: 'Create Structurizr workspace',
+      copy: context.normalizedParentDir
+        ? 'Create a collaborative C4 workspace inside the selected folder.'
+        : 'Create a collaborative C4 workspace in the vault.',
+      label: `Workspace ${context.inputLabelSuffix}`,
+      hint: `${context.hintPrefix} ".dsl" is added automatically. workspace.dsl is conventional; any workspace .dsl file can render.`,
+      note: context.note,
+      placeholder: 'workspace',
+      submitLabel: 'Create workspace',
+      emptyMessage: 'Workspace path is required',
+      onSubmit: (value) => {
+        const normalizedPath = normalizeVaultPathInput(value);
+        if (!normalizedPath) {
+          this.showToast('Workspace path is required');
+          return false;
+        }
+
+        const starter = createStructurizrStarter(composeVaultChildPath(context.normalizedParentDir, normalizedPath));
+        return this.createVaultFile(starter.path, starter.content, {
+          errorMessage: 'Failed to create Structurizr workspace',
           openAfterCreate: true,
         });
       },
