@@ -68,7 +68,7 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 - **File upload** — import multiple supported Markdown, Base, diagram, image, and PDF files into the vault from the file explorer
 - **Markdown with context** — live preview, wiki-links, backlinks, outline, quick switcher, and scroll sync
 - **Global text search** — search text across supported vault files with ripgrep-backed results grouped by file
-- **Source-anchored comments** — comment on lines or selected text with inline markers, preview bubbles, and thread cards
+- **Source-anchored comments** — comment on lines or selected text with inline markers and preview bubbles, or pin threads to Excalidraw elements
 - **Collaboration built in** — collaborator presence, follow mode, and team chat
 - **Diagram-friendly** — Mermaid fences and standalone `.mmd` / `.mermaid`, PlantUML `.puml` / `.plantuml`, Structurizr `.dsl` C4 workspaces, `.excalidraw`, `.drawio`, readonly PDF previews, and public video embeds in Markdown
 - **Easy browser access** — optional Cloudflare Tunnel support makes a running session easy to share
@@ -169,7 +169,7 @@ Then share the printed URL and password with your collaborator. If `cloudflared`
 - Single-instance deployment only: collaboration room state is kept in-process and is not shared across replicas
 - `oidc` currently supports Google only
 - Hosted workspace mode currently provides the backend/API surface; Team Settings UI, invitation email delivery, GitHub callback redirect polish, and GitHub App checkout/publish wiring are still pending
-- Source-anchored comments currently support markdown, Mermaid, PlantUML, and Structurizr DSL text files, but not `.excalidraw` or `.drawio`
+- Text-anchored comments support markdown, Mermaid, PlantUML, and Structurizr DSL files. Excalidraw supports element-anchored threads; draw.io comments are not supported
 - Windows use is supported via WSL2 rather than native Windows execution
 
 ## How it works
@@ -182,14 +182,14 @@ CollabMD starts a local server, scans the vault, and opens a browser-based edito
 
 - **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.dsl`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
 - **Live preview** — rendered as you type, with syntax-highlighted code blocks, public video embeds, plus Mermaid, PlantUML, and Structurizr diagrams
-- **Anchored comments** — add comments from the editor, open threads from inline markers or preview bubbles, and review them from the comments drawer
+- **Anchored comments** — add comments from the editor or selected Excalidraw elements, reopen threads in context, and review them from the comments drawer
 - **`[[wiki-links]]` + backlinks** — jump between notes and inspect linked mentions
 - **Room chat** — discuss changes without leaving the workspace
 - **Presence + follow mode** — see who is online and follow another collaborator's active cursor
 - **Quick switcher, global text search, and outline** — move around large vaults and long documents faster
 - **Standalone diagram files** — open `.mmd` / `.mermaid`, `.puml` / `.plantuml`, or `.dsl` files in side-by-side editor + preview; Structurizr workspaces provide context → container → component navigation; `.excalidraw` files use direct preview mode, `.drawio` files use an embedded diagrams.net editor/viewer, and `.pdf` files use a readonly browser preview
 
-Comment threads are source-anchored and currently supported for markdown, Mermaid, PlantUML, and Structurizr DSL text files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or the preview bubble. Excalidraw and draw.io files are currently excluded from comments.
+Text comment threads are source-anchored for markdown, Mermaid, PlantUML, and Structurizr DSL files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or preview bubble. Excalidraw threads attach to selected canvas elements and also appear in the workspace overview. Draw.io comments are not supported.
 
 Draw.io files use the diagrams.net embed/runtime. Opening a `.drawio` file directly mounts an interactive editor in the preview pane. Markdown embeds such as `![[architecture.drawio]]` use the diagrams.net viewer for a lighter inline preview and include an `Open` action to jump into the full file view.
 
@@ -401,11 +401,13 @@ For the full runtime env var reference, see the `Environment variables` details 
 
 Published image: `ghcr.io/andes90/collabmd:latest`
 
+From the vault directory:
+
 ```bash
-docker run -p 1234:1234 -v /path/to/vault:/data ghcr.io/andes90/collabmd:latest
+docker run --rm -p 1234:1234 -v "$PWD:/data" ghcr.io/andes90/collabmd:latest
 ```
 
-The published Docker image includes `ripgrep`, so global text search works without installing extra packages in the container.
+Open `http://localhost:1234`. The published Docker image includes `ripgrep`, so global text search works without installing extra packages in the container.
 
 The container listens on `0.0.0.0:1234` and stores vault files at `/data`.
 

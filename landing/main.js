@@ -1,8 +1,8 @@
-/* CollabMD landing — interactions */
+/* CollabMD landing interactions */
 (() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---------- Nav scrolled state ---------- */
+  /* ---------- Navigation ---------- */
   const nav = document.querySelector('.nav');
   const menuToggle = document.querySelector('.nav-menu-toggle');
   const navLinks = Array.from(document.querySelectorAll('.nav-links a'));
@@ -16,12 +16,7 @@
     menuToggle?.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
   };
 
-  const updateActiveNav = () => {
-    const marker = window.scrollY + Math.min(window.innerHeight * 0.28, 220);
-    let activeId = '';
-    for (const section of navSections) {
-      if (section.offsetTop <= marker) activeId = section.id;
-    }
+  const setActiveNav = (activeId = '') => {
     navLinks.forEach((link) => {
       const active = link.getAttribute('href') === `#${activeId}`;
       link.classList.toggle('is-active', active);
@@ -30,13 +25,18 @@
     });
   };
 
-  const onScroll = () => {
-    nav.classList.toggle('is-scrolled', window.scrollY > 24);
-    updateActiveNav();
-  };
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', updateActiveNav);
+  if ('IntersectionObserver' in window) {
+    const visibleSections = new Set();
+    const navObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) visibleSections.add(entry.target);
+        else visibleSections.delete(entry.target);
+      });
+      const activeSection = Array.from(visibleSections).sort((a, b) => a.offsetTop - b.offsetTop)[0];
+      setActiveNav(activeSection?.id);
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    navSections.forEach((section) => navObserver.observe(section));
+  }
   menuToggle?.addEventListener('click', () => setMenuOpen(!nav.classList.contains('is-menu-open')));
   navLinks.forEach((link) => link.addEventListener('click', () => setMenuOpen(false)));
   document.addEventListener('keydown', (event) => {
@@ -64,65 +64,6 @@
     );
     document.documentElement.classList.add('reveal-ready');
     revealEls.forEach((el) => io.observe(el));
-  }
-
-  /* ---------- Terminal typing (the hero signature) ---------- */
-  const cmdEl = document.getElementById('term-cmd');
-  const outEl = document.getElementById('term-out');
-  const caretEl = document.getElementById('term-caret');
-  const nextEl = document.getElementById('term-next');
-  const COMMAND = 'npx collabmd@latest ~/my-vault --no-tunnel';
-
-  const openSession = () => {
-    outEl.classList.add('is-open');
-    outEl.setAttribute('aria-hidden', 'false');
-    // Drop to a fresh prompt line, like a real terminal.
-    if (caretEl) caretEl.style.display = 'none';
-    if (nextEl) {
-      nextEl.classList.add('is-open');
-      nextEl.setAttribute('aria-hidden', 'false');
-    }
-  };
-
-  if (cmdEl && outEl) {
-    if (reducedMotion) {
-      cmdEl.textContent = COMMAND;
-      openSession();
-    } else {
-      document.documentElement.classList.add('terminal-ready');
-      cmdEl.textContent = '';
-      outEl.setAttribute('aria-hidden', 'true');
-      nextEl?.setAttribute('aria-hidden', 'true');
-      let i = 0;
-      const typeNext = () => {
-        if (i <= COMMAND.length) {
-          cmdEl.textContent = COMMAND.slice(0, i);
-          i += 1;
-          // Slight human-ish jitter, faster through the boring middle.
-          const ch = COMMAND[i - 1];
-          const base = ch === ' ' ? 130 : 34 + Math.random() * 46;
-          setTimeout(typeNext, base);
-        } else {
-          setTimeout(openSession, 420);
-        }
-      };
-      // Wait until the terminal has revealed itself before typing.
-      const termEl = cmdEl.closest('.term');
-      if (termEl && 'IntersectionObserver' in window) {
-        const tio = new IntersectionObserver(
-          (entries) => {
-            if (entries[0].isIntersecting) {
-              tio.disconnect();
-              setTimeout(typeNext, 350);
-            }
-          },
-          { threshold: 0.4 },
-        );
-        tio.observe(termEl);
-      } else {
-        typeNext();
-      }
-    }
   }
 
   /* ---------- Copy buttons ---------- */
