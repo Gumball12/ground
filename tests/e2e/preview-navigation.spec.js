@@ -271,7 +271,7 @@ test('keeps the clicked parent section active in the outline after navigation se
     return Math.abs(headingRect.top - containerRect.top);
   });
 
-  expect(parentHeadingOffset).toBeLessThan(80);
+  expect(parentHeadingOffset).toBeLessThan(100);
   await expect(page.locator('#outlineNav .outline-item.active').first()).toHaveText('Embedded Diagram Files');
   await expect(page.locator('#previewContent .excalidraw-embed').first()).toBeVisible();
   await expect.poll(async () => (

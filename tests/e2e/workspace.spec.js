@@ -423,7 +423,7 @@ test('export pdf uses the export page and prints the rendered snapshot html', as
 });
 
 test('shows provisional content before delayed websocket sync and upgrades to collaborative editing', async ({ page }) => {
-  await setHydrateDelay(page, 700);
+  await setHydrateDelay(page, 2000);
 
   try {
     await openFile(page, 'README.md', { waitFor: 'loaded' });
