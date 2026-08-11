@@ -1,20 +1,42 @@
+import { readFile } from 'node:fs/promises';
+
 import { getRequestErrorStatusCode } from './http-errors.js';
 import { jsonResponse, sendResponse, textResponse } from './http-response.js';
 import { parseJsonBody } from './request-body.js';
+
+const EMBED_STYLESHEET_PATH = new URL('../structurizr/structurizr-embed.css', import.meta.url);
 
 function isSyncRequest(requestUrl, req) {
   return requestUrl.pathname === '/api/structurizr/sync' && req.method === 'POST';
 }
 
-function rewriteBasePath(body, contentType, basePath) {
-  if (!basePath || !/(?:text\/(?:html|css)|javascript|ecmascript)/iu.test(contentType)) {
+function isEmbedStylesheetRequest(requestUrl) {
+  return requestUrl.pathname === '/api/structurizr/embed.css';
+}
+
+function rewriteBasePath(body, contentType, basePath, { injectEmbedStylesheet = false } = {}) {
+  if (!/(?:text\/(?:html|css)|javascript|ecmascript)/iu.test(contentType)) {
     return body;
   }
 
-  return Buffer.from(body.toString('utf8').replace(
-    /(["'`(=])\/(static|workspace|api\/workspace)(?=[/"'`?#)])/gu,
-    `$1${basePath}/$2`,
-  ));
+  let source = body.toString('utf8');
+  if (basePath) {
+    source = source.replace(
+      /(["'`(=])\/(static|workspace|api\/workspace)(?=[/"'`?#)])/gu,
+      `$1${basePath}/$2`,
+    );
+  }
+
+  if (injectEmbedStylesheet && /text\/html/iu.test(contentType)) {
+    const normalizedBasePath = String(basePath || '').replace(/\/+$/u, '');
+    const stylesheetPath = `${normalizedBasePath}/api/structurizr/embed.css`;
+    source = source.replace(
+      /<head(?:\s[^>]*)?>/iu,
+      (head) => `${head}\n<link rel="stylesheet" href="${stylesheetPath}">`,
+    );
+  }
+
+  return Buffer.from(source);
 }
 
 export function createStructurizrApiHandler({ basePath = '', service = null } = {}) {
@@ -49,6 +71,32 @@ export function createStructurizrApiHandler({ basePath = '', service = null } = 
       return true;
     }
 
+    if (isEmbedStylesheetRequest(requestUrl)) {
+      if (!service?.isEnabled()) {
+        return false;
+      }
+
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        textResponse(req, res, 405, 'Method Not Allowed', { Allow: 'GET, HEAD' });
+        return true;
+      }
+
+      try {
+        sendResponse(req, res, {
+          body: await readFile(EMBED_STYLESHEET_PATH),
+          headers: {
+            'Cache-Control': 'no-store',
+            'Content-Type': 'text/css; charset=utf-8',
+          },
+          statusCode: 200,
+        });
+      } catch (error) {
+        console.error('[http] Failed to serve Structurizr embed stylesheet:', error.message);
+        textResponse(req, res, 500, 'Internal Server Error');
+      }
+      return true;
+    }
+
     if (!service?.isProxyPath(requestUrl.pathname)) {
       return false;
     }
@@ -68,7 +116,9 @@ export function createStructurizrApiHandler({ basePath = '', service = null } = 
       }
 
       sendResponse(req, res, {
-        body: rewriteBasePath(response.body, response.contentType, basePath),
+        body: rewriteBasePath(response.body, response.contentType, basePath, {
+          injectEmbedStylesheet: requestUrl.pathname === '/workspace/1/diagrams',
+        }),
         headers: {
           'Cache-Control': requestUrl.pathname.startsWith('/static/')
             ? 'public, max-age=31536000, immutable'

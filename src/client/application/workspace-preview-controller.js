@@ -342,6 +342,9 @@ export class WorkspacePreviewController {
     previewElement.classList.add('is-structurizr-file-preview');
     const renderHost = this.previewRenderer.ensureRenderHost();
     this.previewRenderer.normalizePreviewChildren(renderHost);
+    if (renderHost) {
+      renderHost.style.minHeight = '';
+    }
 
     await this.structurizrPreview.render({
       filePath,

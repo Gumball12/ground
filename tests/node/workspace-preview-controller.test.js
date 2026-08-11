@@ -54,6 +54,7 @@ function createController(overrides = {}) {
     },
     schedulePreviewLayoutSync: overrides.schedulePreviewLayoutSync ?? (() => {}),
     scrollSyncController: { invalidatePreviewBlocks() {}, warmPreviewBlocks() {}, ...(overrides.scrollSyncController || {}) },
+    structurizrPreview: overrides.structurizrPreview,
   });
 }
 
@@ -417,6 +418,43 @@ test('WorkspacePreviewController delegates standalone base preview rendering', a
     ['invalidate-preview'],
     ['schedule-layout-sync'],
   ]);
+});
+
+test('WorkspacePreviewController clears the reserved height before rendering Structurizr', async () => {
+  const renderHost = { style: { minHeight: '320px' } };
+  const previewContent = {
+    classList: { add() {}, remove() {}, toggle() {} },
+    dataset: {},
+  };
+  let renderArgs = null;
+  const controller = createController({
+    elements: {
+      markdownToolbar: { classList: { toggle() {} } },
+      outlineToggle: { classList: { toggle() {} } },
+      previewContent,
+    },
+    previewRenderer: {
+      ensureRenderHost: () => renderHost,
+      normalizePreviewChildren() {},
+    },
+    scrollSyncController: {
+      invalidatePreviewBlocks() {},
+      setLargeDocumentMode() {},
+    },
+    structurizrPreview: {
+      reset() {},
+      async render(args) {
+        renderArgs = args;
+      },
+    },
+  });
+
+  await controller.renderStructurizrFilePreview('workspace.dsl', { source: 'workspace "Example" {}' });
+
+  assert.equal(renderHost.style.minHeight, '');
+  assert.equal(renderArgs.filePath, 'workspace.dsl');
+  assert.equal(renderArgs.source, 'workspace "Example" {}');
+  assert.equal(previewContent.dataset.renderPhase, 'ready');
 });
 
 test('WorkspacePreviewController still syncs Excalidraw preview layout without an editor session', async () => {

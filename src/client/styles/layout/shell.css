@@ -252,7 +252,8 @@
   padding: var(--space-3);
 }
 
-.preview-content.is-drawio-file-preview {
+.preview-content.is-drawio-file-preview,
+.preview-content.is-structurizr-file-preview {
   position: relative;
   display: flex;
   box-sizing: border-box;
@@ -276,6 +277,7 @@
 }
 
 .preview-content.is-drawio-file-preview [data-preview-render-host='true'],
+.preview-content.is-structurizr-file-preview [data-preview-render-host='true'],
 .preview-content.is-excalidraw-file-preview [data-preview-render-host='true'],
 .preview-content.is-image-file-preview [data-preview-render-host='true'],
 .preview-content.is-pdf-file-preview [data-preview-render-host='true'],

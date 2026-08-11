@@ -132,7 +132,7 @@ async function startStructurizrStub() {
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
     });
-    res.end('<html><script src="/static/app.js"></script><a href="/workspace/1/diagrams#Context">Context</a></html>');
+    res.end('<html><head></head><body><script src="/static/app.js"></script><a href="/workspace/1/diagrams#Context">Context</a></body></html>');
   });
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -1752,6 +1752,11 @@ test('HTTP server syncs and proxies Structurizr through the authenticated app ro
   assert.equal(viewerResponse.statusCode, 200);
   assert.match(viewerResponse.body, /\/collab\/static\/app\.js/);
   assert.match(viewerResponse.body, /\/collab\/workspace\/1\/diagrams#Context/);
+  assert.match(viewerResponse.body, /href="\/collab\/api\/structurizr\/embed\.css"/);
+
+  const embedStylesheetResponse = await httpRequest(`${app.appBaseUrl}/api/structurizr/embed.css`);
+  assert.equal(embedStylesheetResponse.statusCode, 200);
+  assert.match(embedStylesheetResponse.body, /#diagram-viewport/);
   assert.deepEqual(structurizrStub.requests, ['/api/workspace/1', '/workspace/1/diagrams']);
 });
 
