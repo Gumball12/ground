@@ -109,6 +109,7 @@ export class CollabMdAppShell {
       fileTreeShowExtensionsKey: 'collabmd-file-tree-show-extensions',
       lineWrappingKey: 'collabmd-editor-line-wrap',
       recentFilesKey: 'collabmd-recent-files',
+      vimModeKey: 'collabmd-editor-vim-mode',
       sidebarVisibleKey: 'collabmd-sidebar-visible',
       userNameKey: 'collabmd-user-name',
     });
@@ -442,6 +443,7 @@ export class CollabMdAppShell {
         lineInfoElement: this.elements.lineInfo,
         lineWrappingEnabled: options.lineWrappingEnabled,
         localUser: options.localUser,
+        vimModeEnabled: options.vimModeEnabled,
         onImagePaste: options.onImagePaste,
         onAwarenessChange: options.onAwarenessChange,
         onCommentsChange: options.onCommentsChange,
@@ -453,6 +455,7 @@ export class CollabMdAppShell {
       getDisplayName: (filePath) => this.getDisplayName(filePath),
       getFileList: () => this.fileExplorer.flatDocumentFiles,
       getLineWrappingEnabled: () => this.getStoredLineWrapping(),
+      getVimModeEnabled: () => this.getStoredVimMode(),
       getLocalUser: () => this.lobby.getLocalUser(),
       getStoredUserName: () => this.getStoredUserName(),
       getTheme: () => this.themeController.getTheme(),

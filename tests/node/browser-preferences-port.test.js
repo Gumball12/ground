@@ -15,6 +15,17 @@ function createStorage() {
   };
 }
 
+test('BrowserPreferencesPort defaults Vim mode to disabled and persists the opt-in', () => {
+  const storage = createStorage();
+  const preferences = new BrowserPreferencesPort({ storage });
+
+  assert.equal(preferences.getVimModeEnabled(), false);
+
+  preferences.setVimModeEnabled(true);
+
+  assert.equal(preferences.getVimModeEnabled(), true);
+});
+
 test('BrowserPreferencesPort keeps recent files newest-first and bounded', () => {
   const storage = createStorage();
   const preferences = new BrowserPreferencesPort({ storage });

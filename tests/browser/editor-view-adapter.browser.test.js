@@ -1,10 +1,49 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 
 import { EditorViewAdapter } from '../../src/client/infrastructure/editor-view-adapter.js';
 
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
+
+describe('EditorViewAdapter Vim mode', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('defaults to insert editing and enables Vim mode only when opted in', () => {
+    document.body.innerHTML = '<div id="editor"></div><span id="line-info"></span>';
+    const adapter = new EditorViewAdapter({
+      editorContainer: document.getElementById('editor'),
+      initialTheme: 'dark',
+      lineInfoElement: document.getElementById('line-info'),
+    });
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+
+    adapter.initialize({
+      awareness: null,
+      filePath: 'README.md',
+      undoManager: new Y.UndoManager(ytext),
+      ytext,
+    });
+
+    expect(adapter.isVimModeEnabled()).toBe(false);
+    expect(document.querySelector('.cm-vimMode')).toBeNull();
+
+    expect(adapter.setVimMode(true)).toBe(true);
+    expect(adapter.isVimModeEnabled()).toBe(true);
+    expect(document.querySelector('.cm-vimMode')).not.toBeNull();
+
+    expect(adapter.setVimMode(false)).toBe(false);
+    expect(adapter.isVimModeEnabled()).toBe(false);
+    expect(document.querySelector('.cm-vimMode')).toBeNull();
+
+    adapter.destroy();
+    ydoc.destroy();
+  });
+});
 
 describe('EditorViewAdapter search', () => {
   afterEach(() => {

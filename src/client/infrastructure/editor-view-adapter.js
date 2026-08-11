@@ -1,3 +1,4 @@
+import { vim } from '@replit/codemirror-vim';
 import { autocompletion, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import {
   defaultKeymap,
@@ -408,6 +409,7 @@ export class EditorViewAdapter {
     initialTheme,
     lineInfoElement,
     lineWrappingEnabled = true,
+    vimModeEnabled = false,
     onDocChanged = null,
     onImagePaste = null,
     onSelectionChanged = null,
@@ -418,6 +420,7 @@ export class EditorViewAdapter {
     this.initialTheme = initialTheme;
     this.lineInfoElement = lineInfoElement;
     this.lineWrappingEnabled = lineWrappingEnabled;
+    this.vimModeEnabled = Boolean(vimModeEnabled);
     this.onDocChanged = onDocChanged;
     this.onImagePaste = onImagePaste;
     this.onSelectionChanged = onSelectionChanged;
@@ -426,6 +429,7 @@ export class EditorViewAdapter {
     this.themeCompartment = new Compartment();
     this.syntaxThemeCompartment = new Compartment();
     this.lineWrappingCompartment = new Compartment();
+    this.vimModeCompartment = new Compartment();
     this.viewportFrame = 0;
     this.remoteUpdateFlashTimer = 0;
     this.lastLocalInputAt = 0;
@@ -478,6 +482,7 @@ export class EditorViewAdapter {
       highlightActiveLine(),
       highlightSelectionMatches(),
       createSearchNavigationListener(),
+      this.vimModeCompartment.of(!readOnly && this.vimModeEnabled ? vim({ status: true }) : []),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -643,6 +648,30 @@ export class EditorViewAdapter {
 
   isLineWrappingEnabled() {
     return this.lineWrappingEnabled;
+  }
+
+  isVimModeEnabled() {
+    return this.vimModeEnabled;
+  }
+
+  setVimMode(enabled) {
+    const nextEnabled = Boolean(enabled);
+    if (nextEnabled === this.vimModeEnabled) {
+      return nextEnabled;
+    }
+
+    this.vimModeEnabled = nextEnabled;
+    if (!this.editorView || this.editorView.state.readOnly) {
+      return nextEnabled;
+    }
+
+    this.editorView.dispatch({
+      effects: this.vimModeCompartment.reconfigure(
+        nextEnabled ? vim({ status: true }) : [],
+      ),
+    });
+    this.editorView.focus();
+    return nextEnabled;
   }
 
   setLineWrapping(enabled) {

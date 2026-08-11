@@ -8,6 +8,7 @@ export class EditorSession {
   constructor({
     editorContainer,
     lineWrappingEnabled = true,
+    vimModeEnabled = false,
     initialTheme,
     lineInfoElement,
     onAwarenessChange,
@@ -44,6 +45,7 @@ export class EditorSession {
       initialTheme,
       lineInfoElement,
       lineWrappingEnabled,
+      vimModeEnabled,
       onDocChanged: () => {
         this.emitContentChange();
       },
@@ -208,6 +210,14 @@ export class EditorSession {
 
   isLineWrappingEnabled() {
     return this.viewAdapter.isLineWrappingEnabled();
+  }
+
+  isVimModeEnabled() {
+    return this.viewAdapter.isVimModeEnabled();
+  }
+
+  setVimMode(enabled) {
+    return this.viewAdapter.setVimMode(enabled);
   }
 
   setLineWrapping(enabled) {

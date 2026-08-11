@@ -74,6 +74,7 @@
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.43.8",
     "@excalidraw/excalidraw": "0.18.0-4872083",
+    "@replit/codemirror-vim": "^6.4.0",
     "@turbodocx/html-to-docx": "^1.22.0",
     "archiver": "^8.0.0",
     "highlight.js": "^11.11.1",

@@ -25,11 +25,21 @@
   white-space: nowrap;
 }
 
-.toolbar-theme-icon {
+.toolbar-theme-icon,
+.toolbar-vim-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.toolbar-vim-button .toolbar-vim-state {
+  margin-left: auto;
+}
+
+.toolbar-vim-button[aria-pressed='true'] .toolbar-vim-state {
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
 }
 
 .toolbar-theme-button {

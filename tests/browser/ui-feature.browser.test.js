@@ -58,6 +58,36 @@ describe('uiFeature browser helpers', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps Vim mode off by default and persists the opt-in toggle', () => {
+    document.body.innerHTML = '<button id="vim-toggle"></button><span id="vim-label"></span>';
+    const context = {
+      elements: {
+        toggleVimModeButton: document.getElementById('vim-toggle'),
+        vimModeToggleLabel: document.getElementById('vim-label'),
+      },
+      preferences: {
+        getVimModeEnabled: () => false,
+        setVimModeEnabled: vi.fn(),
+      },
+      session: {
+        isVimModeEnabled: () => false,
+        setVimMode: vi.fn(),
+      },
+    };
+    Object.assign(context, uiFeatureShellMethods);
+
+    context.syncVimModeToggle();
+    expect(context.elements.vimModeToggleLabel.textContent).toBe('Off');
+    expect(context.elements.toggleVimModeButton.getAttribute('aria-pressed')).toBe('false');
+
+    context.toggleVimMode();
+
+    expect(context.session.setVimMode).toHaveBeenCalledWith(true);
+    expect(context.preferences.setVimModeEnabled).toHaveBeenCalledWith(true);
+    expect(context.elements.vimModeToggleLabel.textContent).toBe('On');
+    expect(context.elements.toggleVimModeButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('switches sidebar tabs and updates visibility state', () => {
     const context = createSidebarContext();
 
@@ -151,6 +181,7 @@ describe('uiFeature browser helpers', () => {
       syncFileHistoryButton: vi.fn(),
       syncIdentityManagementUi: vi.fn(),
       syncToolbarOverflowVisibility: vi.fn(),
+      syncVimModeToggle: vi.fn(),
       syncWrapToggle: vi.fn(),
       tabActivityLock: {
         initialize: vi.fn(),
@@ -417,6 +448,48 @@ describe('uiFeature browser helpers', () => {
     context.closeToolbarOverflowMenu();
     expect(context.toolbarOverflowOpen).toBe(false);
     expect(context.elements.toolbarOverflowToggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('keeps the overflow menu open when toggling Vim mode', () => {
+    document.body.innerHTML = `
+      <div class="toolbar-right">
+        <button id="toolbar-overflow-toggle"></button>
+        <div id="toolbar-overflow-menu">
+          <button id="vim-toggle"><span id="vim-label">Off</span></button>
+        </div>
+      </div>
+    `;
+
+    const context = {
+      toolbarOverflowOpen: true,
+      elements: {
+        toolbarOverflowMenu: document.getElementById('toolbar-overflow-menu'),
+        toolbarOverflowToggle: document.getElementById('toolbar-overflow-toggle'),
+        toggleVimModeButton: document.getElementById('vim-toggle'),
+        vimModeToggleLabel: document.getElementById('vim-label'),
+      },
+      preferences: {
+        getVimModeEnabled: () => false,
+        setVimModeEnabled: vi.fn(),
+      },
+      session: {
+        isVimModeEnabled: () => false,
+        setVimMode: vi.fn(),
+      },
+      toggleQuickSwitcher: vi.fn(),
+    };
+
+    Object.assign(context, uiFeatureShellMethods);
+    context.bindEvents();
+
+    context.elements.toggleVimModeButton.click();
+
+    expect(context.toolbarOverflowOpen).toBe(true);
+    expect(context.elements.vimModeToggleLabel.textContent).toBe('On');
+
+    context.handleDocumentPointerDown({ target: document.body });
+
+    expect(context.toolbarOverflowOpen).toBe(false);
   });
 
   it('opens quick switcher from the mobile overflow search files action', () => {

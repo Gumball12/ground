@@ -22,6 +22,7 @@ export class BrowserPreferencesPort {
     fileTreeShowExtensionsKey,
     lineWrappingKey,
     recentFilesKey = 'collabmd-recent-files',
+    vimModeKey = 'collabmd-editor-vim-mode',
     sidebarVisibleKey,
     userNameKey,
     storage = globalThis.localStorage,
@@ -32,6 +33,7 @@ export class BrowserPreferencesPort {
     this.sidebarVisibleKey = sidebarVisibleKey;
     this.storage = storage;
     this.userNameKey = userNameKey;
+    this.vimModeKey = vimModeKey;
   }
 
   getUserName() {
@@ -56,6 +58,14 @@ export class BrowserPreferencesPort {
 
   setLineWrappingEnabled(enabled) {
     writeStorage(this.storage, this.lineWrappingKey, String(enabled));
+  }
+
+  getVimModeEnabled() {
+    return readStorage(this.storage, this.vimModeKey, null) === 'true';
+  }
+
+  setVimModeEnabled(enabled) {
+    writeStorage(this.storage, this.vimModeKey, String(enabled));
   }
 
   getRecentFiles() {

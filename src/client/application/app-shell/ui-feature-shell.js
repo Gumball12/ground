@@ -62,6 +62,7 @@ function initialize() {
   this.syncIdentityManagementUi();
   this.syncCurrentUserName();
   this.syncWrapToggle();
+  this.syncVimModeToggle();
   this.syncToolbarOverflowVisibility?.();
   this.syncFileHistoryButton({ mode: 'empty' });
   this.renderChat();
@@ -297,6 +298,10 @@ function bindEvents() {
     this.toggleLineWrapping();
   });
 
+  this.elements.toggleVimModeButton?.addEventListener('click', () => {
+    this.toggleVimMode();
+  });
+
   this.elements.userCount?.addEventListener('click', (event) => {
     event.preventDefault();
     this.togglePresencePanel?.();
@@ -313,7 +318,8 @@ function bindEvents() {
   });
 
   this.elements.toolbarOverflowMenu?.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button')) {
+    const button = event.target instanceof Element ? event.target.closest('button') : null;
+    if (button && button !== this.elements.toggleVimModeButton) {
       this.closeToolbarOverflowMenu();
     }
   });
@@ -774,6 +780,35 @@ function getStoredLineWrapping() {
 }
 
 /** @this {UiShellContext} */
+function toggleVimMode() {
+  const currentState = this.session?.isVimModeEnabled?.() ?? this.getStoredVimMode();
+  const nextState = !currentState;
+
+  this.session?.setVimMode?.(nextState);
+  this.preferences.setVimModeEnabled(nextState);
+  this.syncVimModeToggle(nextState);
+}
+
+/** @this {UiShellContext} */
+function getStoredVimMode() {
+  return this.preferences.getVimModeEnabled();
+}
+
+/** @this {UiShellContext} */
+function syncVimModeToggle(state) {
+  const enabled = state ?? this.session?.isVimModeEnabled?.() ?? this.getStoredVimMode();
+  const label = this.elements.vimModeToggleLabel;
+  const button = this.elements.toggleVimModeButton;
+  const nextLabel = enabled ? 'On' : 'Off';
+  if (label) label.textContent = nextLabel;
+  if (button) {
+    button.setAttribute('aria-label', `${enabled ? 'Disable' : 'Enable'} Vim keybindings`);
+    button.setAttribute('title', `${enabled ? 'Disable' : 'Enable'} Vim keybindings`);
+    button.setAttribute('aria-pressed', String(enabled));
+  }
+}
+
+/** @this {UiShellContext} */
 function syncWrapToggle(state) {
   const enabled = state ?? this.session?.isLineWrappingEnabled() ?? this.getStoredLineWrapping();
   const label = this.elements.wrapToggleLabel;
@@ -836,6 +871,7 @@ export const uiFeatureShellMethods = {
   copyPreviewHeadingLink,
   createPreviewHeadingLinkUrl,
   getStoredLineWrapping,
+  getStoredVimMode,
   handleConnectionChange,
   handleDocumentKeydown,
   handleDocumentPointerDown,
@@ -856,7 +892,9 @@ export const uiFeatureShellMethods = {
   syncPreviewHeadingLinkButtons,
   syncVisualViewportBounds,
   syncToolbarOverflowVisibility,
+  syncVimModeToggle,
   syncWrapToggle,
   toggleToolbarOverflowMenu,
   toggleLineWrapping,
+  toggleVimMode,
 };

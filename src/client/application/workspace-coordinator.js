@@ -21,6 +21,7 @@ export class WorkspaceCoordinator {
     getDisplayName,
     getFileList,
     getLineWrappingEnabled,
+    getVimModeEnabled,
     getLocalUser,
     getStoredUserName,
     getTheme,
@@ -70,6 +71,7 @@ export class WorkspaceCoordinator {
     this.getDisplayName = getDisplayName;
     this.getFileList = getFileList;
     this.getLineWrappingEnabled = getLineWrappingEnabled;
+    this.getVimModeEnabled = getVimModeEnabled ?? (() => false);
     this.getLocalUser = getLocalUser;
     this.getStoredUserName = getStoredUserName;
     this.getTheme = getTheme;
@@ -249,6 +251,7 @@ export class WorkspaceCoordinator {
       getFileList: this.getFileList,
       lineWrappingEnabled: this.getLineWrappingEnabled(),
       localUser: this.getLocalUser(),
+      vimModeEnabled: this.getVimModeEnabled(),
       onAwarenessChange: (users) => this.onFileAwarenessChange(users),
       onConnectionChange: (state) => this.onConnectionChange(state),
       onCommentsChange: (threads) => this.onCommentsChange?.(threads),
