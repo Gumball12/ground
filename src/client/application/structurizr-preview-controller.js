@@ -18,10 +18,20 @@ function decodeViewKey(hash = '') {
   }
 }
 
-function readFrameScale(transform = '') {
-  const match = String(transform).match(/^matrix(?:3d)?\(([-+0-9.e]+)/);
-  const scale = Number(match?.[1]);
-  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+function readFrameState(iframe) {
+  try {
+    const frameDocument = iframe?.contentDocument;
+    const layer = frameDocument?.querySelector('.joint-layers');
+    const viewport = frameDocument?.querySelector('#diagram-viewport');
+    const zoom = layer ? new DOMMatrixReadOnly(getComputedStyle(layer).transform).a : 0;
+    return {
+      scrollLeft: viewport?.scrollLeft ?? 0,
+      scrollTop: viewport?.scrollTop ?? 0,
+      zoom: Number.isFinite(zoom) && zoom > 0 ? zoom : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export class StructurizrPreviewController {
@@ -44,7 +54,6 @@ export class StructurizrPreviewController {
     this.frameHost = null;
     this.pendingIframe = null;
     this.pendingVersion = null;
-    this.pendingFrameState = null;
     this.handleFrameLoad = (event) => {
       const iframe = event?.currentTarget || this.iframe;
       if (!iframe) {
@@ -101,7 +110,7 @@ export class StructurizrPreviewController {
     if (!canvas) {
       return false;
     }
-    if (iframe === this.pendingIframe && this.pendingFrameState && !frameDocument.querySelector('.joint-layers')) {
+    if (iframe === this.pendingIframe && !frameDocument.querySelector('.joint-layers')) {
       return false;
     }
 
@@ -119,67 +128,7 @@ export class StructurizrPreviewController {
       return false;
     }
 
-    iframe.style.height = '';
     return true;
-  }
-
-  captureFrameState(iframe = this.iframe) {
-    const frameDocument = iframe?.contentDocument;
-    const viewport = frameDocument?.querySelector('#diagram-viewport');
-    const layer = frameDocument?.querySelector('.joint-layers');
-    if (!viewport || !layer) {
-      return null;
-    }
-
-    return {
-      scale: readFrameScale(getComputedStyle(layer).transform),
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
-    };
-  }
-
-  restoreFrameState(iframe, state) {
-    if (!iframe || !state) {
-      return;
-    }
-
-    const frameDocument = iframe.contentDocument;
-    const viewport = frameDocument?.querySelector('#diagram-viewport');
-    const layer = frameDocument?.querySelector('.joint-layers');
-    if (!viewport || !layer) {
-      return;
-    }
-
-    let restoredWithApi = false;
-    try {
-      const diagram = iframe.contentWindow?.structurizr?.diagram;
-      if (typeof diagram?.zoomTo === 'function') {
-        diagram.zoomTo(state.scale);
-        restoredWithApi = true;
-      }
-    } catch {
-      // Fall back to the rendered DOM when the frame API is unavailable.
-    }
-
-    if (!restoredWithApi) {
-      const canvas = frameDocument.querySelector('#diagram-canvas');
-      const svg = canvas?.querySelector('svg');
-      const currentScale = readFrameScale(getComputedStyle(layer).transform);
-      const ratio = state.scale / currentScale;
-      const { width, height } = canvas?.getBoundingClientRect?.() || {};
-      layer.style.transform = `matrix(${state.scale}, 0, 0, ${state.scale}, 0, 0)`;
-      if (canvas && width && height && Number.isFinite(ratio)) {
-        canvas.style.width = `${width * ratio}px`;
-        canvas.style.height = `${height * ratio}px`;
-        if (svg) {
-          svg.style.width = `${width * ratio}px`;
-          svg.style.height = `${height * ratio}px`;
-        }
-      }
-    }
-
-    viewport.scrollLeft = state.scrollLeft;
-    viewport.scrollTop = state.scrollTop;
   }
 
   disposeFrame(iframe) {
@@ -206,7 +155,6 @@ export class StructurizrPreviewController {
     this.disposeFrame(this.pendingIframe);
     this.pendingIframe = null;
     this.pendingVersion = null;
-    this.pendingFrameState = null;
   }
 
   commitPendingIframe(iframe) {
@@ -216,11 +164,25 @@ export class StructurizrPreviewController {
 
     const previousIframe = this.iframe;
     const nextVersion = this.pendingVersion;
-    const frameState = this.pendingFrameState;
+    const frameState = readFrameState(previousIframe);
     this.pendingIframe = null;
     this.pendingVersion = null;
-    this.pendingFrameState = null;
-    this.restoreFrameState(iframe, frameState);
+    if (frameState?.zoom) {
+      try {
+        iframe.contentWindow?.structurizr?.diagram?.zoomTo?.(frameState.zoom);
+      } catch {
+        // Keep the new diagram usable when a custom viewer does not expose zoom controls.
+      }
+    }
+    try {
+      const viewport = iframe.contentDocument?.querySelector('#diagram-viewport');
+      if (viewport && frameState) {
+        viewport.scrollLeft = frameState.scrollLeft;
+        viewport.scrollTop = frameState.scrollTop;
+      }
+    } catch {
+      // Cross-origin custom viewers cannot restore viewport coordinates.
+    }
     this.disposeFrame(previousIframe);
     iframe.style.visibility = '';
     iframe.style.pointerEvents = '';
@@ -262,9 +224,6 @@ export class StructurizrPreviewController {
   setMaximized(shouldMaximize) {
     const isMaximized = Boolean(shouldMaximize);
     this.shell?.classList.toggle('is-maximized', isMaximized);
-    if (this.shell) {
-      this.shell.dataset.structurizrMaximized = isMaximized ? 'true' : 'false';
-    }
     document.body?.classList.toggle('structurizr-maximized-open', isMaximized);
     this.syncMaximizeButtonState();
     this.iframe?.contentWindow?.dispatchEvent(new Event('resize'));
@@ -345,7 +304,6 @@ export class StructurizrPreviewController {
     this.iframe = null;
     this.pendingIframe = null;
     this.pendingVersion = null;
-    this.pendingFrameState = null;
     this.lastVersion = null;
   }
 
@@ -394,7 +352,6 @@ export class StructurizrPreviewController {
         this.lastVersion = nextVersion;
       } else if (nextVersion !== this.lastVersion) {
         this.discardPendingIframe();
-        this.pendingFrameState = this.captureFrameState(this.iframe);
         const iframe = this.createIframe();
         iframe.style.visibility = 'hidden';
         iframe.style.pointerEvents = 'none';

@@ -19,7 +19,6 @@ export const workspaceFeature = {
   isPdfFile: isPdfFilePath,
   isMermaidFile: isMermaidFilePath,
   isPlantUmlFile: isPlantUmlFilePath,
-  isStructurizrFile: isStructurizrFilePath,
   isStructurizrWorkspaceFile: isStructurizrFilePath,
 
   getPreviewSource() {
