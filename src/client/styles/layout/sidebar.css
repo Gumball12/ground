@@ -131,7 +131,7 @@
 }
 
 .sidebar-search-input::placeholder {
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
 }
 
 .sidebar-search-input:hover:not(:focus) {
@@ -142,6 +142,12 @@
   border-color: var(--color-primary);
   background: var(--color-surface);
   box-shadow: var(--shadow-focus);
+}
+
+.sidebar-search-status {
+  padding: 5px 2px 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
 }
 
 @keyframes pulse-dot {
@@ -237,7 +243,7 @@ body.is-file-tree-dragging .file-tree-root-drop-zone {
   padding-top: 4px;
   padding-right: 8px;
   padding-bottom: 4px;
-  padding-left: calc(8px + var(--depth, 0) * 16px);
+  padding-left: calc(8px + var(--depth, 0) * 12px);
   border: none;
   border-radius: var(--radius-md);
   background: none;
@@ -266,14 +272,14 @@ body.is-file-tree-dragging * {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(8px + (var(--depth, 1) - 1) * 16px + 6px);
+  left: calc(8px + (var(--depth, 1) - 1) * 12px + 6px);
   width: 1px;
   background-color: var(--color-border);
   opacity: 0.2;
 }
 
 .file-tree-file {
-  padding-left: calc(8px + var(--depth, 0) * 16px + 18px);
+  padding-left: calc(8px + var(--depth, 0) * 12px + 18px);
 }
 
 .file-tree-item:hover {
@@ -316,8 +322,40 @@ body.is-file-tree-dragging * {
 }
 
 .file-tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-search-result {
+  align-items: flex-start;
+  padding: 6px 8px;
+}
+
+.file-tree-search-result .file-tree-icon {
+  margin-top: 2px;
+}
+
+.file-tree-search-copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+}
+
+.file-tree-search-copy .file-tree-name,
+.file-tree-search-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-search-path {
+  color: var(--color-text-faint);
+  font-size: var(--text-caption);
+  font-weight: 400;
 }
 
 .file-tree-children {

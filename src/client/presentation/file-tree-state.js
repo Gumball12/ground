@@ -104,16 +104,17 @@ export class FileTreeState {
   }
 
   setSearchQuery(value) {
-    this.searchQuery = String(value ?? '').trim().toLowerCase();
+    this.searchQuery = String(value ?? '');
   }
 
   getSearchMatches() {
-    if (!this.searchQuery) {
+    const normalizedQuery = this.searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
       return [];
     }
 
     return this.flatSearchEntries
-      .filter((entry) => entry.lowerPath.includes(this.searchQuery))
+      .filter((entry) => entry.type !== 'directory' && entry.lowerPath.includes(normalizedQuery))
       .map((entry) => ({
         name: entry.name,
         path: entry.path,

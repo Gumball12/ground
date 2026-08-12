@@ -38,7 +38,19 @@ test('FileTreeState flattens tree nodes and filters search matches for files and
   ]);
 });
 
-test('FileTreeState search matches can include directories and descendant summaries', () => {
+test('FileTreeState preserves the typed query while matching case-insensitively', () => {
+  const state = new FileTreeState();
+  state.setTree([{ name: 'Guide.md', path: 'docs/Guide.md', type: 'file' }]);
+
+  state.setSearchQuery('  GUIDE  ');
+
+  assert.equal(state.searchQuery, '  GUIDE  ');
+  assert.deepEqual(state.getSearchMatches(), [
+    { name: 'Guide.md', path: 'docs/Guide.md', type: 'file' },
+  ]);
+});
+
+test('FileTreeState search excludes directories and preserves descendant summaries', () => {
   const state = new FileTreeState();
 
   state.setTree([
@@ -62,7 +74,6 @@ test('FileTreeState search matches can include directories and descendant summar
   state.setSearchQuery('guide');
 
   assert.deepEqual(state.getSearchMatches(), [
-    { name: 'guides', path: 'docs/guides', type: 'directory' },
     { name: 'guide.md', path: 'docs/guides/guide.md', type: 'file' },
   ]);
   assert.deepEqual(state.getDirectoryDescendantSummary('docs/guides'), {

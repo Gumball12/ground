@@ -879,7 +879,7 @@ export class GitPanelController {
 
     return `
       ${pullBackupsMarkup}
-      ${sectionMarkup || '<div class="git-panel-empty">No local changes</div>'}
+      ${sectionMarkup || `<div class="git-panel-empty">${this.searchQuery && hasChanges ? 'No changes match your filter.' : 'No local changes'}</div>`}
       ${hasChanges ? `
         <div class="git-panel-footer">
           <div class="git-panel-footer-actions">

@@ -53,6 +53,19 @@ function createPanelHarness() {
   };
 }
 
+test('GitPanelController distinguishes an empty filter from no local changes', (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const controller = new GitPanelController();
+  controller.searchQuery = 'missing';
+  controller.status = {
+    sections: [{ files: [{ path: 'README.md' }], key: 'unstaged', label: 'Changes' }],
+    summary: { changedFiles: 1, staged: 0 },
+  };
+
+  assert.match(controller.renderChangesPanel(), /No changes match your filter\./u);
+});
+
 test('GitPanelController renders pull backups and opens the summary when selected', async (t) => {
   const harness = createPanelHarness();
   t.after(() => harness.restore());

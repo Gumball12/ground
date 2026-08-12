@@ -6,6 +6,7 @@ import { FileExplorerView } from '../../src/client/presentation/file-explorer-vi
 function createView(overrides = {}) {
   document.body.innerHTML = `
     <input id="fileSearchInput">
+    <div class="hidden" id="fileSearchStatus"></div>
     <button id="fileExplorerOptionsBtn" type="button"></button>
     <nav id="fileTree"></nav>
   `;
@@ -13,7 +14,6 @@ function createView(overrides = {}) {
   return new FileExplorerView({
     mobileBreakpointQuery: { matches: true },
     onEntryDrop: vi.fn(),
-    onDirectorySelect: vi.fn(),
     onDirectoryToggle: vi.fn(),
     onFileContextMenu: vi.fn(),
     onFileSelect: vi.fn(),
@@ -97,6 +97,24 @@ describe('FileExplorerView mobile interactions', () => {
 
     render(true);
     expect(document.querySelector('.file-tree-name')?.textContent).toBe('3-drawio.drawio');
+  });
+
+  it('shows search context and match count', () => {
+    const view = createView();
+    view.render({
+      activeFilePath: null,
+      expandedDirs: new Set(),
+      reset: true,
+      searchMatches: [{ name: 'guide.md', path: 'docs/guides/guide.md', type: 'file' }],
+      searchQuery: 'Guide',
+      tree: [],
+    });
+
+    expect(document.querySelector('.file-tree-search-copy > .file-tree-name')).toHaveTextContent('guide.md');
+    expect(document.querySelector('.file-tree-search-copy > .file-tree-search-path')).toHaveTextContent('docs/guides');
+    expect(document.querySelector('.file-tree-search-result')).toHaveAttribute('title', 'docs/guides/guide.md');
+    expect(document.querySelector('.file-tree-search-result')).toHaveAttribute('aria-label', 'docs/guides/guide.md');
+    expect(document.getElementById('fileSearchStatus')).toHaveTextContent('1 match');
   });
 
   it('toggles file extensions from the sidebar options menu', () => {

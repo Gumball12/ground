@@ -24,11 +24,6 @@ export class FileExplorerController {
     this.threadCounts = new Map();
     this.view = new FileExplorerView({
       mobileBreakpointQuery,
-      onDirectorySelect: (pathValue) => {
-        this.state.expandDirectoryPath(pathValue);
-        this.state.setSearchQuery('');
-        this.renderTree({ reset: true });
-      },
       onDirectoryToggle: (pathValue) => {
         this.state.toggleDirectory(pathValue);
         if (!this.view.rerenderDirectoryBranch(pathValue, this.state.tree, {

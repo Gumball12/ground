@@ -103,14 +103,16 @@
         </div>
         <div class="sidebar-search" id="fileSearch">
           <input
-            type="text"
+            type="search"
             class="ui-input sidebar-search-input"
             id="fileSearchInput"
-            placeholder="Search files..."
+            placeholder="Filter files by name or path…"
             autocomplete="off"
             spellcheck="false"
-            aria-label="Search files"
+            aria-label="Filter files by name or path"
+            aria-describedby="fileSearchStatus"
           >
+          <div class="sidebar-search-status hidden" id="fileSearchStatus" role="status" aria-live="polite"></div>
         </div>
         <div class="sidebar-search hidden" id="gitSearch">
           <input

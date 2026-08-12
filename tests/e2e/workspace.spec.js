@@ -1303,17 +1303,15 @@ test('deletes non-empty folders with an explicit recursive confirmation', async 
   await expect(page.locator('#fileTree')).not.toContainText('daily');
 });
 
-test('search can find folders and open them into the expanded tree', async ({ page }) => {
+test('search returns files from matching paths without directory rows', async ({ page }) => {
   await restoreVaultFileFromTemplate(page, 'daily/2026-03-05.md');
   await openHome(page);
 
   await page.locator('#fileSearchInput').fill('daily');
-  await expect(page.locator('#fileTree')).toContainText('daily');
 
-  await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click();
-
-  await expect(page.locator('#fileSearchInput')).toHaveValue('');
-  await expect(page.locator('#fileTree')).toContainText('2026-03-05');
+  await expect(page.locator('#fileTree .file-tree-dir')).toHaveCount(0);
+  await expect(page.locator('#fileTree .file-tree-file')).toContainText('2026-03-05.md');
+  await expect(page.locator('#fileTree .file-tree-search-path')).toHaveText('daily');
 });
 
 test('creates and opens unresolved wiki-link targets', async ({ page }) => {

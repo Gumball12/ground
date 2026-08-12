@@ -32,7 +32,6 @@ export class FileExplorerView {
   constructor({
     mobileBreakpointQuery = window.matchMedia('(max-width: 768px)'),
     onEntryDrop,
-    onDirectorySelect,
     onDirectoryToggle,
     onFileContextMenu,
     onFileSelect,
@@ -41,7 +40,6 @@ export class FileExplorerView {
     onValidateDrop,
   }) {
     this.onEntryDrop = onEntryDrop;
-    this.onDirectorySelect = onDirectorySelect;
     this.onDirectoryToggle = onDirectoryToggle;
     this.onFileContextMenu = onFileContextMenu;
     this.onFileSelect = onFileSelect;
@@ -51,6 +49,7 @@ export class FileExplorerView {
     this.mobileBreakpointQuery = mobileBreakpointQuery;
     this.treeContainer = document.getElementById('fileTree');
     this.searchInput = document.getElementById('fileSearchInput');
+    this.searchStatus = document.getElementById('fileSearchStatus');
     this.renderedDirectoryWrappers = new Map();
     this.renderedChildContainers = new Map();
     this.renderedFileItems = new Map();
@@ -122,6 +121,18 @@ export class FileExplorerView {
     });
   }
 
+  updateSearchStatus(query, matchCount = null) {
+    if (!this.searchStatus) {
+      return;
+    }
+
+    const status = String(query ?? '').trim() && Number.isInteger(matchCount)
+      ? `${matchCount} match${matchCount === 1 ? '' : 'es'}`
+      : '';
+    this.searchStatus.textContent = status;
+    this.searchStatus.classList.toggle('hidden', !status);
+  }
+
   revealFile(filePath) {
     this.renderedFileItems.get(filePath)?.scrollIntoView({ block: 'nearest' });
   }
@@ -143,6 +154,10 @@ export class FileExplorerView {
       const threadCount = Number(this.threadCounts.get(filePath) ?? 0) || 0;
       let badge = button.querySelector('.file-tree-comment-count');
       button.classList.toggle('has-comments', threadCount > 0);
+      button.setAttribute(
+        'aria-label',
+        `${filePath}${threadCount > 0 ? `, ${threadCount} open comment thread${threadCount === 1 ? '' : 's'}` : ''}`,
+      );
 
       if (threadCount <= 0) {
         delete button.dataset.threadCount;
@@ -157,7 +172,7 @@ export class FileExplorerView {
         button.appendChild(badge);
       }
       badge.textContent = String(threadCount);
-      badge.setAttribute('aria-label', `${threadCount} open comment thread${threadCount === 1 ? '' : 's'}`);
+      badge.setAttribute('aria-hidden', 'true');
     });
   }
 
@@ -168,7 +183,7 @@ export class FileExplorerView {
 
     this.threadCounts = threadCounts instanceof Map ? threadCounts : new Map();
     this.showFileExtensions = Boolean(showFileExtensions);
-    this.currentSearchQuery = String(searchQuery ?? '');
+    this.currentSearchQuery = String(searchQuery ?? '').trim();
     if (this.currentSearchQuery) {
       this.clearDragFeedback();
     }
@@ -176,8 +191,9 @@ export class FileExplorerView {
     if (this.searchInput && this.searchInput.value !== searchQuery) {
       this.searchInput.value = searchQuery;
     }
+    this.updateSearchStatus(searchQuery, this.currentSearchQuery ? searchMatches.length : null);
 
-    if (searchQuery) {
+    if (this.currentSearchQuery) {
       this.lastRenderMode = 'search';
       this.renderSearchResults(searchMatches, activeFilePath);
       return;
@@ -246,17 +262,13 @@ export class FileExplorerView {
 
     const fragment = document.createDocumentFragment();
     for (const match of matches) {
-      if (match.type === 'directory') {
-        fragment.appendChild(this.createSearchDirectoryItem(match));
-        continue;
-      }
-
       fragment.appendChild(this.createFileItem({
         activeFilePath,
         depth: 0,
         filePath: match.path,
         fileType: match.type || (getVaultTreeNodeType(match.path) ?? 'file'),
         name: match.name || getVaultPathLeaf(match.path),
+        searchResult: true,
       }));
     }
     this.treeContainer.appendChild(fragment);
@@ -315,6 +327,8 @@ export class FileExplorerView {
 
     const button = document.createElement('button');
     button.className = 'file-tree-item file-tree-dir';
+    button.title = node.path;
+    button.setAttribute('aria-label', node.path);
     button.style.setProperty('--depth', depth);
     button.dataset.depth = depth;
 
@@ -362,35 +376,6 @@ export class FileExplorerView {
     }
 
     return wrapper;
-  }
-
-  createSearchDirectoryItem(node) {
-    const button = document.createElement('button');
-    button.className = 'file-tree-item file-tree-dir';
-    button.style.setProperty('--depth', 0);
-    button.dataset.depth = 0;
-    button.dataset.path = node.path;
-    button.dataset.entryType = 'directory';
-    button.innerHTML = `
-      <svg class="file-tree-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <span class="file-tree-name">${escapeHtml(node.name || getVaultPathLeaf(node.path))}</span>
-    `;
-
-    button.addEventListener('click', (event) => {
-      if (this.consumeSuppressedActivation(button, event)) {
-        return;
-      }
-      this.onDirectorySelect?.(node.path);
-    });
-    button.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      this.onFileContextMenu?.(event, { directoryPath: node.path, type: 'directory' });
-    });
-    this.bindLongPress(button, () => {
-      this.onFileContextMenu?.(this.createLongPressEvent(button), { directoryPath: node.path, type: 'directory' });
-    });
-
-    return button;
   }
 
   rerenderDirectoryBranch(parentPath, tree, { activeFilePath, expandedDirs }) {
@@ -453,10 +438,16 @@ export class FileExplorerView {
     });
   }
 
-  createFileItem({ activeFilePath, depth, filePath, fileType = 'file', name }) {
+  createFileItem({ activeFilePath, depth, filePath, fileType = 'file', name, searchResult = false }) {
     const button = document.createElement('button');
-    button.className = 'file-tree-item file-tree-file';
+    const parentPath = getVaultPathParent(filePath);
+    button.className = `file-tree-item file-tree-file${searchResult ? ' file-tree-search-result' : ''}`;
+    button.title = filePath;
     const threadCount = Number(this.threadCounts.get(filePath) ?? 0);
+    button.setAttribute(
+      'aria-label',
+      `${filePath}${threadCount > 0 ? `, ${threadCount} open comment thread${threadCount === 1 ? '' : 's'}` : ''}`,
+    );
     const isDrawio = fileType === 'drawio';
     const isExcalidraw = fileType === 'excalidraw';
     const isBase = fileType === 'base';
@@ -504,11 +495,17 @@ export class FileExplorerView {
     if (threadCount > 0) {
       button.dataset.threadCount = String(threadCount);
     }
-    const displayName = this.showFileExtensions ? String(name ?? '') : stripVaultFileExtension(name);
+    const displayName = this.showFileExtensions || searchResult ? String(name ?? '') : stripVaultFileExtension(name);
+    const nameMarkup = searchResult
+      ? `<span class="file-tree-search-copy">
+          <span class="file-tree-name">${escapeHtml(displayName)}</span>
+          ${parentPath ? `<span class="file-tree-search-path">${escapeHtml(parentPath)}</span>` : ''}
+        </span>`
+      : `<span class="file-tree-name">${escapeHtml(displayName)}</span>`;
     button.innerHTML = `
       ${getVaultFileIconSvg(filePath)}
-      <span class="file-tree-name">${escapeHtml(displayName)}</span>
-      ${threadCount > 0 ? `<span class="file-tree-comment-count" aria-label="${threadCount} open comment thread${threadCount === 1 ? '' : 's'}">${threadCount}</span>` : ''}
+      ${nameMarkup}
+      ${threadCount > 0 ? `<span class="file-tree-comment-count" aria-hidden="true">${threadCount}</span>` : ''}
     `;
     this.configureDragSource(button, { path: filePath, type: 'file' });
 
