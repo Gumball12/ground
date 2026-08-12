@@ -748,6 +748,7 @@ function handleThemeChange(theme) {
   this.session?.applyTheme(theme);
   this.excalidrawEmbed.updateTheme(theme);
   this.drawioEmbed.updateTheme(theme);
+  this.pdfPreview?.setTheme(theme);
 }
 
 /** @this {UiShellContext} */

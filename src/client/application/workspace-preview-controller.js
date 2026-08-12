@@ -93,7 +93,6 @@ export class WorkspacePreviewController {
 
   resetPreviewMode() {
     this.pdfPreview.cancel();
-    this.elements.previewContainer?.classList?.remove('is-pdf-file-preview');
     this.elements.previewContent?.classList.remove('is-drawio-file-preview');
     this.elements.previewContent?.classList.remove('is-excalidraw-file-preview');
     this.elements.previewContent?.classList.remove('is-base-file-preview');
@@ -272,14 +271,12 @@ export class WorkspacePreviewController {
     this.drawioEmbed.detachForCommit();
     this.excalidrawEmbed.detachForCommit();
     this.resetPreviewMode();
-    this.elements.previewContainer?.classList?.add('is-pdf-file-preview');
     previewElement.classList.add('is-pdf-file-preview');
     const renderHost = this.previewRenderer.ensureRenderHost();
     this.previewRenderer.normalizePreviewChildren(renderHost);
 
     if (renderHost) {
       this.pdfPreview.render({
-        displayName: this.getDisplayName(filePath),
         filePath,
         renderHost,
       });

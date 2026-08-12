@@ -2,97 +2,91 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PdfPreviewController } from '../../src/client/application/pdf-preview-controller.js';
 
-const waitForNextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-function createPdfViewerApi() {
+function createEmbedPdfModule(init = vi.fn(({ target }) => {
+  const viewer = document.createElement('embedpdf-container');
+  viewer.setTheme = vi.fn();
+  target.appendChild(viewer);
+  return viewer;
+})) {
   return {
-    EventBus: class { on() {} dispatch() {} },
-    FindState: { FOUND: 0, PENDING: 3 },
-    PDFFindController: class { setDocument() {} },
-    PDFLinkService: class { setDocument() {} setViewer() {} },
+    default: { init },
+    LockModeType: { All: 'all' },
+    ZoomMode: { FitWidth: 'fit-width' },
   };
 }
 
-describe('PdfPreviewController password handling', () => {
+describe('PdfPreviewController', () => {
   afterEach(() => {
     document.body.replaceChildren();
     vi.restoreAllMocks();
   });
 
-  it('prompts for a password and retries after an incorrect password', async () => {
-    const passwords = [];
-    const passwordResponses = {
-      INCORRECT_PASSWORD: 2,
-      NEED_PASSWORD: 1,
-    };
-    const pdfDocument = {
-      destroy: vi.fn(async () => {}),
-      getOutline: vi.fn(async () => []),
-      numPages: 0,
-    };
-    let resolveDocument;
-    const documentPromise = new Promise((resolve) => {
-      resolveDocument = resolve;
-    });
-    const loadingTask = {
-      destroy: vi.fn(async () => {}),
-      onPassword: null,
-      promise: documentPromise,
-    };
-    const requestPassword = (reason) => {
-      loadingTask.onPassword((password) => {
-        passwords.push(password);
-        if (password === 'correct') {
-          resolveDocument(pdfDocument);
-          return;
-        }
-        queueMicrotask(() => requestPassword(passwordResponses.INCORRECT_PASSWORD));
-      }, reason);
-    };
-    const getDocument = vi.fn(() => {
-      queueMicrotask(() => requestPassword(passwordResponses.NEED_PASSWORD));
-      return loadingTask;
-    });
+  it('mounts a self-hosted read-only EmbedPDF viewer', async () => {
+    const module = createEmbedPdfModule();
+    const init = module.default.init;
     const controller = new PdfPreviewController({
-      previewContainer: document.createElement('div'),
-    });
-    controller.loadPdfJs = async () => ({
-      pdfjs: {
-        getDocument,
-        PasswordResponses: passwordResponses,
-      },
-      pdfViewer: createPdfViewerApi(),
+      getTheme: () => 'light',
+      loadEmbedPdf: async () => module,
     });
     const renderHost = document.createElement('div');
     document.body.appendChild(renderHost);
 
-    const renderPromise = controller.render({
-      displayName: 'secured',
-      filePath: 'secured.pdf',
-      renderHost,
+    await controller.render({ filePath: 'docs/guide.pdf', renderHost });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    const config = init.mock.calls[0][0];
+    expect(config.src).toContain('/api/download/file?path=docs%2Fguide.pdf');
+    expect(config.theme).toEqual({ preference: 'light' });
+    expect(config.zoom.defaultZoomLevel).toBe('fit-width');
+    expect(config.annotations).toEqual({ locked: { type: 'all' } });
+    expect(config.disabledCategories).toContain('annotation');
+    expect(config.disabledCategories).toContain('document-open');
+    expect(config.fontFallback).toBeNull();
+    expect(config.fonts).toEqual({ signature: null, ui: null });
+    expect(config.wasmUrl).toMatch(/pdfium.*\.wasm/i);
+    expect(renderHost.querySelector('embedpdf-container')).not.toBeNull();
+  });
+
+  it('removes the viewer on cancel and ignores stale imports', async () => {
+    let resolveModule;
+    const controller = new PdfPreviewController({
+      loadEmbedPdf: () => new Promise((resolve) => {
+        resolveModule = resolve;
+      }),
     });
-    await waitForNextTask();
+    const renderHost = document.createElement('div');
+    document.body.appendChild(renderHost);
 
-    const firstPrompt = renderHost.querySelector('.pdf-file-preview-password-prompt');
-    expect(firstPrompt).not.toBeNull();
-    expect(firstPrompt.querySelector('input[type="password"]')).not.toBeNull();
-    expect(firstPrompt).toHaveTextContent('Enter the password to preview this PDF.');
-
-    const firstInput = firstPrompt.querySelector('input[type="password"]');
-    firstInput.value = 'wrong';
-    firstPrompt.requestSubmit();
-    await waitForNextTask();
-
-    const retryPrompt = renderHost.querySelector('.pdf-file-preview-password-prompt');
-    expect(retryPrompt).toHaveTextContent('The password was incorrect. Try again.');
-    const retryInput = retryPrompt.querySelector('input[type="password"]');
-    retryInput.value = 'correct';
-    retryPrompt.requestSubmit();
-
+    const renderPromise = controller.render({ filePath: 'first.pdf', renderHost });
+    controller.cancel();
+    resolveModule(createEmbedPdfModule());
     await renderPromise;
 
-    expect(passwords).toEqual(['wrong', 'correct']);
-    expect(renderHost.querySelector('.pdf-file-preview-status')).toHaveTextContent('0 pages');
+    expect(renderHost.querySelector('embedpdf-container')).toBeNull();
+
+    controller.loadEmbedPdf = async () => createEmbedPdfModule();
+    await controller.render({ filePath: 'second.pdf', renderHost });
+    const viewer = renderHost.querySelector('embedpdf-container');
+    expect(viewer).not.toBeNull();
+    controller.setTheme('dark');
+    expect(viewer.setTheme).toHaveBeenCalledWith('dark');
     controller.cancel();
+    expect(viewer.isConnected).toBe(false);
+  });
+
+  it('shows a fallback when EmbedPDF fails to load', async () => {
+    const controller = new PdfPreviewController({
+      loadEmbedPdf: async () => {
+        throw new Error('failed');
+      },
+    });
+    const renderHost = document.createElement('div');
+    document.body.appendChild(renderHost);
+
+    await controller.render({ filePath: 'broken.pdf', renderHost });
+
+    expect(renderHost.querySelector('.pdf-file-preview-error')).toHaveTextContent(
+      'This PDF could not be rendered in the browser.',
+    );
   });
 });

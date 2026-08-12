@@ -10,7 +10,7 @@ import { extractAssetPath } from './helpers/asset-path.js';
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const clientDistDir = resolve(rootDir, 'dist/client');
 
-test('client build emits hashed entry assets and the main bundle references the emitted preview worker', async () => {
+test('client build emits hashed entry assets and bundled preview runtimes', async () => {
   const indexHtml = await readFile(resolve(clientDistDir, 'index.html'), 'utf8');
   const mainAssetPath = extractAssetPath(indexHtml, /src="\.\/(assets\/[^"]+\.js)"/, 'main bundle');
   const mainStylesheetPath = extractAssetPath(indexHtml, /href="\.\/(assets\/[^"]+-[A-Za-z0-9_-]{8,}\.css)"/, 'main stylesheet');
@@ -25,14 +25,17 @@ test('client build emits hashed entry assets and the main bundle references the 
   const workerReference = workerBundle
     .map(({ content }) => content.match(/\bpreview-render-worker-[A-Za-z0-9_-]+\.js\b/u)?.[0] || null)
     .find(Boolean);
-  const pdfWorkerReference = assetFileNames
-    .find((fileName) => /^pdf\.worker-[A-Za-z0-9_-]+\.mjs$/u.test(fileName));
+  const pdfiumWasmReference = assetFileNames
+    .find((fileName) => /^pdfium-[A-Za-z0-9_-]+\.wasm$/u.test(fileName));
+  const embedPdfWorker = workerBundle
+    .find(({ content }) => content.includes('Initializing PDF engine'));
 
   assert.ok(workerReference, 'expected built JS assets to reference hashed preview worker');
-  assert.ok(pdfWorkerReference, 'expected build to emit the PDF.js worker');
+  assert.ok(embedPdfWorker, 'expected build to emit the EmbedPDF runtime');
+  assert.ok(pdfiumWasmReference, 'expected build to emit PDFium WASM');
   await access(resolve(clientDistDir, mainAssetPath), fsConstants.R_OK);
   await access(resolve(clientDistDir, 'assets', workerReference), fsConstants.R_OK);
-  await access(resolve(clientDistDir, 'assets', pdfWorkerReference), fsConstants.R_OK);
+  await access(resolve(clientDistDir, 'assets', pdfiumWasmReference), fsConstants.R_OK);
   await access(resolve(clientDistDir, mainStylesheetPath), fsConstants.R_OK);
   assert.match(indexHtml, /src="\.\/app-config\.js"/);
   assert.doesNotMatch(indexHtml, /assets\/vendor\/highlight\/github-dark\.min\.css/);

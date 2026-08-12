@@ -17,7 +17,7 @@ import {
   stubPlantUmlRender,
 } from './helpers/app-fixture.js';
 
-function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = [], internalLink = null } = {}) {
+function createPdfFixture({ pageCount = 1, text = 'EmbedPDF preview', outline = [] } = {}) {
   const contentStream = `BT /F1 18 Tf 48 180 Td (${text}) Tj ET`;
   const pageReferences = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`);
   const pageRefs = pageReferences.join(' ');
@@ -25,25 +25,15 @@ function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = []
   const fontReference = contentStart + pageCount;
   const outlineRootReference = outline.length > 0 ? (2 * pageCount) + 4 : null;
   const outlineItemReferences = outline.map((_, index) => outlineRootReference + index + 1);
-  const linkReference = internalLink
-    ? (outlineRootReference ? outlineRootReference + outline.length + 1 : (2 * pageCount) + 4)
-    : null;
-  const linkSourcePage = internalLink
-    ? Math.max(0, Math.min(pageCount - 1, Number(internalLink.fromPage) - 1 || 0))
-    : -1;
-  const linkTargetPage = internalLink
-    ? Math.max(0, Math.min(pageCount - 1, Number(internalLink.toPage) - 1 || 0))
-    : -1;
   const catalog = outlineRootReference
     ? `<< /Type /Catalog /Pages 2 0 R /Outlines ${outlineRootReference} 0 R /PageMode /UseOutlines >>`
     : '<< /Type /Catalog /Pages 2 0 R >>';
   const objects = [
     catalog,
     `<< /Type /Pages /Kids [${pageRefs}] /Count ${pageCount} >>`,
-    ...Array.from({ length: pageCount }, (_, index) => {
-      const annotations = index === linkSourcePage ? ` /Annots [${linkReference} 0 R]` : '';
-      return `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >>${annotations} >>`;
-    }),
+    ...Array.from({ length: pageCount }, (_, index) => (
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Contents ${contentStart + index} 0 R /Resources << /Font << /F1 ${fontReference} 0 R >> >> >>`
+    )),
     ...Array.from({ length: pageCount }, () => (
       `<< /Length ${Buffer.byteLength(contentStream, 'binary')} >>\nstream\n${contentStream}\nendstream`
     )),
@@ -58,11 +48,6 @@ function createPdfFixture({ pageCount = 1, text = 'PDF.js preview', outline = []
         const pageReference = pageReferences[Math.max(0, Math.min(pageCount - 1, entry.page - 1))];
         return `<< /Title (${entry.title}) /Parent ${outlineRootReference} 0 R /Dest [${pageReference} /Fit]${previous}${next} >>`;
       }),
-    );
-  }
-  if (linkReference) {
-    objects.push(
-      `<< /Type /Annot /Subtype /Link /Rect [48 160 220 205] /Border [0 0 1] /Dest [${pageReferences[linkTargetPage]} /Fit] >>`,
     );
   }
   let pdf = '%PDF-1.4\n';
@@ -535,7 +520,6 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
     {
       buffer: createPdfFixture({
         pageCount: 5,
-        internalLink: { fromPage: 1, toPage: 3 },
         outline: [
           { title: 'Introduction', page: 1 },
           { title: 'Chapter 2', page: 3 },
@@ -555,142 +539,23 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   await expect(page.locator('#previewContent .image-file-preview-image')).toBeVisible();
 
   await page.locator('#fileTree').getByText('uploaded-guide').click();
-  const pdfPreview = page.locator('#previewContent .pdf-file-preview-shell');
-  await expect(pdfPreview).toBeVisible();
-  await expect(page.locator('#previewContent .pdf-file-preview-status')).toHaveText('5 pages');
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
-  const pdfBackButton = page.locator('#previewContent .pdf-file-preview-back-button');
-  await expect(pdfBackButton).toBeDisabled();
-  await expect(page.locator('#outlineToggle')).toBeVisible();
-  await page.locator('#outlineToggle').click();
-  await expect(page.locator('#outlinePanel')).toBeVisible();
-  await expect(page.locator('#outlineNav .outline-item')).toHaveCount(2);
-  await expect(page.locator('#outlineNav')).toContainText('Introduction');
-  await expect(page.locator('#outlineNav')).toContainText('Chapter 2');
-  const initialPdfScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
-  await page.locator('#outlineNav .outline-item', { hasText: 'Chapter 2' }).click();
-  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeGreaterThan(initialPdfScrollTop);
-  await expect(page.locator('#previewContent .pdf-page[data-page-number="3"] .textLayer')).toBeVisible();
-  await expect(pdfBackButton).toBeEnabled();
-  await pdfBackButton.click();
-  await expect(pdfBackButton).toBeDisabled();
-  await expect(page.locator('#previewContent .pdf-file-preview-toolbar')).toHaveCSS('position', 'sticky');
-  await page.locator('#previewContainer').evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  const firstPageTextLayer = page.locator('#previewContent .pdf-page[data-page-number="1"] .textLayer');
-  await expect(firstPageTextLayer).toBeVisible();
-  await expect(firstPageTextLayer).toContainText('PDF.js preview');
-  const pdfInternalLink = page.locator('#previewContent .pdf-page[data-page-number="1"] .annotationLayer .linkAnnotation a');
-  await expect(pdfInternalLink).toHaveCount(1);
-  const initialLinkScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
-  await pdfInternalLink.click();
-  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeGreaterThan(initialLinkScrollTop);
-  await expect(page.locator('#previewContent .pdf-page[data-page-number="3"] .textLayer')).toBeVisible();
-  await expect(pdfBackButton).toBeEnabled();
-  const redirectedScrollTop = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
-  await pdfBackButton.click();
-  await expect.poll(() => page.locator('#previewContainer').evaluate((element) => element.scrollTop)).toBeLessThan(redirectedScrollTop);
-  await expect(pdfBackButton).toBeDisabled();
-  await page.locator('#previewContainer').evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  const selectedPdfText = await firstPageTextLayer.evaluate((textLayer) => {
-    const textSpan = Array.from(textLayer.querySelectorAll('span')).find((span) => span.textContent.includes('PDF.js preview'));
-    if (!textSpan) {
-      return '';
-    }
+  const pdfViewer = page.locator('#previewContent embedpdf-container');
+  await expect(pdfViewer).toBeVisible();
+  await expect(pdfViewer.getByText('5', { exact: true })).toBeVisible();
+  await expect(pdfViewer.getByRole('tab', { name: /annotate/i })).toHaveCount(0);
+  await expect(page.locator('#outlineToggle')).toBeHidden();
 
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(textSpan);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    return selection?.toString() || '';
-  });
-  expect(selectedPdfText).toContain('PDF.js preview');
-  const pdfFindInput = page.locator('#previewContent .pdf-file-preview-find-input');
-  await pdfFindInput.fill('PDF.js preview');
-  await expect(page.locator('#previewContent .pdf-file-preview-find-status')).toHaveText('1 of 5');
-  await expect(firstPageTextLayer.locator('.highlight')).toBeVisible();
-  await page.locator('#previewContent .pdf-file-preview-find-button[aria-label="Next match"]').click();
-  await expect(page.locator('#previewContent .pdf-file-preview-find-status')).toHaveText('2 of 5');
-  await page.locator('#previewContent .pdf-file-preview-pages').dispatchEvent('wheel', { ctrlKey: true, deltaY: -10 });
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('110%');
-  expect(await page.locator('#previewContent .pdf-file-preview-pages').evaluate((element) => getComputedStyle(element).transform)).not.toBe('none');
-  await page.locator('#previewContent .pdf-file-preview-pages').dispatchEvent('wheel', { ctrlKey: true, deltaY: 10 });
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
-  const pinchResult = await page.locator('#previewContent .pdf-file-preview-pages').evaluate((pages) => {
-    const dispatchTouchEvent = (type, touches) => {
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'touches', { value: touches });
-      pages.dispatchEvent(event);
-      return event;
-    };
+  await pdfViewer.getByRole('button', { name: 'Search' }).click();
+  await pdfViewer.getByPlaceholder('Search').fill('EmbedPDF preview');
+  await expect(pdfViewer.getByText('5 results found')).toBeVisible();
 
-    dispatchTouchEvent('touchstart', [
-      { clientX: 60, clientY: 100 },
-      { clientX: 160, clientY: 100 },
-    ]);
-    const pinchMove = dispatchTouchEvent('touchmove', [
-      { clientX: 47.5, clientY: 100 },
-      { clientX: 172.5, clientY: 100 },
-    ]);
-    dispatchTouchEvent('touchend', [{ clientX: 47.5, clientY: 100 }]);
-    const oneFingerMove = dispatchTouchEvent('touchmove', [{ clientX: 47.5, clientY: 120 }]);
-
-    return {
-      pinchPrevented: pinchMove.defaultPrevented,
-      oneFingerPrevented: oneFingerMove.defaultPrevented,
-      zoom: document.querySelector('#previewContent .pdf-file-preview-zoom-label')?.textContent,
-    };
-  });
-  expect(pinchResult).toEqual({ pinchPrevented: true, oneFingerPrevented: false, zoom: '125%' });
-  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom out"]').click();
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
-  const initialPageWidth = await page.locator('#previewContent .pdf-page[data-page-number="1"]').evaluate((element) => element.getBoundingClientRect().width);
-  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom in"]').click();
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('125%');
-  await expect.poll(async () => page.locator('#previewContent .pdf-page[data-page-number="1"]').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(initialPageWidth);
-  await page.locator('#previewContent .pdf-file-preview-zoom-button[aria-label="Zoom out"]').click();
-  await expect(page.locator('#previewContent .pdf-file-preview-zoom-label')).toHaveText('100%');
-  const renderedCanvases = await page.evaluate(async () => {
-    const pages = document.querySelector('#previewContent .pdf-file-preview-pages');
-    const pageShell = document.querySelector('#previewContent .pdf-page[data-page-number="1"]');
-    if (!(pages instanceof HTMLElement) || !(pageShell instanceof HTMLElement)) {
-      return null;
-    }
-
-    let count = 0;
-    const observer = new MutationObserver((records) => {
-      count += records.reduce((total, record) => total + Array.from(record.addedNodes)
-        .filter((node) => node instanceof HTMLCanvasElement).length, 0);
-    });
-    observer.observe(pageShell, { childList: true });
-
-    for (let index = 0; index < 10; index += 1) {
-      pages.dispatchEvent(new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        deltaY: -4,
-      }));
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 600));
-    observer.disconnect();
-    return count;
-  });
-  expect(renderedCanvases).toBeLessThanOrEqual(2);
-  await expect(page.locator('#previewContent .pdf-page')).toHaveCount(5);
-  await expect(page.locator('#previewContent .pdf-page[data-page-number="1"] canvas')).toBeVisible();
-  await page.locator('#previewContainer').evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(page.locator('#previewContent .pdf-page[data-page-number="5"] canvas')).toBeVisible();
-  await expect(page.locator('#previewContent .pdf-file-preview-download')).toHaveAttribute(
-    'href',
-    /\/api\/download\/file\?path=uploaded-guide\.pdf/,
-  );
+  await pdfViewer.getByRole('textbox', { name: 'Set zoom' }).fill('100');
+  await pdfViewer.getByRole('textbox', { name: 'Set zoom' }).press('Enter');
+  await expect(pdfViewer.getByRole('textbox', { name: 'Set zoom' })).toHaveValue('100');
+  await pdfViewer.getByRole('button', { name: 'Zoom In' }).click();
+  await expect.poll(async () => Number(
+    await pdfViewer.getByRole('textbox', { name: 'Set zoom' }).inputValue(),
+  )).toBeGreaterThan(100);
 
   const response = await page.request.get('/api/download/file?path=uploaded-note.md');
   expect(response.ok()).toBe(true);
