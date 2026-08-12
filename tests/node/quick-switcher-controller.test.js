@@ -93,6 +93,56 @@ test('QuickSwitcherController keeps a bounded top-30 result set and rebuilds cor
   assert.deepEqual(controller.filteredFiles, ['archive/guide-special.md']);
 });
 
+test('QuickSwitcherController matches query spaces across path separators', (t) => {
+  const elements = installDocumentStub(t);
+  const controller = new QuickSwitcherController({
+    getFileList: () => [
+      'RDN/JAWARA/Buy Releaser.excalidraw',
+      'RDN/JAWARA/Notification/RDN Buy Release Notification.md',
+    ],
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.input.value = 'jawara buy';
+  controller.filterFiles();
+
+  assert.deepEqual(controller.filteredFiles, [
+    'RDN/JAWARA/Buy Releaser.excalidraw',
+    'RDN/JAWARA/Notification/RDN Buy Release Notification.md',
+  ]);
+
+  controller.input.value = 'jawara   buy';
+  controller.filterFiles();
+  assert.deepEqual(controller.filteredFiles, [
+    'RDN/JAWARA/Buy Releaser.excalidraw',
+    'RDN/JAWARA/Notification/RDN Buy Release Notification.md',
+  ]);
+});
+
+test('QuickSwitcherController ranks compact fuzzy path matches first', (t) => {
+  const elements = installDocumentStub(t);
+  const controller = new QuickSwitcherController({
+    getFileList: () => [
+      'a/a/unrelated/deep/folder/b.md',
+      `b/a/${'x'.repeat(100)}/b.md`,
+      'z/a/b.md',
+    ],
+    onFileSelect() {},
+  });
+  controller.renderResults = () => {};
+  controller.input = elements.get('quickSwitcherInput');
+
+  controller.input.value = 'ab';
+  controller.filterFiles();
+
+  assert.deepEqual(controller.filteredFiles, [
+    'z/a/b.md',
+    'a/a/unrelated/deep/folder/b.md',
+  ]);
+});
+
 test('QuickSwitcherController searches file extensions', (t) => {
   const elements = installDocumentStub(t);
   const controller = new QuickSwitcherController({
@@ -249,7 +299,7 @@ test('QuickSwitcherController preserves the query when switching search modes', 
 
   const controller = new QuickSwitcherController({
     getFileList: () => ['README.md'],
-    getSearchConfig: () => ({ available: false, minQueryLength: 2 }),
+    getSearchConfig: () => ({ available: true, minQueryLength: 2 }),
     onFileSelect() {},
   });
 

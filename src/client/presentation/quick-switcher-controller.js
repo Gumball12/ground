@@ -54,7 +54,16 @@ function findFuzzyMatch(text, query) {
   let consecutiveBonus = 0;
 
   for (let index = 0; index < text.length && queryIndex < query.length; index += 1) {
+    if (/\s/u.test(query[queryIndex]) && /[\s/\\_-]/u.test(text[index])) {
+      queryIndex += 1;
+      consecutiveBonus = 0;
+      continue;
+    }
+
     if (text[index] !== query[queryIndex]) {
+      if (queryIndex > 0) {
+        score -= 0.25;
+      }
       consecutiveBonus = 0;
       continue;
     }
@@ -193,6 +202,12 @@ export class QuickSwitcherController {
     this.hint = document.getElementById('quickSwitcherHint');
     this.scope = document.getElementById('quickSwitcherScope');
     this.modeTabs = Array.from(document.querySelectorAll?.('[data-qs-mode]') ?? []);
+    const searchConfig = this.getSearchConfig?.() ?? {};
+    const textTab = this.modeTabs.find((tab) => tab.dataset.qsMode === 'text');
+    if (textTab && searchConfig.available === false) {
+      textTab.disabled = true;
+      textTab.setAttribute('title', searchConfig.unavailableReason || 'Text search is unavailable');
+    }
 
     this.filteredFiles = [];
     this.fileMatches = new Map();
@@ -219,9 +234,32 @@ export class QuickSwitcherController {
       if (e.target === this.overlay) this.close();
     });
 
-    this.modeTabs.forEach((tab) => {
+    this.overlay?.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.close();
+      }
+    });
+
+    this.modeTabs.forEach((tab, index) => {
       tab.addEventListener('click', () => {
         this.setMode(tab.dataset.qsMode === 'text' ? 'text' : 'files', { preserveInput: true });
+        this.input?.focus?.();
+      });
+      tab.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+          return;
+        }
+
+        event.preventDefault();
+        const nextIndex = (index + (event.key === 'ArrowRight' ? 1 : -1) + this.modeTabs.length)
+          % this.modeTabs.length;
+        const nextTab = this.modeTabs[nextIndex];
+        if (nextTab.disabled) {
+          return;
+        }
+        this.setMode(nextTab.dataset.qsMode === 'text' ? 'text' : 'files', { preserveInput: true });
+        nextTab.focus();
       });
     });
 
@@ -243,13 +281,9 @@ export class QuickSwitcherController {
           e.preventDefault();
           this.confirmSelection();
           break;
-        case 'Escape':
-          e.preventDefault();
-          this.close();
-          break;
         case 'Tab':
           e.preventDefault();
-          if (this.modeTabs.length > 1 && !e.shiftKey) {
+          if (this.modeTabs.filter((tab) => !tab.disabled).length > 1 && !e.shiftKey) {
             this.setMode(this.mode === 'files' ? 'text' : 'files', { preserveInput: true });
           } else {
             this.moveSelection(e.shiftKey ? -1 : 1);
@@ -269,6 +303,7 @@ export class QuickSwitcherController {
     this.selectedTextIndex = 0;
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
+    this.input?.setAttribute('aria-expanded', 'true');
     this.setMode('files', { preserveInput: true });
 
     // The overlay transitions visibility hidden→visible over 120ms.
@@ -325,6 +360,7 @@ export class QuickSwitcherController {
     this.isOpen = false;
     this.overlay.classList.remove('visible');
     this.overlay.setAttribute('aria-hidden', 'true');
+    this.input?.setAttribute('aria-expanded', 'false');
     this.input.value = '';
     this.resultsList.innerHTML = '';
     this.setActiveDescendant('');
@@ -344,7 +380,8 @@ export class QuickSwitcherController {
   }
 
   setMode(mode = 'files', { preserveInput = false } = {}) {
-    const normalizedMode = mode === 'text' ? 'text' : 'files';
+    const textTab = this.modeTabs.find((tab) => tab.dataset.qsMode === 'text');
+    const normalizedMode = mode === 'text' && !textTab?.disabled ? 'text' : 'files';
     this.mode = normalizedMode;
     this.selectedIndex = 0;
     this.selectedTextIndex = 0;
@@ -357,6 +394,7 @@ export class QuickSwitcherController {
       const isActive = tab.dataset.qsMode === normalizedMode;
       tab.classList.toggle('active', isActive);
       tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      tab.setAttribute('tabindex', isActive ? '0' : '-1');
     });
 
     this.scope?.classList.toggle('hidden', normalizedMode !== 'text');
@@ -386,7 +424,8 @@ export class QuickSwitcherController {
   }
 
   filterFiles() {
-    const query = this.input?.value.trim().toLowerCase() ?? '';
+    this.resultsList?.setAttribute('aria-busy', 'false');
+    const query = this.input?.value.trim().toLowerCase().replace(/\s+/gu, ' ') ?? '';
     const allFiles = this.getFileList?.() ?? [];
     if (allFiles !== this.lastFileListRef) {
       this.lastFileListRef = allFiles;
@@ -520,7 +559,7 @@ export class QuickSwitcherController {
       item.innerHTML = `
         ${getVaultFileIconSvg(filePath, { className: 'qs-result-icon' })}
         <span class="qs-result-name">${highlightText(fileName, matchIndices.fileName)}</span>
-        ${dirPath ? `<span class="qs-result-path">${highlightText(dirPath, matchIndices.dirPath)}</span>` : ''}
+        ${dirPath ? `<span class="qs-result-path" title="${escapeHtml(dirPath)}">${highlightText(dirPath, matchIndices.dirPath)}</span>` : ''}
       `;
 
       item.addEventListener('click', () => {
