@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { getRequestErrorStatusCode } from './http-errors.js';
 import { jsonResponse, sendResponse, textResponse } from './http-response.js';
-import { parseJsonBody } from './request-body.js';
+import { parseJsonBody, readBinaryRequestBody } from './request-body.js';
 
 const EMBED_STYLESHEET_PATH = new URL('../structurizr/structurizr-embed.css', import.meta.url);
 
@@ -101,13 +101,15 @@ export function createStructurizrApiHandler({ basePath = '', service = null } = 
       return false;
     }
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const isThumbnailPut = req.method === 'PUT' && service.isThumbnailPath(requestUrl.pathname);
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !isThumbnailPut) {
       textResponse(req, res, 405, 'Method Not Allowed', { Allow: 'GET, HEAD' });
       return true;
     }
 
     try {
       const response = await service.proxy(requestUrl, {
+        body: isThumbnailPut ? await readBinaryRequestBody(req) : null,
         headers: req.headers,
         method: req.method,
       });

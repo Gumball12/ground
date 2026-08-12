@@ -119,13 +119,49 @@ async function createPublicDirSnapshot() {
 
 async function startStructurizrStub() {
   const requests = [];
-  const server = createServer((req, res) => {
-    requests.push(req.url || '');
-    if (req.url === '/api/workspace/1') {
+  const images = new Map();
+  const fallbackThumbnail = Buffer.from('fallback-thumbnail');
+  const server = createServer(async (req, res) => {
+    const requestPath = req.url || '';
+    requests.push(requestPath);
+
+    if (requestPath === '/api/workspace/1') {
       res.writeHead(200, {
         'Content-Type': 'application/json; charset=utf-8',
       });
       res.end('{"success":true}');
+      return;
+    }
+
+    if (requestPath === '/static/img/thumbnail-not-available.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(fallbackThumbnail);
+      return;
+    }
+
+    if (requestPath.startsWith('/workspace/1/images/')) {
+      if (req.method === 'PUT') {
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        images.set(requestPath, Buffer.concat(chunks));
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        res.end('{"success":true}');
+        return;
+      }
+
+      const image = images.get(requestPath);
+      if (req.method === 'GET' && image) {
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(image);
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
       return;
     }
 
@@ -150,6 +186,7 @@ async function startStructurizrStub() {
         resolve();
       });
     }),
+    fallbackThumbnail,
     requests,
     url: `http://127.0.0.1:${port}`,
   };
@@ -1758,6 +1795,51 @@ test('HTTP server syncs and proxies Structurizr through the authenticated app ro
   assert.equal(embedStylesheetResponse.statusCode, 200);
   assert.match(embedStylesheetResponse.body, /#diagram-viewport/);
   assert.deepEqual(structurizrStub.requests, ['/api/workspace/1', '/workspace/1/diagrams']);
+});
+
+test('HTTP server serves and stores Structurizr thumbnails through the app route', async (t) => {
+  const structurizrStub = await startStructurizrStub();
+  t.after(() => structurizrStub.close());
+
+  const app = await startTestServer({
+    structurizr: {
+      serverUrl: structurizrStub.url,
+    },
+  });
+  t.after(() => app.close());
+
+  const missingResponse = await httpRequest(`${app.baseUrl}/workspace/1/images/Context-thumbnail.png`);
+  assert.equal(missingResponse.statusCode, 200);
+  assert.deepEqual(missingResponse.bodyBuffer, structurizrStub.fallbackThumbnail);
+
+  const rejectedPutResponse = await httpRequest(`${app.baseUrl}/workspace/1/images/diagram.png`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'text/plain',
+    },
+    body: 'not-a-thumbnail',
+  });
+  assert.equal(rejectedPutResponse.statusCode, 405);
+
+  const thumbnail = Buffer.from('generated-thumbnail');
+  const putResponse = await httpRequest(`${app.baseUrl}/workspace/1/images/Context-thumbnail.png`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'text/plain',
+    },
+    body: thumbnail,
+  });
+  assert.equal(putResponse.statusCode, 200);
+
+  const readResponse = await httpRequest(`${app.baseUrl}/workspace/1/images/Context-thumbnail.png`);
+  assert.equal(readResponse.statusCode, 200);
+  assert.deepEqual(readResponse.bodyBuffer, thumbnail);
+  assert.deepEqual(structurizrStub.requests, [
+    '/workspace/1/images/Context-thumbnail.png',
+    '/static/img/thumbnail-not-available.png',
+    '/workspace/1/images/Context-thumbnail.png',
+    '/workspace/1/images/Context-thumbnail.png',
+  ]);
 });
 
 test('HTTP server proxies PlantUML renders through the configured renderer', async (t) => {

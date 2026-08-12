@@ -12,6 +12,7 @@ const MANIFEST_FILE_NAME = '.collabmd-manifest.json';
 const WORKSPACE_DSL_FILE_NAME = 'workspace.dsl';
 const WORKSPACE_JSON_FILE_NAME = 'workspace.json';
 const SIDECAR_TIMEOUT_MS = 15_000;
+const THUMBNAIL_FALLBACK_PATH = '/static/img/thumbnail-not-available.png';
 
 function createServiceError(message, statusCode, code) {
   const error = new Error(message);
@@ -193,6 +194,10 @@ export class StructurizrWorkspaceService {
     );
   }
 
+  isThumbnailPath(pathname) {
+    return /^\/workspace\/1\/images\/(?:[^/]+-)?thumbnail(?:-dark)?\.png$/u.test(pathname);
+  }
+
   async sync({ content, rootPath }) {
     if (!this.isEnabled()) {
       throw createServiceError('Structurizr renderer is not configured.', 503, 'STRUCTURIZR_NOT_CONFIGURED');
@@ -336,21 +341,26 @@ export class StructurizrWorkspaceService {
     }
   }
 
-  async proxy(requestUrl, { method = 'GET', headers = {} } = {}) {
+  async proxy(requestUrl, { body = null, method = 'GET', headers = {} } = {}) {
     if (!this.isProxyPath(requestUrl.pathname)) {
       return null;
     }
 
     const upstreamUrl = `${this.serverUrl}${requestUrl.pathname}${requestUrl.search}`;
     let response;
+    const proxyHeaders = {
+      Accept: headers.accept || '*/*',
+    };
+    if (headers['content-type']) {
+      proxyHeaders['Content-Type'] = headers['content-type'];
+    }
+    if (headers.range) {
+      proxyHeaders.Range = headers.range;
+    }
+
     try {
-      const proxyHeaders = {
-        Accept: headers.accept || '*/*',
-      };
-      if (headers.range) {
-        proxyHeaders.Range = headers.range;
-      }
       response = await fetch(upstreamUrl, {
+        body,
         headers: proxyHeaders,
         method,
         redirect: 'follow',
@@ -362,6 +372,22 @@ export class StructurizrWorkspaceService {
         503,
         'STRUCTURIZR_UNAVAILABLE',
       );
+    }
+
+    if (response.status === 404 && method === 'GET' && this.isThumbnailPath(requestUrl.pathname)) {
+      try {
+        const fallbackResponse = await fetch(`${this.serverUrl}${THUMBNAIL_FALLBACK_PATH}`, {
+          headers: { Accept: 'image/png' },
+          method: 'GET',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(SIDECAR_TIMEOUT_MS),
+        });
+        if (fallbackResponse.ok) {
+          response = fallbackResponse;
+        }
+      } catch {
+        // Keep the original 404 when the optional placeholder is unavailable.
+      }
     }
 
     return {
