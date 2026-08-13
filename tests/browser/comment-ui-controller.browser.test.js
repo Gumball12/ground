@@ -19,7 +19,7 @@ function flushFrame() {
   });
 }
 
-function createController({ onNavigateToLine = () => {}, sourceText = '' } = {}) {
+function createController({ isMobile = false, onNavigateToLine = () => {}, sourceText = '' } = {}) {
   document.body.innerHTML = `
     <div id="editor"></div>
     <button id="comment-selection"><span class="ui-action-label">Comment</span></button>
@@ -57,6 +57,7 @@ function createController({ onNavigateToLine = () => {}, sourceText = '' } = {})
     commentsDrawerList,
     commentsToggleButton,
     editorContainer,
+    mobileBreakpointQuery: { matches: isMobile },
     onCreateThread: async () => 'thread-1',
     onNavigateToLine,
     onReplyToThread: async () => 'message-2',
@@ -79,7 +80,7 @@ function createController({ onNavigateToLine = () => {}, sourceText = '' } = {})
   controller.attachSession(session);
   controller.setCurrentFile('README.md', { supported: true });
 
-  return { controller, commentSelectionButton, commentsDrawer, previewElement };
+  return { controller, commentSelectionButton, commentsDrawer, commentsToggleButton, previewElement };
 }
 
 describe('CommentUiController browser behavior', () => {
@@ -132,6 +133,29 @@ describe('CommentUiController browser behavior', () => {
     });
   });
 
+  it('closes the comments drawer after opening a thread on mobile', () => {
+    const setup = createController({ isMobile: true });
+    controller = setup.controller;
+
+    controller.setThreads([
+      {
+        anchor: { endLine: 8, quote: 'Anchored range', startLine: 5 },
+        createdAt: 1,
+        createdByName: 'Alice',
+        id: 'thread-1',
+        messages: [{ body: 'Existing thread', createdAt: 2, id: 'message-1', reactions: [], userName: 'Alice' }],
+      },
+    ]);
+    controller.setDrawerOpen(true);
+
+    setup.commentsDrawer.querySelector('.comments-drawer-item').click();
+
+    expect(controller.drawerOpen).toBe(false);
+    expect(setup.commentsDrawer.classList.contains('hidden')).toBe(true);
+    expect(setup.commentsToggleButton.getAttribute('aria-expanded')).toBe('false');
+    expect(controller.activeCard).toMatchObject({ mode: 'group' });
+  });
+
   it('opens overview-selected threads as editor-anchored cards', () => {
     const setup = createController();
     controller = setup.controller;
@@ -154,6 +178,44 @@ describe('CommentUiController browser behavior', () => {
       mode: 'group',
       origin: 'editor',
     });
+  });
+
+  it('keeps overview-selected comment content inside the mobile viewport', () => {
+    const setup = createController();
+    controller = setup.controller;
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+
+    try {
+      controller.setThreads([
+        {
+          anchor: { endLine: 21, quote: 'How this will looks like', startLine: 19 },
+          createdAt: 1,
+          createdByName: 'Alice',
+          id: 'thread-1',
+          messages: [{ body: 'Full comment content', createdAt: 2, id: 'message-1', reactions: [], userName: 'Alice' }],
+        },
+      ]);
+
+      expect(controller.openThreadFromOverview('thread-1')).toBe(true);
+
+      const root = controller.cardRoot;
+      const card = root.querySelector('.comment-card');
+      root.style.top = '-20px';
+      root.style.left = '16px';
+      card.getBoundingClientRect = () => createRect({ left: 16, top: -20, width: 358, height: 700 });
+      controller.repositionActiveCard();
+
+      expect(Number.parseFloat(root.style.top)).toBeGreaterThanOrEqual(16);
+      expect(Number.parseFloat(root.style.left)).toBeGreaterThanOrEqual(16);
+      expect(Number.parseFloat(root.style.width)).toBeLessThanOrEqual(358);
+      expect(root.textContent).toContain('Full comment content');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+    }
   });
 
   it('updates selection state and enables the toolbar action', () => {

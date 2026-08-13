@@ -709,6 +709,7 @@ describe('uiFeature browser helpers', () => {
 
     const context = {
       fileExplorer: { flatFiles: ['README.md'] },
+      isMobileViewport: () => true,
       loadQuickSwitcherController: vi.fn()
         .mockRejectedValueOnce(loadError)
         .mockResolvedValueOnce(TestQuickSwitcher),
@@ -737,7 +738,7 @@ describe('uiFeature browser helpers', () => {
     quickSwitcher.options.onFileSelect('docs/guide.md');
     expect(context.workspaceRouteController.handleFileSelection).toHaveBeenCalledWith('docs/guide.md', {
       closeSidebarOnMobile: true,
-      revealInTree: true,
+      revealInTree: false,
     });
   });
 

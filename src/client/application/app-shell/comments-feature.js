@@ -108,10 +108,12 @@ export const commentsFeature = {
     this.setSidebarVisibility(true);
     if (isDiagram) {
       this.excalidrawEmbed?.openCommentThread?.(filePath, threadId);
+      this.closeSidebarOnMobile?.();
       return;
     }
 
     this.focusPendingCommentOverviewThread();
+    this.closeSidebarOnMobile?.();
   },
 
   focusPendingCommentOverviewThread() {
@@ -128,14 +130,11 @@ export const commentsFeature = {
     if (didFocus) {
       this._pendingCommentOverviewFocus = null;
       this.setSidebarTab('comments');
-      this.setSidebarVisibility(true);
       return true;
     }
 
     if (pending.attempts >= 8) {
       this._pendingCommentOverviewFocus = null;
-      this.setSidebarTab('comments');
-      this.setSidebarVisibility(true);
       return false;
     }
 

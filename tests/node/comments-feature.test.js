@@ -12,6 +12,7 @@ test('comment overview selection keeps comments tab and opens anchored thread ca
         return true;
       },
     },
+    closeSidebarOnMobile: () => calls.push(['closeSidebarOnMobile']),
     currentFilePath: 'notes/current.md',
     navigation: {
       navigateToFile: (filePath, options) => calls.push(['navigateToFile', filePath, options]),
@@ -48,7 +49,7 @@ test('comment overview selection keeps comments tab and opens anchored thread ca
     ['scrollToLine', 12, 0.2],
     ['openThreadFromOverview', 'thread-1'],
     ['setSidebarTab', 'comments'],
-    ['setSidebarVisibility', true],
+    ['closeSidebarOnMobile'],
   ]);
   assert.equal(context._pendingCommentOverviewFocus, null);
 });
@@ -56,6 +57,7 @@ test('comment overview selection keeps comments tab and opens anchored thread ca
 test('comment overview selection opens an Excalidraw thread in its diagram drawer', async () => {
   const calls = [];
   const context = {
+    closeSidebarOnMobile: () => calls.push(['closeSidebarOnMobile']),
     currentFilePath: 'notes/current.md',
     excalidrawEmbed: {
       openCommentThread: (filePath, threadId) => calls.push(['openCommentThread', filePath, threadId]),
@@ -89,6 +91,7 @@ test('comment overview selection opens an Excalidraw thread in its diagram drawe
     ['setSidebarTab', 'comments'],
     ['setSidebarVisibility', true],
     ['openCommentThread', 'diagrams/target.excalidraw', 'thread-diagram'],
+    ['closeSidebarOnMobile'],
   ]);
 });
 

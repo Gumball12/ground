@@ -12,6 +12,7 @@ export class CommentUiController {
     commentsDrawerList,
     commentsToggleButton,
     editorContainer,
+    mobileBreakpointQuery = window.matchMedia('(max-width: 768px)'),
     onWillOpenDrawer,
     onCreateThread,
     onNavigateToLine,
@@ -27,6 +28,7 @@ export class CommentUiController {
     this.commentsDrawerList = commentsDrawerList;
     this.commentsToggleButton = commentsToggleButton;
     this.editorContainer = editorContainer;
+    this.mobileBreakpointQuery = mobileBreakpointQuery;
     this.onWillOpenDrawer = onWillOpenDrawer;
     this.onCreateThread = onCreateThread;
     this.onNavigateToLine = onNavigateToLine;

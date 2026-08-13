@@ -17,6 +17,7 @@ import {
  * @property {HTMLElement | null} commentsDrawerList
  * @property {HTMLElement | null} commentsDrawerEmpty
  * @property {HTMLElement | null} cardRoot
+ * @property {{ matches: boolean }} mobileBreakpointQuery
  * @property {HTMLElement | null} pendingCardFocusElement
  * @property {any} reactionPicker
  * @property {() => Array<any>} getThreadGroups
@@ -103,6 +104,9 @@ function renderDrawer() {
     });
     button.addEventListener('click', () => {
       this.onNavigateToLine?.(group.anchor?.startLine ?? 1);
+      if (this.mobileBreakpointQuery?.matches) {
+        this.setDrawerOpen(false);
+      }
       this.openThreadGroup(group, {
         anchor: group.anchor,
         origin: 'editor',
