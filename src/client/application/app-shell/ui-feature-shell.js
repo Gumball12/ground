@@ -246,6 +246,13 @@ function bindDialogEvents() {
 
 /** @this {UiShellContext} */
 function bindEvents() {
+  const stopFollowing = () => this.stopFollowingUser?.();
+  this.elements.editorContainer?.addEventListener('pointerdown', stopFollowing);
+  this.elements.editorContainer?.addEventListener('keydown', stopFollowing);
+  this.elements.editorContainer?.addEventListener('wheel', stopFollowing, { passive: true });
+  this.elements.previewContainer?.addEventListener('pointerdown', stopFollowing);
+  this.elements.previewContainer?.addEventListener('wheel', stopFollowing, { passive: true });
+
   this.elements.emptyStateNewFileBtn?.addEventListener('click', () => {
     this.fileExplorer.actionController.openRootCreateMenu({
       anchor: this.elements.emptyStateNewFileBtn,
@@ -400,6 +407,10 @@ function handleDocumentPointerDown(event) {
 
 /** @this {UiShellContext} */
 function handleDocumentKeydown(event) {
+  if (event.key === 'Escape') {
+    this.stopFollowingUser?.();
+  }
+
   if (event.key === 'Escape' && this.toolbarOverflowOpen) {
     this.closeToolbarOverflowMenu();
     return;

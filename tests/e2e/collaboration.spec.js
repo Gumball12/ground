@@ -1823,6 +1823,43 @@ test('follows another user to their current cursor position', async ({ browser }
   await targetPage.close();
 });
 
+test('stops following when the follower takes manual control', async ({ browser }) => {
+  const followerPage = await browser.newPage();
+  const targetPage = await browser.newPage();
+
+  await openFile(followerPage, 'README.md');
+  await openFile(targetPage, 'README.md');
+  await expect(followerPage.locator('#userCount')).toHaveText('2 online');
+
+  const targetAvatar = followerPage.locator('#userAvatars .user-avatar-button').first();
+  const startFollowing = async () => {
+    await targetAvatar.click();
+    await expect(targetAvatar).toHaveAttribute('aria-label', /^Stop following /);
+  };
+  const expectStopped = () => expect(targetAvatar).toHaveAttribute('aria-label', /^Follow /);
+
+  await startFollowing();
+  await followerPage.locator('.cm-content').click();
+  await expectStopped();
+
+  await startFollowing();
+  await followerPage.keyboard.press('Escape');
+  await expectStopped();
+
+  await startFollowing();
+  await followerPage.locator('.cm-scroller').dispatchEvent('wheel');
+  await expectStopped();
+
+  await startFollowing();
+  await followerPage.locator('#fileTree .file-tree-dir[data-path="daily"]').click();
+  await followerPage.locator('#fileTree .file-tree-file[data-path="daily/2026-03-05.md"]').click();
+  await expect(followerPage).toHaveURL(/file=daily%2F2026-03-05\.md/u);
+  await expectStopped();
+
+  await followerPage.close();
+  await targetPage.close();
+});
+
 test('pins and labels the current user in the header avatar list', async ({ browser }) => {
   const localPage = await browser.newPage();
   const remotePage = await browser.newPage();

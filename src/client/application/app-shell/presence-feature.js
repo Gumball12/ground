@@ -358,7 +358,7 @@ export const presenceFeature = {
     }
 
     if (user.currentFile && user.currentFile !== this.currentFilePath) {
-      this.navigation.navigateToFile(user.currentFile);
+      this.navigation.navigateToFile(user.currentFile, { preserveFollow: true });
       return;
     }
 
@@ -404,7 +404,7 @@ export const presenceFeature = {
     }
 
     if (user.currentFile && user.currentFile !== this.currentFilePath) {
-      this.navigation.navigateToFile(user.currentFile);
+      this.navigation.navigateToFile(user.currentFile, { preserveFollow: true });
       return;
     }
 

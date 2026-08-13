@@ -27,6 +27,7 @@ export class ExcalidrawEmbedController {
     getTheme,
     getLocalUser,
     onOpenFile = null,
+    onStopFollowing = null,
     onToggleQuickSwitcher = null,
     previewContainer,
     previewElement,
@@ -35,6 +36,7 @@ export class ExcalidrawEmbedController {
     this.getTheme = getTheme;
     this.getLocalUser = getLocalUser;
     this.onOpenFile = onOpenFile;
+    this.onStopFollowing = onStopFollowing;
     this.onToggleQuickSwitcher = onToggleQuickSwitcher;
     this.previewContainer = previewContainer;
     this.previewElement = previewElement;
@@ -1224,6 +1226,11 @@ export class ExcalidrawEmbedController {
 
     if (msg.type === 'request-toggle-quick-switcher') {
       this.onToggleQuickSwitcher?.();
+      return;
+    }
+
+    if (msg.type === 'stop-following') {
+      this.onStopFollowing?.();
       return;
     }
 

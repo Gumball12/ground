@@ -99,7 +99,13 @@ export class CollabMdAppShell {
     this.sessionLoadToken = 0;
     this.navigation = {
       getHashRoute,
-      navigateToFile,
+      navigateToFile: (filePath, options = {}) => {
+        const { preserveFollow = false, ...routeOptions } = options;
+        if (!preserveFollow && filePath !== this.currentFilePath) {
+          this.stopFollowingUser();
+        }
+        navigateToFile(filePath, routeOptions);
+      },
       navigateToGitCommit,
       navigateToGitDiff,
       navigateToGitFileHistory,
@@ -303,6 +309,7 @@ export class CollabMdAppShell {
       getLocalUser: () => this.lobby.getLocalUser(),
       getTheme: () => this.themeController.getTheme(),
       onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
+      onStopFollowing: () => this.stopFollowingUser(),
       onToggleQuickSwitcher: () => {
         void this.toggleQuickSwitcher();
       },

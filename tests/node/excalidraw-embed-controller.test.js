@@ -128,9 +128,10 @@ test('opens a queued Excalidraw comment thread in a ready iframe', () => {
   }
 });
 
-test('forwards Excalidraw quick switcher requests from known same-origin iframe', () => {
+test('forwards Excalidraw shell requests from known same-origin iframe', () => {
   const originalWindow = globalThis.window;
   const iframeWindow = {};
+  let stopCalls = 0;
   let toggleCalls = 0;
 
   globalThis.window = {
@@ -144,6 +145,9 @@ test('forwards Excalidraw quick switcher requests from known same-origin iframe'
         iframe: { contentWindow: iframeWindow },
       }]]),
       _findEntryByContentWindow: ExcalidrawEmbedController.prototype._findEntryByContentWindow,
+      onStopFollowing: () => {
+        stopCalls += 1;
+      },
       onToggleQuickSwitcher: () => {
         toggleCalls += 1;
       },
@@ -157,8 +161,17 @@ test('forwards Excalidraw quick switcher requests from known same-origin iframe'
       origin: 'http://localhost:4173',
       source: iframeWindow,
     });
+    ExcalidrawEmbedController.prototype._onMessage.call(controller, {
+      data: {
+        source: 'excalidraw-editor',
+        type: 'stop-following',
+      },
+      origin: 'http://localhost:4173',
+      source: iframeWindow,
+    });
 
     assert.equal(toggleCalls, 1);
+    assert.equal(stopCalls, 1);
   } finally {
     globalThis.window = originalWindow;
   }

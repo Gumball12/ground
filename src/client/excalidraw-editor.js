@@ -441,6 +441,7 @@ function buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled }
     },
     onPointerDown: () => {
       initialViewportFitPending = false;
+      stopFollowingFromLocalInteraction();
     },
     renderTopRightUI,
     historyOptions: {
@@ -1379,7 +1380,17 @@ function postToParent(type, payload = {}) {
   window.parent.postMessage({ source: 'excalidraw-editor', type, ...payload }, parentOrigin);
 }
 
+function stopFollowingFromLocalInteraction() {
+  if (!pendingHostFollowPeerId && !followedSocketId) {
+    return;
+  }
+
+  applyHostFollowRequest(null);
+  postToParent('stop-following');
+}
+
 function handleQuickSwitcherKeyDown(event) {
+  stopFollowingFromLocalInteraction();
   if (!isPlainQuickSwitcherShortcut(event)) {
     return;
   }
