@@ -130,7 +130,9 @@ export function createGitApiCommandHandler({
           action: 'pull',
           req,
           responsePayload: await workspaceMutationCoordinator.runManagedWorkspaceMutation(
-            () => gitService.pullBranch(),
+            () => gitService.pullBranch({
+              author: authService?.getAuthenticatedUser?.(req) ?? null,
+            }),
           ),
           workspaceMutationCoordinator,
         }));

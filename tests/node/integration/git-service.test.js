@@ -660,7 +660,37 @@ test('GitService pull creates a backup bundle when an untracked local file overl
   assert.equal((await execFile('git', ['status', '--porcelain=v1'], { cwd: localDir })).stdout.trim(), '');
 });
 
-test('GitService pull rejects diverged history before mutating the worktree', async (t) => {
+test('GitService pull handles ahead-only and non-conflicting diverged history without losing dirty changes', async (t) => {
+  const { localDir, peerDir } = await createRemotePullFixture(t);
+
+  await writeFile(join(localDir, 'local.md'), '# Local commit\n', 'utf8');
+  await runGit(localDir, ['add', 'local.md']);
+  await runGit(localDir, ['commit', '-m', 'Local commit']);
+
+  const gitService = new GitService({ vaultDir: localDir });
+  await gitService.pullBranch();
+  await writeFile(join(localDir, 'local.md'), '# Local commit\nlocal dirty change\n', 'utf8');
+
+  await writeFile(join(peerDir, 'remote.md'), '# Remote commit\n', 'utf8');
+  await runGit(peerDir, ['add', 'remote.md']);
+  await runGit(peerDir, ['commit', '-m', 'Remote commit']);
+  await runGit(peerDir, ['push']);
+
+  await gitService.pullBranch({
+    author: {
+      email: 'puller@example.com',
+      name: 'Pulling User',
+    },
+  });
+  await gitService.pushBranch();
+
+  assert.equal(await runGitOutput(localDir, ['show', '-s', '--format=%an <%ae>', 'HEAD']), 'Pulling User <puller@example.com>');
+  assert.equal(await readFile(join(localDir, 'local.md'), 'utf8'), '# Local commit\nlocal dirty change\n');
+  assert.equal(await readFile(join(localDir, 'remote.md'), 'utf8'), '# Remote commit\n');
+  assert.equal(await runGitOutput(localDir, ['rev-list', '--count', 'origin/master..HEAD']), '0');
+});
+
+test('GitService pull rejects conflicting commits before mutating the worktree', async (t) => {
   const { localDir, peerDir } = await createRemotePullFixture(t);
 
   await writeFile(join(localDir, 'tracked.md'), '# Seed\nlocal commit\n', 'utf8');
@@ -676,10 +706,12 @@ test('GitService pull rejects diverged history before mutating the worktree', as
 
   await assert.rejects(
     gitService.pullBranch(),
-    (error) => error?.statusCode === 409 && error?.requestCode === 'pull_diverged_ff_only',
+    (error) => error?.statusCode === 409 && error?.requestCode === 'pull_conflicted_commits',
   );
 
   assert.equal(String((await execFile('git', ['log', '-1', '--pretty=%s'], { cwd: localDir })).stdout).trim(), 'Local commit');
+  assert.equal(await readFile(join(localDir, 'tracked.md'), 'utf8'), '# Seed\nlocal commit\n');
+  assert.equal((await execFile('git', ['status', '--porcelain=v1'], { cwd: localDir })).stdout.trim(), '');
   assert.deepEqual(await gitService.listPullBackups(), []);
 });
 

@@ -912,7 +912,7 @@ test('HTTP server returns pull backup metadata and lists saved pull backups', as
   assert.match(fileResponse.body, /Remote version/);
 });
 
-test('HTTP server returns a typed error code when pull cannot fast-forward', async (t) => {
+test('HTTP server returns a typed error code when pulled commits conflict', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());
 
@@ -959,7 +959,7 @@ test('HTTP server returns a typed error code when pull cannot fast-forward', asy
   });
 
   assert.equal(pullResponse.statusCode, 409);
-  assert.match(pullResponse.body, /"code":"pull_diverged_ff_only"/);
+  assert.match(pullResponse.body, /"code":"pull_conflicted_commits"/);
 });
 
 test('HTTP server exposes git reset-file for restoring a file from the current branch HEAD', async (t) => {

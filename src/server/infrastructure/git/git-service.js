@@ -203,7 +203,7 @@ export class GitService {
     };
   }
 
-  async pullBranch() {
+  async pullBranch({ author = null } = {}) {
     const status = await this.getStatus({ force: true });
     if (status.branch?.detached) {
       throw createGitRequestError(409, 'Cannot pull from a detached HEAD');
@@ -220,16 +220,22 @@ export class GitService {
       throw createGitRequestError(409, 'Unable to resolve upstream branch for pull');
     }
 
-    if (!(await this.canFastForwardTo(targetRef))) {
+    const mergeBaseRef = beforeRef
+      ? await this.resolveMergeBase(beforeRef, targetRef)
+      : null;
+    if (beforeRef && !mergeBaseRef) {
+      throw createGitRequestError(409, 'Cannot pull because local and remote histories are unrelated');
+    }
+    if (beforeRef && !(await this.canMergeWith(targetRef))) {
       throw createGitRequestError(
         409,
-        'Cannot pull because local and remote commits have diverged; fast-forward only pull is not possible.',
-        { requestCode: 'pull_diverged_ff_only' },
+        'Cannot pull automatically because local and remote commits conflict.',
+        { requestCode: 'pull_conflicted_commits' },
       );
     }
 
     const dirtyEntries = this.collectDirtyEntries(status);
-    const upstreamWorkspaceChange = await this.createWorkspaceChangeFromRefs(beforeRef, targetRef);
+    const upstreamWorkspaceChange = await this.createWorkspaceChangeFromRefs(mergeBaseRef, targetRef);
     const overlappingEntries = this.findOverlappingDirtyEntries({
       dirtyEntries,
       workspaceChange: upstreamWorkspaceChange,
@@ -247,7 +253,9 @@ export class GitService {
 
     let output;
     try {
-      output = await this.commandRunner.execGit(['pull', '--ff-only', '--autostash']);
+      output = await this.commandRunner.execGit(['merge', '--no-edit', '--autostash', targetRef], {
+        env: buildAuthorEnv(author),
+      });
     } catch (error) {
       throw await this.classifyPullError(error);
     }
@@ -339,14 +347,18 @@ export class GitService {
       : ['fetch', '--prune']);
   }
 
-  async canFastForwardTo(targetRef) {
-    const headRef = await this.resolveRef('HEAD');
-    if (!headRef || !targetRef || headRef === targetRef) {
-      return true;
-    }
-
+  async resolveMergeBase(leftRef, rightRef) {
     try {
-      await this.commandRunner.execGit(['merge-base', '--is-ancestor', headRef, targetRef]);
+      const output = await this.commandRunner.execGit(['merge-base', leftRef, rightRef]);
+      return output.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async canMergeWith(targetRef) {
+    try {
+      await this.commandRunner.execGit(['merge-tree', '--write-tree', '--quiet', 'HEAD', targetRef]);
       return true;
     } catch (error) {
       if (error?.code === 1) {

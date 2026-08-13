@@ -947,7 +947,7 @@ export class GitPanelController {
             class="${buttonClassNames({ variant: 'secondary', size: 'compact', pill: true, surface: true, extra: 'ui-action-pill' })}"
             type="button"
             data-git-sync-action="pull"
-            title="${hasUpstream ? 'Pull remote changes (fast-forward only)' : 'No upstream branch configured'}"
+            title="${hasUpstream ? 'Pull remote changes' : 'No upstream branch configured'}"
             aria-label="Pull branch"
             ${!hasUpstream || isPullPending ? 'disabled' : ''}
           >

@@ -293,12 +293,12 @@ test('gitFeature shows a pull backup toast after a successful overlap backup pul
   ]);
 });
 
-test('gitFeature shows a specific toast when pull fails because fast-forward is not possible', async (t) => {
+test('gitFeature shows a specific toast when local and remote commits conflict', async (t) => {
   installWindowStub(t);
   const { context, events } = createContext({
     postGitAction: async () => {
-      const error = new Error('ff only');
-      error.code = 'pull_diverged_ff_only';
+      const error = new Error('conflicting commits');
+      error.code = 'pull_conflicted_commits';
       throw error;
     },
   });
@@ -306,7 +306,7 @@ test('gitFeature shows a specific toast when pull fails because fast-forward is 
   await gitFeature.pullGitBranch.call(context);
 
   assert.deepEqual(events, [
-    ['toast', 'Cannot pull because local and remote commits have diverged. Fast-forward only pull is not possible.'],
+    ['toast', 'Cannot pull automatically because local and remote commits conflict.'],
   ]);
 });
 

@@ -543,8 +543,8 @@ export const gitFeature = {
           this.toastController.show(this.formatPullBackupToast(result.pullBackup), 5000);
         }
       } catch (error) {
-        if (error?.code === 'pull_diverged_ff_only') {
-          this.toastController.show('Cannot pull because local and remote commits have diverged. Fast-forward only pull is not possible.', 5000);
+        if (error?.code === 'pull_conflicted_commits') {
+          this.toastController.show('Cannot pull automatically because local and remote commits conflict.', 5000);
           return;
         }
 
