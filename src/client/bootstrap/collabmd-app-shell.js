@@ -253,6 +253,7 @@ export class CollabMdAppShell {
         this.drawioEmbed.reconcileEmbeds(this.elements.previewContent);
         this.excalidrawEmbed.reconcileEmbeds(this.elements.previewContent, { isLargeDocument: stats.isLargeDocument });
         this.scrollSyncController.setLargeDocumentMode(stats.isLargeDocument);
+        this.syncPreviewCodeCopyButtons();
         this.syncPreviewHeadingLinkButtons();
         this.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true });
         this.schedulePreviewLayoutSync({ delayMs: 0 });

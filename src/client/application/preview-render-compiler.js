@@ -9,6 +9,9 @@ import { extractYamlFrontmatter } from '../../domain/yaml-frontmatter.js';
 import { renderFrontmatterBlock } from './markdown-frontmatter.js';
 import { analyzeMarkdownComplexity } from './preview-render-profile.js';
 
+hljs.registerAliases(['cql', 'mariadb', 'mssql', 'mysql', 'plsql', 'sqlite'], { languageName: 'sql' });
+hljs.registerAliases(['ecmascript', 'node'], { languageName: 'javascript' });
+
 const DIRECT_VIDEO_MIME_TYPES = Object.freeze({
   '.mp4': 'video/mp4',
   '.ogg': 'video/ogg',

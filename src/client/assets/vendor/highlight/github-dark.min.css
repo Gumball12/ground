@@ -1,10 +1,2 @@
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
-  Theme: GitHub Dark
-  Description: Dark theme as seen on github.com
-  Author: github.com
-  Maintainer: @Hirse
-  Updated: 2021-05-15
-
-  Outdated base version: https://github.com/primer/github-syntax-dark
-  Current colors taken from GitHub's CSS
-*/.hljs{color:#c9d1d9;background:#0d1117}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}
+/* Highlight.js tokens mapped to CodeMirror's oneDarkHighlightStyle. */
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#abb2bf;background:#282c34}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword{color:#c678dd}.hljs-attr,.hljs-attribute,.hljs-property,.hljs-variable{color:#e06c75}.hljs-title.function_,.hljs-title.function_.invoke__{color:#61afef}.hljs-name,.hljs-selector-tag,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-type{color:#e5c07b}.hljs-atom,.hljs-built_in,.hljs-bullet,.hljs-literal,.hljs-symbol,.hljs-variable.language_{color:#d19a66}.hljs-number{color:#e5c07b}.hljs-meta .hljs-string,.hljs-string{color:#98c379}.hljs-link,.hljs-operator,.hljs-regexp{color:#56b6c2}.hljs-code,.hljs-comment,.hljs-formula,.hljs-meta,.hljs-quote{color:#7d8799}.hljs-subst{color:#abb2bf}.hljs-section{color:#e06c75;font-weight:700}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-addition{color:#98c379}.hljs-deletion{color:#e06c75}

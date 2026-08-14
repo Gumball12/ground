@@ -1026,6 +1026,7 @@
 }
 
 .preview-content pre {
+  position: relative;
   max-width: 100%;
   margin: var(--space-4) 0;
   overflow-x: auto;
@@ -1047,6 +1048,30 @@
   white-space: pre;
   word-wrap: normal;
   overflow-wrap: normal;
+}
+
+.preview-content .preview-code-block {
+  position: relative;
+}
+
+.preview-content .preview-code-block pre code {
+  padding-right: 84px;
+}
+
+.preview-content .preview-code-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 0;
+}
+
+.preview-content .preview-code-copy-button {
+  position: absolute;
+  top: calc(var(--space-2) + 1px);
+  right: var(--space-2);
+  background: color-mix(in oklab, var(--color-surface) 90%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
 }
 
 .preview-content .table-wrapper {

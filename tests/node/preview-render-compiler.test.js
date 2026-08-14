@@ -47,6 +47,26 @@ test('compilePreviewDocument emits stable excalidraw placeholder keys and wiki-l
   assert.equal(stats.plantumlBlocks, 1);
 });
 
+test('compilePreviewDocument uses editor-supported aliases for fenced code highlighting', () => {
+  for (const language of ['ecmascript', 'node']) {
+    const { html } = compilePreviewDocument({
+      markdownText: `\`\`\`${language}\nconst x = 1;\n\`\`\``,
+    });
+
+    assert.match(html, /<span class="hljs-keyword">const<\/span>/);
+  }
+});
+
+test('compilePreviewDocument maps SQL dialect fences to deterministic SQL highlighting', () => {
+  for (const language of ['cql', 'mariadb', 'mssql', 'mysql', 'plsql', 'sqlite']) {
+    const { html } = compilePreviewDocument({
+      markdownText: `\`\`\`${language}\nSELECT id <=> 42 FROM users;\n\`\`\``,
+    });
+
+    assert.match(html, /<span class="hljs-operator">&lt;=&gt;<\/span>/);
+  }
+});
+
 test('compilePreviewDocument emits heading ids and keeps fragment links in-tab', () => {
   const markdown = [
     '# Title',

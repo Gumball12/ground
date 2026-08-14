@@ -894,6 +894,41 @@ describe('uiFeature browser helpers', () => {
     expect(scrollTo).toHaveBeenCalledTimes(1);
   });
 
+  it('adds preview code copy buttons and copies only the code content', async () => {
+    document.body.innerHTML = `
+      <div id="preview-content">
+        <pre><code class="language-json"><span>{</span>\n  "customerId": "string"\n}</code></pre>
+      </div>
+    `;
+
+    const previewContent = document.getElementById('preview-content');
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const context = {
+      elements: { previewContent },
+      toastController: { show: vi.fn() },
+    };
+    Object.assign(context, uiFeatureShellMethods);
+
+    context.syncPreviewCodeCopyButtons();
+
+    const button = previewContent.querySelector('.preview-code-copy-button');
+    expect(previewContent.querySelectorAll('.preview-code-copy-button')).toHaveLength(1);
+    expect(button.getAttribute('aria-label')).toBe('Copy code');
+
+    const clickEvent = { preventDefault: vi.fn(), target: button };
+    context.handlePreviewContentClick(clickEvent);
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('{\n  "customerId": "string"\n}');
+      expect(context.toastController.show).toHaveBeenCalledWith('Code copied');
+    });
+
+    expect(clickEvent.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
   it('copies preview heading links and applies pending route anchors', async () => {
     document.body.innerHTML = `
       <div id="previewContainer">

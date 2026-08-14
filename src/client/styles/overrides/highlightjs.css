@@ -1,7 +1,23 @@
 /* ===== OVERRIDES / HIGHLIGHTJS ===== */
 
-[data-theme="light"] .preview-content pre,
-[data-theme="light"] .preview-content pre code,
-[data-theme="light"] .hljs {
-  background: var(--color-surface) !important;
+[data-theme="light"] .preview-content pre {
+  border-color: color-mix(in oklab, var(--color-border) 78%, var(--color-primary) 22%);
+  background: color-mix(in oklab, var(--color-bg) 94%, var(--color-primary) 6%) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .preview-content pre code {
+  background: transparent !important;
+  color: var(--color-text) !important;
+}
+
+[data-theme="dark"] .preview-content pre {
+  border-color: color-mix(in oklab, var(--color-border) 74%, var(--color-primary) 26%);
+  background: color-mix(in oklab, var(--color-bg) 88%, var(--color-primary) 12%) !important;
+  box-shadow: var(--shadow-elevated-soft);
+}
+
+[data-theme="dark"] .preview-content pre code {
+  background: transparent !important;
+  color: var(--color-code-text) !important;
 }

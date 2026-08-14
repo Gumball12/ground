@@ -5,6 +5,12 @@ import { createFileRouteHash, isCollabMdHashRoute } from '../../domain/hash-rout
 const VERSION_RELOAD_TOAST_DURATION_MS = 0;
 const PREVIEW_ROUTE_ANCHOR_STABILIZE_MS = 2000;
 const PREVIEW_ROUTE_ANCHOR_MAX_APPLICATIONS = 8;
+const PREVIEW_CODE_COPY_ICON = `
+  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+    <rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+`;
 const PREVIEW_HEADING_LINK_ICON = `
   <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
     <path d="M10 13.5 14 9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -563,6 +569,38 @@ async function copyPreviewHeadingLink(anchorId) {
 }
 
 /** @this {UiShellContext} */
+async function copyPreviewCodeBlock(button) {
+  const code = button?.closest('.preview-code-block')?.querySelector(':scope > pre > code');
+  if (!(code instanceof HTMLElement)) {
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(code.textContent);
+    this.toastController.show('Code copied');
+  } catch {
+    this.toastController.show('Failed to copy code');
+  }
+}
+
+/** @this {UiShellContext} */
+function syncPreviewCodeCopyButtons() {
+  this.elements.previewContent?.querySelectorAll('pre > code').forEach((code) => {
+    const pre = code.parentElement;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'preview-code-block';
+    wrapper.innerHTML = `
+      <div class="preview-code-actions">
+        <button type="button" class="ui-button ui-button--secondary ui-button--compact preview-code-copy-button" aria-label="Copy code" title="Copy code">
+          ${PREVIEW_CODE_COPY_ICON}<span data-preview-code-copy-label>Copy</span>
+        </button>
+      </div>`;
+    pre.replaceWith(wrapper);
+    wrapper.append(pre);
+  });
+}
+
+/** @this {UiShellContext} */
 function syncPreviewHeadingLinkButtons() {
   const headings = this.elements.previewContent?.querySelectorAll?.('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]') ?? [];
 
@@ -647,6 +685,13 @@ function applyPendingPreviewRouteAnchor({ allowExpired = false, behavior = 'auto
 /** @this {UiShellContext} */
 function handlePreviewContentClick(event) {
   if (!(event.target instanceof Element)) {
+    return;
+  }
+
+  const codeCopyButton = event.target.closest('button.preview-code-copy-button');
+  if (codeCopyButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    void this.copyPreviewCodeBlock(codeCopyButton);
     return;
   }
 
@@ -885,6 +930,7 @@ export const uiFeatureShellMethods = {
   bindEvents,
   clearInitialFileBootstrap,
   closeToolbarOverflowMenu,
+  copyPreviewCodeBlock,
   copyPreviewHeadingLink,
   createPreviewHeadingLinkUrl,
   getStoredLineWrapping,
@@ -906,6 +952,7 @@ export const uiFeatureShellMethods = {
   setToolbarOverflowOpen,
   showEditorLoadError,
   showEditorLoading,
+  syncPreviewCodeCopyButtons,
   syncPreviewHeadingLinkButtons,
   syncVisualViewportBounds,
   syncToolbarOverflowVisibility,
