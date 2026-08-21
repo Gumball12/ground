@@ -12,7 +12,7 @@ function createJobId() {
 }
 
 function normalizeFormat(format) {
-  return format === 'pdf' ? 'pdf' : 'docx';
+  return ['html', 'pdf'].includes(format) ? format : 'docx';
 }
 
 function buildExportUrl({ filePath, format, jobId }) {

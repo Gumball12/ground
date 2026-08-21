@@ -174,6 +174,11 @@ function bindToolbarEvents() {
   this.elements.toolbarSearchButton?.addEventListener('click', openQuickSwitcher);
   this.elements.searchFilesButton?.addEventListener('click', openQuickSwitcher);
 
+  this.elements.exportHtmlButton?.addEventListener('click', () => {
+    void this.handleExportRequest?.('html');
+    this.closeToolbarOverflowMenu?.();
+  });
+
   this.elements.exportDocxButton?.addEventListener('click', () => {
     void this.handleExportRequest?.('docx');
     this.closeToolbarOverflowMenu?.();

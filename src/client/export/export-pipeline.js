@@ -1,5 +1,12 @@
 import { exportToSvg as exportExcalidrawToSvg } from '@excalidraw/excalidraw';
 
+import baseStyles from '../styles/base.css?inline';
+import tokenStyles from '../styles/foundation/tokens.css?inline';
+import themeStyles from '../styles/foundation/themes.css?inline';
+import previewStyles from '../styles/features/preview-markdown.css?inline';
+import highlightOverrideStyles from '../styles/overrides/highlightjs.css?inline';
+import exportStyles from '../styles/export-document.css?inline';
+import highlightStyles from '../assets/vendor/highlight/github.min.css?inline';
 import {
   encodeSvgDataUrl,
   loadImage,
@@ -9,6 +16,7 @@ import {
 import { compilePreviewDocument } from '../application/preview-render-compiler.js';
 import { stripVaultFileExtension } from '../../domain/file-kind.js';
 import { parseSceneJson, sceneToInitialData } from '../domain/excalidraw-scene.js';
+import { escapeHtml } from '../domain/vault-utils.js';
 import { downloadBlob } from '../browser-utils.js';
 import { resolveApiUrl, resolveAppUrl } from '../infrastructure/runtime-config.js';
 
@@ -46,6 +54,20 @@ const DOCX_IMAGE_TYPE_LABELS = new Map([
   ['image/gif', 'GIF'],
   ['image/webp', 'WebP'],
 ]);
+const HTML_EXPORT_STYLES = [
+  baseStyles,
+  tokenStyles,
+  themeStyles,
+  previewStyles,
+  highlightOverrideStyles,
+  exportStyles,
+  highlightStyles,
+  `html, body {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }`,
+].join('\n');
 
 let mermaidLoaderPromise = null;
 let assetCounter = 0;
@@ -1387,6 +1409,37 @@ export function buildDocxHtmlDocument(snapshot) {
 </html>`;
 }
 
+export function buildHtmlDocument(snapshot) {
+  const template = document.createElement('template');
+  template.innerHTML = snapshot.html;
+  Array.from(template.content.querySelectorAll('[data-export-docx-src]')).forEach((element) => {
+    element.removeAttribute('data-export-docx-src');
+  });
+
+  return `<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(snapshot.title)}</title>
+  <style>${HTML_EXPORT_STYLES.replace(/<\/style/giu, '<\\/style')}</style>
+</head>
+<body data-theme="light">
+  <main class="export-page-shell">
+    <article class="preview-content export-content">${template.innerHTML}</article>
+  </main>
+</body>
+</html>`;
+}
+
+export function htmlAdapter(snapshot) {
+  downloadBlob(
+    new Blob([buildHtmlDocument(snapshot)], { type: 'text/html;charset=utf-8' }),
+    `${createDocumentTitle(snapshot.filePath, snapshot.title)}.html`,
+    { removeDelayMs: 0, revokeDelayMs: 1000 },
+  );
+}
+
 export async function docxAdapter(snapshot) {
   const response = await fetch(resolveApiUrl('/export/docx'), {
     body: JSON.stringify({
@@ -1461,6 +1514,11 @@ export async function runExportAdapter(snapshot, format) {
     return;
   }
 
+  if (format === 'html') {
+    await htmlAdapter(snapshot);
+    return;
+  }
+
   await docxAdapter(snapshot);
 }
 
@@ -1478,7 +1536,8 @@ export function postExportPageMessage(type, payload = {}) {
 
 export async function waitForBootstrapPayload() {
   const requestUrl = new URL(window.location.href);
-  const action = requestUrl.searchParams.get('action') === 'pdf' ? 'pdf' : 'docx';
+  const requestedAction = requestUrl.searchParams.get('action');
+  const action = ['html', 'pdf'].includes(requestedAction) ? requestedAction : 'docx';
   const filePath = requestUrl.searchParams.get('file') || '';
   const jobId = requestUrl.searchParams.get('job') || '';
 

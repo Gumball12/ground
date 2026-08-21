@@ -339,6 +339,31 @@ test('opens the quick switcher from the top toolbar search action', async ({ pag
   await expect(page.locator('#quickSwitcherInput')).toBeFocused();
 });
 
+test('export html downloads a self-contained rendered document', async ({ page, context }) => {
+  await restoreReadmeTestDocument(page);
+  await openFile(page, 'README.md', { waitFor: 'preview' });
+
+  const popupDownloadPromise = context.waitForEvent('page').then(async (popup) => ({
+    download: await popup.waitForEvent('download'),
+    popup,
+  }));
+  await page.locator('#toolbarOverflowToggle').click();
+  await page.locator('#exportMenuGroup > summary').click();
+  await page.locator('#exportHtmlBtn').click();
+  const { download, popup } = await popupDownloadPromise;
+  const chunks = [];
+  for await (const chunk of await download.createReadStream()) {
+    chunks.push(chunk);
+  }
+  const html = Buffer.concat(chunks).toString('utf8');
+
+  expect(download.suggestedFilename()).toBe('README.html');
+  expect(html).toContain('<style>');
+  expect(html).toContain('My Vault');
+  expect(html).not.toContain('data-export-docx-src');
+  await expect(popup.locator('#exportStatus')).toContainText('HTML download started.');
+});
+
 test('export docx uses the export page and posts the rendered snapshot html', async ({ page, context }) => {
   await restoreReadmeTestDocument(page);
   await openFile(page, 'README.md', { waitFor: 'preview' });

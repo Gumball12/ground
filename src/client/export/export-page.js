@@ -51,9 +51,13 @@ async function bootstrap() {
     const snapshot = await prepareExportSnapshot(payload);
     const mount = renderSnapshot(snapshot);
     snapshot.html = await waitForRenderedExportContent(mount);
-    setStatus(payload.action === 'pdf' ? 'Opening print dialog…' : 'Preparing DOCX download…');
+    setStatus(payload.action === 'pdf'
+      ? 'Opening print dialog…'
+      : `Preparing ${payload.action.toUpperCase()} download…`);
     await runExportAdapter(snapshot, payload.action);
-    setStatus(payload.action === 'pdf' ? 'Print dialog opened.' : 'DOCX download started.');
+    setStatus(payload.action === 'pdf'
+      ? 'Print dialog opened.'
+      : `${payload.action.toUpperCase()} download started.`);
     postExportPageMessage('complete', { jobId: new URL(window.location.href).searchParams.get('job') || '' });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Export failed';

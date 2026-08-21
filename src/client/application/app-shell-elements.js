@@ -39,6 +39,7 @@ export function bindAppShellElements(doc = document) {
     editorFindButton: doc.getElementById('editorFindBtn'),
     editorContainer: doc.getElementById('editorContainer'),
     exportDocxButton: doc.getElementById('exportDocxBtn'),
+    exportHtmlButton: doc.getElementById('exportHtmlBtn'),
     exportMenuGroup: doc.getElementById('exportMenuGroup'),
     exportPdfButton: doc.getElementById('exportPdfBtn'),
     markdownToolbar: doc.getElementById('markdownToolbar'),

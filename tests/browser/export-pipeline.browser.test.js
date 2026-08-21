@@ -4,6 +4,7 @@ import { initializeExportBridge, exportDocument } from '../../src/client/export/
 import { groupHeadingWithFollowingBlock } from '../../src/client/export/export-print-layout.js';
 import {
   buildDocxHtmlDocument,
+  buildHtmlDocument,
   resolveExportAssets,
   waitForRenderedExportContent,
 } from '../../src/client/export/export-pipeline.js';
@@ -410,6 +411,27 @@ describe('export pipeline browser helpers', () => {
     expect(html).not.toContain('<figure class="export-video-poster"');
   });
 
+  it('builds a self-contained HTML document without DOCX-only image variants', () => {
+    const html = buildHtmlDocument({
+      html: [
+        '<h1>Offline guide</h1>',
+        '<figure class="export-diagram" data-export-docx-src="data:image/png;base64,duplicate">',
+        '  <svg xmlns="http://www.w3.org/2000/svg" aria-label="Diagram"><text>Flow</text></svg>',
+        '</figure>',
+        '<img src="data:image/webp;base64,original" data-export-docx-src="data:image/png;base64,duplicate">',
+      ].join('\n'),
+      title: 'Guide <draft>',
+    });
+    const exportedDocument = new DOMParser().parseFromString(html, 'text/html');
+
+    expect(exportedDocument.title).toBe('Guide <draft>');
+    expect(exportedDocument.querySelector('style')?.textContent).toContain('overflow: visible');
+    expect(exportedDocument.querySelector('script')).toBeNull();
+    expect(exportedDocument.querySelector('svg')?.textContent).toContain('Flow');
+    expect(exportedDocument.querySelector('img')?.getAttribute('src')).toBe('data:image/webp;base64,original');
+    expect(exportedDocument.querySelector('[data-export-docx-src]')).toBeNull();
+  });
+
   it('reshapes DOCX tables, blockquotes, and figures into border-friendly markup', () => {
     const html = buildDocxHtmlDocument({
       html: [
@@ -456,10 +478,12 @@ describe('export pipeline browser helpers', () => {
 
     const jobId = await exportDocument({
       filePath: 'README.md',
-      format: 'pdf',
+      format: 'html',
       markdownText: '# Export',
       title: 'README',
     });
+
+    expect(new URL(window.open.mock.calls[0][0]).searchParams.get('action')).toBe('html');
 
     exportWindow.closed = true;
     vi.advanceTimersByTime(600);
