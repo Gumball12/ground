@@ -3,7 +3,7 @@ name: Homebrew Tap Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -28,7 +28,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Resolve release metadata
         id: release
@@ -42,9 +42,11 @@ jobs:
           VERSION="${TAG#v}"
           TARBALL_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
 
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tarball_url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "tarball_url=${TARBALL_URL}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download release tarball and compute checksum
         id: checksum
