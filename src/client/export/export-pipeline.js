@@ -14,7 +14,9 @@ import {
   sanitizeSvgMarkup,
 } from '../application/preview-diagram-utils.js';
 import { compilePreviewDocument } from '../application/preview-render-compiler.js';
-import { stripVaultFileExtension } from '../../domain/file-kind.js';
+import { isMarkdownFilePath, stripVaultFileExtension } from '../../domain/file-kind.js';
+import { resolveVaultRelativePath } from '../../domain/vault-paths.js';
+import { resolveWikiTargetPath } from '../../domain/wiki-link-resolver.js';
 import { parseSceneJson, sceneToInitialData } from '../domain/excalidraw-scene.js';
 import { escapeHtml } from '../domain/vault-utils.js';
 import { downloadBlob } from '../browser-utils.js';
@@ -22,7 +24,7 @@ import { resolveApiUrl, resolveAppUrl } from '../infrastructure/runtime-config.j
 
 const EXPORT_PAGE_SOURCE = 'collabmd-export-page';
 const EXPORT_HOST_SOURCE = 'collabmd-export-host';
-const LIGHT_EXPORT_MERMAID_THEME = Object.freeze({
+const EXPORT_MERMAID_CONFIG = Object.freeze({
   htmlLabels: false,
   flowchart: {
     defaultRenderer: 'dagre-wrapper',
@@ -33,7 +35,6 @@ const LIGHT_EXPORT_MERMAID_THEME = Object.freeze({
     useMaxWidth: true,
   },
   startOnLoad: false,
-  theme: 'default',
 });
 const EXPORT_ASSET_FETCH_TIMEOUT_MS = 10_000;
 const EXPORT_ASSET_MAX_BYTES = 10 * 1024 * 1024;
@@ -77,6 +78,10 @@ function createAssetId(prefix = 'asset') {
   return `${prefix}-${assetCounter.toString(36)}`;
 }
 
+function normalizeExportTheme(theme) {
+  return theme === 'dark' ? 'dark' : 'light';
+}
+
 function createDocumentTitle(filePath, title = '') {
   const normalizedTitle = String(title ?? '').trim();
   if (normalizedTitle) {
@@ -85,6 +90,65 @@ function createDocumentTitle(filePath, title = '') {
 
   const leaf = String(filePath ?? '').split('/').filter(Boolean).pop() || 'document';
   return stripVaultFileExtension(leaf) || 'document';
+}
+
+function createDocumentAnchorId(filePath) {
+  return `export-doc-${encodeURIComponent(String(filePath ?? '').toLowerCase()).replace(/%/gu, '-').replace(/\./gu, '-')}`;
+}
+
+function createExportHeadingSlug(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '');
+}
+
+function rewriteDirectoryDocumentLinks(container, { fileList, sourceFilePath }) {
+  const exportedPaths = new Set(fileList);
+  const sourceAnchorId = createDocumentAnchorId(sourceFilePath);
+
+  Array.from(container.querySelectorAll('[id]')).forEach((element) => {
+    element.id = `${sourceAnchorId}-${element.id}`;
+  });
+
+  Array.from(container.querySelectorAll('a[href]')).forEach((link) => {
+    const rawHref = String(link.getAttribute('href') || '').trim();
+    const wikiTarget = String(link.getAttribute('data-wiki-target') || '').trim();
+    if (wikiTarget) {
+      const [targetPath, targetHeading = ''] = wikiTarget.split('#', 2);
+      const resolved = targetPath ? resolveWikiTargetPath(targetPath, fileList) : sourceFilePath;
+      if (resolved && exportedPaths.has(resolved)) {
+        const headingSlug = createExportHeadingSlug(targetHeading);
+        const targetAnchorId = createDocumentAnchorId(resolved);
+        link.setAttribute('href', headingSlug ? `#${targetAnchorId}-${headingSlug}` : `#${targetAnchorId}`);
+        link.removeAttribute('target');
+        link.removeAttribute('rel');
+      }
+      return;
+    }
+
+    if (!rawHref || /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(rawHref)) {
+      return;
+    }
+
+    if (rawHref.startsWith('#')) {
+      link.setAttribute('href', `#${sourceAnchorId}-${rawHref.slice(1)}`);
+      return;
+    }
+
+    const [pathPart, fragment = ''] = rawHref.split('#', 2);
+    const resolved = resolveVaultRelativePath(sourceFilePath, pathPart);
+    if (!exportedPaths.has(resolved)) {
+      return;
+    }
+
+    const targetAnchorId = createDocumentAnchorId(resolved);
+    link.setAttribute('href', fragment ? `#${targetAnchorId}-${fragment}` : `#${targetAnchorId}`);
+    link.removeAttribute('target');
+    link.removeAttribute('rel');
+  });
+}
+
+function replaceChildrenFromHtml(target, html) {
+  const parsed = new DOMParser().parseFromString(`<body>${String(html ?? '')}</body>`, 'text/html');
+  target.replaceChildren(...parsed.body.childNodes);
 }
 
 function encodeSvgBase64DataUrl(svgMarkup) {
@@ -117,7 +181,7 @@ function trimSvgCanvas(svgMarkup, { padding = 16 } = {}) {
   probe.style.top = '0';
   probe.style.visibility = 'hidden';
   probe.style.pointerEvents = 'none';
-  probe.innerHTML = svgMarkup;
+  replaceChildrenFromHtml(probe, svgMarkup);
   document.body.appendChild(probe);
 
   try {
@@ -167,7 +231,7 @@ async function svgMarkupToPngDataUrl(svgMarkup) {
     type: 'image/svg+xml;charset=utf-8',
   }));
   const svgProbe = document.createElement('div');
-  svgProbe.innerHTML = svgMarkup;
+  replaceChildrenFromHtml(svgProbe, svgMarkup);
   const svgElement = svgProbe.querySelector('svg');
 
   try {
@@ -638,7 +702,7 @@ function createDiagramFigureElement({
   if (svgMarkup) {
     const surface = document.createElement('div');
     surface.className = 'export-diagram-surface';
-    surface.innerHTML = svgMarkup;
+    replaceChildrenFromHtml(surface, svgMarkup);
 
     const svgElement = surface.querySelector('svg');
     if (svgElement) {
@@ -678,7 +742,7 @@ async function ensureMermaidRuntime() {
       throw new Error('Mermaid runtime failed to initialize');
     }
 
-    runtime.initialize(LIGHT_EXPORT_MERMAID_THEME);
+    runtime.initialize({ ...EXPORT_MERMAID_CONFIG, theme: 'default' });
     return runtime;
   });
 
@@ -708,7 +772,10 @@ function prepareMermaidSource(source) {
 
 async function renderMermaidToSvgMarkup(source) {
   const mermaid = await ensureMermaidRuntime();
-  mermaid.initialize(LIGHT_EXPORT_MERMAID_THEME);
+  mermaid.initialize({
+    ...EXPORT_MERMAID_CONFIG,
+    theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'default',
+  });
   const renderHost = document.createElement('div');
   renderHost.style.position = 'fixed';
   renderHost.style.left = '-10000px';
@@ -859,6 +926,97 @@ async function resolveDiagramShell(snapshot, shell, { label, prefix, render }) {
     docxDataUrl,
     svgMarkup,
   }));
+}
+
+function getBaseCellText(cell) {
+  if (cell?.text != null) {
+    return String(cell.text);
+  }
+  if (Array.isArray(cell?.value)) {
+    return cell.value.join(', ');
+  }
+  return cell?.value == null ? '' : String(cell.value);
+}
+
+async function resolveBaseEmbed(snapshot, placeholder) {
+  const response = await fetchJson(resolveApiUrl('/base/query'), {
+    body: JSON.stringify({
+      activeFilePath: snapshot.filePath,
+      path: placeholder.dataset.basePath || '',
+      search: '',
+      source: placeholder.dataset.baseSource || null,
+      sourcePath: placeholder.dataset.baseSourcePath || snapshot.filePath,
+      view: placeholder.dataset.baseView || '',
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  const result = response.result;
+  if (!result || !Array.isArray(result.columns) || !Array.isArray(result.groups)) {
+    throw new Error('Base query returned no rendered view');
+  }
+
+  // ponytail: static tables preserve base data; share card/list renderers if those export layouts become necessary.
+  if (result.view?.type && result.view.type !== 'table') {
+    snapshot.warnings.push(`Base ${result.view.type} view exported as a static table`);
+  }
+
+  const shell = document.createElement('section');
+  shell.className = 'bases-shell bases-shell-static';
+  const toolbar = document.createElement('header');
+  toolbar.className = 'bases-toolbar';
+  const toolbarMain = document.createElement('div');
+  toolbarMain.className = 'bases-toolbar-main';
+  const title = document.createElement('strong');
+  title.textContent = result.view?.name || 'Base view';
+  const meta = document.createElement('div');
+  meta.className = 'bases-meta';
+  meta.textContent = `${result.totalRows ?? 0} results`;
+  toolbarMain.append(title, meta);
+  toolbar.appendChild(toolbarMain);
+  shell.appendChild(toolbar);
+
+  const content = document.createElement('div');
+  content.className = 'bases-content';
+  result.groups.forEach((group) => {
+    if (result.groups.length > 1) {
+      const heading = document.createElement('h3');
+      heading.textContent = group.label || group.key || 'Group';
+      content.appendChild(heading);
+    }
+    const tableShell = document.createElement('div');
+    tableShell.className = 'bases-table-shell';
+    const table = document.createElement('table');
+    table.className = 'bases-table';
+    const headRow = table.createTHead().insertRow();
+    result.columns.forEach((column) => {
+      const heading = document.createElement('th');
+      heading.scope = 'col';
+      heading.textContent = column.label || column.id || '';
+      headRow.appendChild(heading);
+    });
+    const body = table.createTBody();
+    (group.rows || []).forEach((row) => {
+      const tableRow = body.insertRow();
+      result.columns.forEach((column, columnIndex) => {
+        const cell = tableRow.insertCell();
+        const text = getBaseCellText(row.cells?.[column.id]);
+        if (columnIndex === 0 && row.path) {
+          const link = document.createElement('a');
+          link.href = buildWikiLinkHref(row.path);
+          link.dataset.wikiTarget = row.path;
+          link.textContent = text;
+          cell.appendChild(link);
+        } else {
+          cell.textContent = text;
+        }
+      });
+    });
+    tableShell.appendChild(table);
+    content.appendChild(tableShell);
+  });
+  shell.appendChild(content);
+  placeholder.replaceWith(shell);
 }
 
 async function resolveExcalidrawEmbed(snapshot, placeholder) {
@@ -1026,6 +1184,20 @@ export async function resolveExportAssets(snapshot, {
     }
   }
 
+  const baseEmbeds = Array.from(container.querySelectorAll('.bases-embed-placeholder[data-base-key]'));
+  for (const placeholder of baseEmbeds) {
+    try {
+      await resolveBaseEmbed(snapshot, placeholder);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      snapshot.warnings.push(`Base export failed: ${message}`);
+      placeholder.replaceWith(Object.assign(document.createElement('p'), {
+        className: 'export-warning',
+        textContent: `Base export failed: ${message}`,
+      }));
+    }
+  }
+
   const excalidrawEmbeds = Array.from(container.querySelectorAll('.excalidraw-embed-placeholder[data-embed-key]'));
   for (const placeholder of excalidrawEmbeds) {
     try {
@@ -1057,9 +1229,11 @@ export async function resolveExportAssets(snapshot, {
 }
 
 export async function prepareExportSnapshot({
+  directoryFileList = [],
   fileList = [],
   filePath,
   markdownText = '',
+  theme = 'light',
   title = '',
 } = {}) {
   const normalizedFilePath = String(filePath ?? '').trim();
@@ -1070,6 +1244,7 @@ export async function prepareExportSnapshot({
     generatedAt: new Date().toISOString(),
     html: '',
     sourceMarkdown: normalizedMarkdown,
+    theme: normalizeExportTheme(theme),
     title: createDocumentTitle(normalizedFilePath, title),
     warnings: [],
   };
@@ -1082,11 +1257,76 @@ export async function prepareExportSnapshot({
   });
   const container = document.createElement('div');
   container.className = 'preview-content export-content';
-  container.innerHTML = compiled.html;
+  replaceChildrenFromHtml(container, compiled.html);
 
   await resolveExportAssets(snapshot, { container });
+  if (directoryFileList.length > 0) {
+    rewriteDirectoryDocumentLinks(container, {
+      fileList: directoryFileList,
+      sourceFilePath: normalizedFilePath,
+    });
+  }
   snapshot.html = container.innerHTML;
   return snapshot;
+}
+
+export async function prepareDirectoryExportSnapshot({
+  currentFilePath = '',
+  currentMarkdownText = '',
+  directoryPath,
+  fileList = [],
+  theme = 'light',
+} = {}) {
+  const normalizedDirectoryPath = String(directoryPath ?? '').replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '').trim();
+  const directoryPrefix = `${normalizedDirectoryPath}/`;
+  const markdownPaths = fileList
+    .filter((filePath) => isMarkdownFilePath(filePath) && String(filePath).startsWith(directoryPrefix))
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  if (markdownPaths.length === 0) {
+    throw new Error('The selected folder contains no markdown notes');
+  }
+
+  const documents = [];
+  const warnings = [];
+  for (const filePath of markdownPaths) {
+    const markdownText = filePath === currentFilePath
+      ? String(currentMarkdownText ?? '')
+      : await fetchTextFile(filePath);
+    const documentSnapshot = await prepareExportSnapshot({
+      directoryFileList: markdownPaths,
+      fileList,
+      filePath,
+      markdownText,
+      theme,
+    });
+    warnings.push(...documentSnapshot.warnings.map((warning) => `${filePath}: ${warning}`));
+    documents.push(documentSnapshot);
+  }
+
+  const title = createDocumentTitle(normalizedDirectoryPath);
+  const tableOfContents = documents.map((documentSnapshot) => (
+    `<li><a href="#${createDocumentAnchorId(documentSnapshot.filePath)}">${escapeHtml(documentSnapshot.filePath)}</a></li>`
+  )).join('');
+  const html = [
+    `<nav class="export-directory-toc" aria-label="Exported notes"><h1>${escapeHtml(title)}</h1><ol>${tableOfContents}</ol></nav>`,
+    ...documents.map((documentSnapshot) => [
+      `<section class="export-document-section" id="${createDocumentAnchorId(documentSnapshot.filePath)}">`,
+      `<header class="export-document-heading"><h1>${escapeHtml(documentSnapshot.title)}</h1><p>${escapeHtml(documentSnapshot.filePath)}</p></header>`,
+      documentSnapshot.html,
+      '</section>',
+    ].join('')),
+  ].join('');
+
+  return {
+    assets: {},
+    filePath: normalizedDirectoryPath,
+    generatedAt: new Date().toISOString(),
+    html,
+    sourceMarkdown: '',
+    theme: normalizeExportTheme(theme),
+    title,
+    warnings,
+  };
 }
 
 function applyDocxTableStyles(table, {
@@ -1224,12 +1464,7 @@ function createDocxCodeBlockTable(pre) {
     paragraph.style.color = '#111827';
 
     const text = (line || '').replace(/\t/g, '    ');
-    if (!text) {
-      paragraph.innerHTML = '&nbsp;';
-    } else {
-      paragraph.textContent = text;
-      paragraph.innerHTML = paragraph.innerHTML.replace(/ /g, '&nbsp;');
-    }
+    paragraph.textContent = text ? text.replace(/ /gu, '\u00a0') : '\u00a0';
 
     contentNodes.push(paragraph);
   });
@@ -1244,7 +1479,7 @@ function createDocxCodeBlockTable(pre) {
 
 export function buildDocxHtmlDocument(snapshot) {
   const template = document.createElement('template');
-  template.innerHTML = snapshot.html;
+  replaceChildrenFromHtml(template.content, snapshot.html);
 
   Array.from(template.content.querySelectorAll('.table-wrapper')).forEach((wrapper) => {
     const table = wrapper.querySelector(':scope > table');
@@ -1411,20 +1646,21 @@ export function buildDocxHtmlDocument(snapshot) {
 
 export function buildHtmlDocument(snapshot) {
   const template = document.createElement('template');
-  template.innerHTML = snapshot.html;
+  replaceChildrenFromHtml(template.content, snapshot.html);
   Array.from(template.content.querySelectorAll('[data-export-docx-src]')).forEach((element) => {
     element.removeAttribute('data-export-docx-src');
   });
 
+  const theme = normalizeExportTheme(snapshot.theme);
   return `<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="${theme}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(snapshot.title)}</title>
   <style>${HTML_EXPORT_STYLES.replace(/<\/style/giu, '<\\/style')}</style>
 </head>
-<body data-theme="light">
+<body data-theme="${theme}">
   <main class="export-page-shell">
     <article class="preview-content export-content">${template.innerHTML}</article>
   </main>
@@ -1535,11 +1771,11 @@ export function postExportPageMessage(type, payload = {}) {
 }
 
 export async function waitForBootstrapPayload() {
-  const requestUrl = new URL(window.location.href);
-  const requestedAction = requestUrl.searchParams.get('action');
+  const searchParams = new URLSearchParams(window.location.search);
+  const requestedAction = searchParams.get('action');
   const action = ['html', 'pdf'].includes(requestedAction) ? requestedAction : 'docx';
-  const filePath = requestUrl.searchParams.get('file') || '';
-  const jobId = requestUrl.searchParams.get('job') || '';
+  const filePath = searchParams.get('file') || '';
+  const jobId = searchParams.get('job') || window.name || '';
 
   if (jobId && window.opener && !window.opener.closed) {
     postExportPageMessage('ready', { jobId });
@@ -1567,11 +1803,15 @@ export async function waitForBootstrapPayload() {
 
         cleanup();
         resolve({
-          action,
+          action: ['html', 'pdf'].includes(payload.action) ? payload.action : action,
+          currentFilePath: payload.currentFilePath || '',
+          currentMarkdownText: payload.currentMarkdownText || '',
+          directoryPath: payload.directoryPath || '',
           fileList: Array.isArray(payload.fileList) ? payload.fileList : [],
           filePath: payload.filePath || filePath,
-          title: payload.title || '',
           markdownText: payload.markdownText || '',
+          theme: normalizeExportTheme(payload.theme),
+          title: payload.title || '',
         });
       };
 
@@ -1584,6 +1824,7 @@ export async function waitForBootstrapPayload() {
     fileList: [],
     filePath,
     markdownText: filePath ? await fetchTextFile(filePath) : '',
+    theme: 'light',
     title: '',
   };
 }

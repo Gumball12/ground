@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { initializeExportBridge, exportDocument } from '../../src/client/export/export-host.js';
+import { exportDirectory, initializeExportBridge, exportDocument } from '../../src/client/export/export-host.js';
 import { groupHeadingWithFollowingBlock } from '../../src/client/export/export-print-layout.js';
 import {
   buildDocxHtmlDocument,
   buildHtmlDocument,
+  prepareDirectoryExportSnapshot,
   resolveExportAssets,
   waitForRenderedExportContent,
 } from '../../src/client/export/export-pipeline.js';
@@ -24,6 +25,7 @@ describe('export pipeline browser helpers', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    delete document.documentElement.dataset.theme;
     globalThis.fetch = originalFetch;
     window.open = originalOpen;
     vi.restoreAllMocks();
@@ -56,6 +58,43 @@ describe('export pipeline browser helpers', () => {
     expect(image?.getAttribute('data-export-docx-src')).toMatch(/^data:image\/png;base64,/);
     expect(Object.keys(snapshot.assets)).toHaveLength(1);
     expect(snapshot.warnings).toHaveLength(0);
+  });
+
+  it('hydrates base embeds into static query results', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      result: {
+        columns: [{ id: 'note.value', label: 'Value' }],
+        groups: [{
+          key: 'all',
+          label: 'All',
+          rows: [{
+            cells: { 'note.value': { text: 'Rendered row', type: 'string', value: 'Rendered row' } },
+            path: 'notes/rendered-row.md',
+          }],
+          summaries: [],
+        }],
+        meta: { activeViewConfig: {}, availableProperties: [], editable: false },
+        summaries: [],
+        totalRows: 1,
+        view: { id: 'view-0', name: 'Table', supported: true, type: 'table' },
+        views: [{ id: 'view-0', name: 'Table', supported: true, type: 'table' }],
+      },
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 200,
+    }));
+    const container = document.createElement('div');
+    container.innerHTML = '<div class="bases-embed-placeholder" data-base-key="base-1" data-base-path="views/tasks.base"></div>';
+    const snapshot = { assets: {}, filePath: 'README.md', warnings: [] };
+
+    await resolveExportAssets(snapshot, { container });
+
+    expect(container.querySelector('.bases-shell-static')).not.toBeNull();
+    expect(container.textContent).toContain('Rendered row');
+    expect(container.querySelector('.bases-toolbar-actions')).toBeNull();
+    expect(container.querySelector('.bases-embed-placeholder')).toBeNull();
+    expect(snapshot.warnings).toEqual([]);
+    expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/base/query'), expect.objectContaining({ method: 'POST' }));
   });
 
   it('creates PNG DOCX variants for fetched WebP images', async () => {
@@ -420,12 +459,15 @@ describe('export pipeline browser helpers', () => {
         '</figure>',
         '<img src="data:image/webp;base64,original" data-export-docx-src="data:image/png;base64,duplicate">',
       ].join('\n'),
+      theme: 'dark',
       title: 'Guide <draft>',
     });
     const exportedDocument = new DOMParser().parseFromString(html, 'text/html');
 
     expect(exportedDocument.title).toBe('Guide <draft>');
-    expect(exportedDocument.querySelector('style')?.textContent).toContain('overflow: visible');
+    expect(exportedDocument.documentElement.dataset.theme).toBe('dark');
+    expect(exportedDocument.body.dataset.theme).toBe('dark');
+    expect(exportedDocument.querySelector('style')?.textContent).toContain('max-width: var(--preview-content-max-width, var(--preview-content-width))');
     expect(exportedDocument.querySelector('script')).toBeNull();
     expect(exportedDocument.querySelector('svg')?.textContent).toContain('Flow');
     expect(exportedDocument.querySelector('img')?.getAttribute('src')).toBe('data:image/webp;base64,original');
@@ -463,6 +505,69 @@ describe('export pipeline browser helpers', () => {
     expect(html).not.toContain('<figure><img');
   });
 
+  it('builds one offline document for every markdown note in a folder', async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const filePath = new URL(String(url), window.location.origin).searchParams.get('path');
+      const content = filePath === 'docs/one.md'
+        ? '# One\n\nContinue with [[two]].'
+        : '# Two\n\nDone.';
+      return new Response(JSON.stringify({ content }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    });
+
+    const snapshot = await prepareDirectoryExportSnapshot({
+      directoryPath: 'docs',
+      fileList: ['docs/one.md', 'docs/two.md', 'docs/image.png', 'other.md'],
+    });
+
+    expect(snapshot.filePath).toBe('docs');
+    expect(snapshot.title).toBe('docs');
+    expect(snapshot.html).toContain('docs/one.md');
+    expect(snapshot.html).toContain('docs/two.md');
+    expect(snapshot.html).not.toContain('other.md');
+    expect(snapshot.html).toContain('href="#export-doc-docs-2Ftwo-md"');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens folder exports with the selected directory in the bootstrap payload', async () => {
+    const exportWindow = {
+      closed: false,
+      focus: vi.fn(),
+      location: { replace: vi.fn() },
+      postMessage: vi.fn(),
+    };
+    window.open = vi.fn(() => exportWindow);
+    document.documentElement.dataset.theme = 'dark';
+    initializeExportBridge();
+
+    const jobId = await exportDirectory({
+      directoryPath: 'docs',
+      fileList: ['docs/one.md'],
+      format: 'pdf',
+    });
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { jobId, source: 'collabmd-export-page', type: 'ready' },
+      origin: window.location.origin,
+    }));
+
+    expect(window.open.mock.calls[0]).toEqual(['', jobId]);
+    expect(new URL(exportWindow.location.replace.mock.calls[0][0]).pathname).toMatch(/\/export-document\.html$/u);
+    expect(exportWindow.postMessage.mock.calls[0][0]).toMatchObject({
+      action: 'pdf',
+      directoryPath: 'docs',
+      fileList: ['docs/one.md'],
+      theme: 'dark',
+    });
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { jobId, source: 'collabmd-export-page', type: 'complete' },
+      origin: window.location.origin,
+    }));
+  });
+
   it('cleans up export jobs when the popup closes before completion', async () => {
     vi.useFakeTimers();
 
@@ -470,6 +575,7 @@ describe('export pipeline browser helpers', () => {
     const exportWindow = {
       closed: false,
       focus: vi.fn(),
+      location: { replace: vi.fn() },
       postMessage: vi.fn(),
     };
 
@@ -483,7 +589,8 @@ describe('export pipeline browser helpers', () => {
       title: 'README',
     });
 
-    expect(new URL(window.open.mock.calls[0][0]).searchParams.get('action')).toBe('html');
+    expect(window.open.mock.calls[0]).toEqual(['', jobId]);
+    expect(new URL(exportWindow.location.replace.mock.calls[0][0]).pathname).toMatch(/\/export-document\.html$/u);
 
     exportWindow.closed = true;
     vi.advanceTimersByTime(600);

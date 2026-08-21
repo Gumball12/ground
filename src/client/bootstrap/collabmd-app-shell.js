@@ -168,6 +168,7 @@ export class CollabMdAppShell {
     this.chatToastController = new ToastController(this.elements.chatToastContainer);
     this.fileExplorer = new FileExplorerController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
+      onDirectoryExport: (directoryPath, format) => this.handleDirectoryExportRequest(directoryPath, format),
       onFileDelete: () => this.navigation.navigateToFile(null),
       onFileSelect: (filePath) => this.workspaceRouteController.handleFileSelection(filePath, {
         closeSidebarOnMobile: true,

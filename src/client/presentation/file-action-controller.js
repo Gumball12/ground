@@ -61,6 +61,7 @@ export class FileActionController {
     mobileBreakpointQuery = (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
       ? window.matchMedia('(max-width: 768px)')
       : { matches: false },
+    onDirectoryExport,
     onFileDelete,
     onFileSelect,
     onShowFileExtensionsChange,
@@ -72,6 +73,7 @@ export class FileActionController {
     view,
     refresh,
   }) {
+    this.onDirectoryExport = onDirectoryExport;
     this.onFileDelete = onFileDelete;
     this.onFileSelect = onFileSelect;
     this.onShowFileExtensionsChange = onShowFileExtensionsChange;
@@ -226,14 +228,25 @@ export class FileActionController {
 
   getDirectoryContextMenuItems(directoryPath) {
     return [
-      ...this.createContextMenuItems(directoryPath),
+      {
+        label: 'New…',
+        onSelect: ({ anchor } = {}) => this.openCreateMenu({ anchor, parentDir: directoryPath }),
+      },
       {
         label: 'Rename / move',
         onSelect: () => this.handleRenameDirectory(directoryPath),
       },
       {
-        label: 'Download',
+        label: 'Download source ZIP',
         onSelect: () => this.handleDownloadDirectory(directoryPath),
+      },
+      {
+        label: 'Export HTML',
+        onSelect: () => this.onDirectoryExport?.(directoryPath, 'html'),
+      },
+      {
+        label: 'Print / save PDF',
+        onSelect: () => this.onDirectoryExport?.(directoryPath, 'pdf'),
       },
       {
         label: 'Delete',

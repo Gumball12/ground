@@ -3,7 +3,7 @@ import { resolveAppUrl } from '../infrastructure/runtime-config.js';
 const EXPORT_PAGE_SOURCE = 'collabmd-export-page';
 const EXPORT_HOST_SOURCE = 'collabmd-export-host';
 const EXPORT_JOB_CLOSE_POLL_MS = 500;
-const EXPORT_JOB_TIMEOUT_MS = 60_000;
+const EXPORT_JOB_TIMEOUT_MS = 300_000;
 const pendingJobs = new Map();
 let exportBridgeErrorHandler = null;
 
@@ -15,31 +15,29 @@ function normalizeFormat(format) {
   return ['html', 'pdf'].includes(format) ? format : 'docx';
 }
 
-function buildExportUrl({ filePath, format, jobId }) {
-  const url = new URL(resolveAppUrl('/export-document.html'), window.location.origin);
-  url.searchParams.set('action', normalizeFormat(format));
-  url.searchParams.set('job', jobId);
-  if (filePath) {
-    url.searchParams.set('file', filePath);
-  }
-  return url.toString();
-}
-
 function createBootstrapPayload({
+  currentFilePath = '',
+  currentMarkdownText = '',
+  directoryPath = '',
   fileList = [],
   filePath,
   format,
   jobId,
   markdownText = '',
+  theme = 'light',
   title = '',
 }) {
   return {
     action: normalizeFormat(format),
+    currentFilePath: String(currentFilePath ?? ''),
+    currentMarkdownText: String(currentMarkdownText ?? ''),
+    directoryPath: String(directoryPath ?? ''),
     fileList: Array.isArray(fileList) ? fileList.slice() : [],
     filePath: String(filePath ?? ''),
     jobId,
     markdownText: String(markdownText ?? ''),
     source: EXPORT_HOST_SOURCE,
+    theme: theme === 'dark' ? 'dark' : 'light',
     title: String(title ?? ''),
     type: 'bootstrap',
   };
@@ -136,26 +134,9 @@ export function initializeExportBridge({
   window.__collabmdExportBridgeInitialized = true;
 }
 
-export async function exportDocument({
-  fileList = [],
-  filePath,
-  format,
-  markdownText = '',
-  title = '',
-} = {}) {
-  const normalizedFilePath = String(filePath ?? '').trim();
-  if (!normalizedFilePath) {
-    throw new Error('No markdown note is open');
-  }
-
+async function startExport(payload) {
   const jobId = createJobId();
-  const url = buildExportUrl({
-    filePath: normalizedFilePath,
-    format,
-    jobId,
-  });
-
-  const exportWindow = window.open(url, '_blank');
+  const exportWindow = globalThis.open('', jobId);
   if (!exportWindow) {
     throw new Error('Export popup was blocked');
   }
@@ -172,12 +153,9 @@ export async function exportDocument({
       });
     }, EXPORT_JOB_CLOSE_POLL_MS),
     payload: createBootstrapPayload({
-      fileList,
-      filePath: normalizedFilePath,
-      format,
+      ...payload,
       jobId,
-      markdownText,
-      title,
+      theme: document.documentElement.dataset.theme,
     }),
     timeoutId: window.setTimeout(() => {
       finishPendingJob(jobId, {
@@ -188,6 +166,49 @@ export async function exportDocument({
     window: exportWindow,
   });
 
+  exportWindow.location.replace(resolveAppUrl('/export-document.html'));
   exportWindow.focus?.();
   return jobId;
+}
+
+export async function exportDirectory({
+  currentFilePath = '',
+  currentMarkdownText = '',
+  directoryPath,
+  fileList = [],
+  format,
+} = {}) {
+  const normalizedDirectoryPath = String(directoryPath ?? '').replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '').trim();
+  if (!normalizedDirectoryPath) {
+    throw new Error('No folder was selected');
+  }
+
+  return startExport({
+    currentFilePath,
+    currentMarkdownText,
+    directoryPath: normalizedDirectoryPath,
+    fileList,
+    format,
+  });
+}
+
+export async function exportDocument({
+  fileList = [],
+  filePath,
+  format,
+  markdownText = '',
+  title = '',
+} = {}) {
+  const normalizedFilePath = String(filePath ?? '').trim();
+  if (!normalizedFilePath) {
+    throw new Error('No markdown note is open');
+  }
+
+  return startExport({
+    fileList,
+    filePath: normalizedFilePath,
+    format,
+    markdownText,
+    title,
+  });
 }

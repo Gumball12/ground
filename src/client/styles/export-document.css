@@ -63,42 +63,31 @@ body[data-surface='export-document']::-webkit-scrollbar {
   padding-left: 20px;
 }
 
-.export-content {
-  padding: 32px 40px;
-  border: 1px solid var(--color-divider);
-  border-radius: 20px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card-strong);
-}
-
-.export-content p,
-.export-content li,
-.export-content blockquote {
-  max-width: none;
-}
-
 .export-content .task-list-item input[type='checkbox'] {
   cursor: default;
 }
 
-.export-content .table-wrapper {
-  overflow: visible;
+.export-directory-toc {
+  margin-bottom: 48px;
 }
 
-.export-content .bases-table-shell,
-.export-content pre {
-  overflow: visible;
+.export-directory-toc ol {
+  columns: 2;
 }
 
-.export-content table {
-  white-space: normal;
+.export-document-section + .export-document-section {
+  margin-top: 64px;
+  padding-top: 48px;
+  border-top: 1px solid var(--color-divider);
 }
 
-.export-content pre code {
-  width: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+.export-document-heading {
+  margin-bottom: 32px;
+}
+
+.export-document-heading p {
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .export-diagram {
@@ -243,17 +232,43 @@ body[data-surface='export-document']::-webkit-scrollbar {
 
   .export-content {
     width: auto;
+    max-width: none;
     padding: 0;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
     overflow: visible;
+  }
+
+  .export-content p,
+  .export-content li,
+  .export-content blockquote {
+    max-width: none;
+  }
+
+  .export-directory-toc {
+    break-after: page;
+  }
+
+  .export-document-section {
+    break-before: page;
+  }
+
+  .export-document-section:first-of-type {
+    break-before: auto;
+  }
+
+  .export-document-section + .export-document-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
   .export-content pre,
   .export-content .table-wrapper,
   .export-content .bases-table-shell {
     overflow: visible !important;
+  }
+
+  .export-content table {
+    white-space: normal;
   }
 
   .export-content pre code {

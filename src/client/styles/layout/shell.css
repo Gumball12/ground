@@ -171,29 +171,6 @@
   overscroll-behavior: contain;
 }
 
-.preview-content {
-  position: relative;
-  min-width: 0;
-  max-width: var(--preview-content-max-width);
-  margin: 0 auto;
-  overflow: visible;
-  padding: var(--space-6) var(--space-6) var(--space-12);
-  color: var(--color-text);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  line-height: 1.7;
-}
-
-.preview-content[data-render-phase='shell'] {
-  color: var(--color-text-muted);
-}
-
-@media (min-width: 769px) {
-  .preview-content {
-    padding-bottom: calc(var(--space-12) + 96px);
-  }
-}
-
 .preview-content.is-excalidraw-file-preview {
   position: relative;
   display: flex;

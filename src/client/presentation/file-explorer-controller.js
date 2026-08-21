@@ -8,6 +8,7 @@ export class FileExplorerController {
     mobileBreakpointQuery = window.matchMedia('(max-width: 768px)'),
     onFileSelect,
     onFileDelete,
+    onDirectoryExport,
     pendingWorkspaceRequestIds = null,
     onShowFileExtensionsChange,
     showFileExtensions = false,
@@ -16,6 +17,7 @@ export class FileExplorerController {
   }) {
     this.onFileSelect = onFileSelect;
     this.onFileDelete = onFileDelete;
+    this.onDirectoryExport = onDirectoryExport;
     this.onShowFileExtensionsChange = onShowFileExtensionsChange;
     this.toastController = toastController;
     this.vaultClient = vaultClient;
@@ -56,6 +58,7 @@ export class FileExplorerController {
     });
     this.actionController = new FileActionController({
       mobileBreakpointQuery,
+      onDirectoryExport: this.onDirectoryExport,
       onFileDelete: this.onFileDelete,
       onFileSelect: this.onFileSelect,
       onShowFileExtensionsChange: (enabled) => {

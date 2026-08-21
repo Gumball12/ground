@@ -1,5 +1,5 @@
 import { isMarkdownFilePath } from '../../../domain/file-kind.js';
-import { exportDocument, initializeExportBridge } from '../../export/export-host.js';
+import { exportDirectory, exportDocument, initializeExportBridge } from '../../export/export-host.js';
 
 export const exportFeature = {
   initializeExportBridge() {
@@ -13,6 +13,22 @@ export const exportFeature = {
       },
     });
     this._exportBridgeInitialized = true;
+  },
+
+  async handleDirectoryExportRequest(directoryPath, format) {
+    try {
+      await exportDirectory({
+        currentFilePath: this.currentFilePath,
+        currentMarkdownText: this.session?.getText?.() ?? '',
+        directoryPath,
+        fileList: this.fileExplorer?.flatDocumentFiles ?? [],
+        format,
+      });
+      return true;
+    } catch (error) {
+      this.toastController?.show(error instanceof Error ? error.message : 'Failed to start folder export');
+      return false;
+    }
   },
 
   async handleExportRequest(format) {

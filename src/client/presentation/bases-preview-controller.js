@@ -10,6 +10,26 @@ function createShellKey() {
   return `base-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function replaceChildrenFromHtml(target, html) {
+  const markup = String(html ?? '');
+  if (typeof DOMParser === 'function' && typeof target?.replaceChildren === 'function') {
+    const parsed = new DOMParser().parseFromString(`<body>${markup}</body>`, 'text/html');
+    target.replaceChildren(...parsed.body.childNodes);
+    return;
+  }
+
+  // Node tests use lightweight DOM doubles without parsing APIs.
+  Reflect.set(target, 'innerHTML', markup);
+}
+
+function insertAfterFromHtml(target, html) {
+  if (typeof DOMParser !== 'function' || typeof target?.after !== 'function') {
+    return;
+  }
+  const parsed = new DOMParser().parseFromString(`<body>${String(html ?? '')}</body>`, 'text/html');
+  target.after(...parsed.body.childNodes);
+}
+
 function looksLikeHexColor(value = '') {
   return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(String(value ?? '').trim());
 }
@@ -617,7 +637,11 @@ function parseRawFilterText(text = '') {
   }
 
   if (normalized.startsWith('{') || normalized.startsWith('[')) {
-    return JSON.parse(normalized);
+    try {
+      return JSON.parse(normalized);
+    } catch (error) {
+      throw new Error('Invalid advanced filter JSON', { cause: error });
+    }
   }
 
   return normalized;
@@ -814,7 +838,7 @@ function syncFilterValueCombobox(entry, result, path, { fallbackToFullRender = t
   const suggestionList = combobox.querySelector('.bases-filter-suggestion-list');
   suggestionList?.remove?.();
   if (presentation.suggestionsEnabled) {
-    input.insertAdjacentHTML('afterend', renderFilterSuggestionList(presentation, rule.value ?? ''));
+    insertAfterFromHtml(input, renderFilterSuggestionList(presentation, rule.value ?? ''));
   }
 
   return true;
@@ -1091,14 +1115,14 @@ function updateShellContent(entry, result, {
 } = {}) {
   const shell = findShellElement(entry);
   if (!shell?.querySelector) {
-    entry.placeholder.innerHTML = renderShellHtml(result, entry);
+    replaceChildrenFromHtml(entry.placeholder, renderShellHtml(result, entry));
     markPlaceholderHydrated(entry.placeholder);
     return;
   }
 
   const tabsSlot = shell.querySelector('[data-base-tabs]');
   if (tabs && tabsSlot) {
-    tabsSlot.innerHTML = renderViewTabs(result);
+    replaceChildrenFromHtml(tabsSlot, renderViewTabs(result));
   }
 
   const metaSlot = shell.querySelector('[data-base-meta]');
@@ -1108,24 +1132,24 @@ function updateShellContent(entry, result, {
 
   const actionSlot = shell.querySelector('[data-base-action-slot]');
   if (actions && actionSlot) {
-    actionSlot.innerHTML = renderActionButtons(result, entry);
+    replaceChildrenFromHtml(actionSlot, renderActionButtons(result, entry));
   }
 
   const panelSlot = shell.querySelector('[data-base-panel-slot]');
   if (panel && panelSlot) {
     const panelState = capturePanelState(panelSlot);
-    panelSlot.innerHTML = renderPanel(result, entry);
+    replaceChildrenFromHtml(panelSlot, renderPanel(result, entry));
     restorePanelState(panelSlot, panelState);
   }
 
   const summarySlot = shell.querySelector('[data-base-summary-slot]');
   if (summary && summarySlot) {
-    summarySlot.innerHTML = renderSummaryBar(result.summaries);
+    replaceChildrenFromHtml(summarySlot, renderSummaryBar(result.summaries));
   }
 
   const content = shell.querySelector('[data-base-content]');
   if (body && content) {
-    content.innerHTML = renderViewBody(result);
+    replaceChildrenFromHtml(content, renderViewBody(result));
   }
 
   const input = shell.querySelector('.bases-search-input');
@@ -1663,7 +1687,7 @@ export class BasesPreviewController {
     entry.requestVersion = requestVersion;
     const hasShell = Boolean(findShellElement(entry));
     if (!hasShell) {
-      entry.placeholder.innerHTML = '<div class="preview-shell">Loading base…</div>';
+      replaceChildrenFromHtml(entry.placeholder, '<div class="preview-shell">Loading base…</div>');
     }
     try {
       const response = await this.vaultApiClient.queryBase({
@@ -1687,11 +1711,11 @@ export class BasesPreviewController {
         const shell = findShellElement(entry);
         const content = shell?.querySelector?.('[data-base-content]') ?? null;
         if (content) {
-          content.innerHTML = `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`;
+          replaceChildrenFromHtml(content, `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
           return;
         }
       }
-      entry.placeholder.innerHTML = `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`;
+      replaceChildrenFromHtml(entry.placeholder, `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
     }
   }
 

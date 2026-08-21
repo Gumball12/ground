@@ -33,6 +33,10 @@ export default [
         argsIgnorePattern: '^_',
         caughtErrors: 'none',
       }],
+      'quotes': ['error', 'single', {
+        avoidEscape: true,
+        allowTemplateLiterals: true,
+      }],
     },
   },
   {

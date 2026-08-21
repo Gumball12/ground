@@ -1,0 +1,14 @@
+{
+  "format": { "enabled": false },
+  "autofix": { "enabled": false },
+  "ignore": [
+    "dist/**",
+    "docs/assets/**",
+    "node_modules/**",
+    "packaging/homebrew-tap/**",
+    "test-vault/**"
+  ],
+  "rules": {
+    "high-complexity": { "threshold": 30 }
+  }
+}

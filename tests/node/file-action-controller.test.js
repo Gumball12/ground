@@ -119,6 +119,7 @@ function createController(t, overrides = {}) {
     ? overrides.vaultClient(calls)
     : (overrides.vaultClient ?? defaultVaultClient);
   const controller = new FileActionController({
+    onDirectoryExport: (directoryPath, format) => calls.push(['export-directory', directoryPath, format]),
     onFileDelete: (filePath) => calls.push(['delete-callback', filePath]),
     onFileSelect: (filePath) => calls.push(['select', filePath]),
     pendingWorkspaceRequestIds,
@@ -411,13 +412,20 @@ test('FileActionController exposes download actions for files and directories', 
   const directoryItems = controller.getDirectoryContextMenuItems('notes');
 
   assert.deepEqual(fileItems.map((item) => item.label), ['Rename / move', 'Download', 'Delete']);
-  assert.equal(directoryItems.some((item) => item.label === 'Download'), true);
+  assert.deepEqual(
+    directoryItems.map((item) => item.label),
+    ['New…', 'Rename / move', 'Download source ZIP', 'Export HTML', 'Print / save PDF', 'Delete'],
+  );
 
   await controller.downloadFileEntry('README.md');
   await controller.downloadDirectoryEntry('notes');
+  directoryItems.find((item) => item.label === 'Export HTML').onSelect();
+  directoryItems.find((item) => item.label === 'Print / save PDF').onSelect();
 
-  assert.deepEqual(calls.slice(-2), [
+  assert.deepEqual(calls.slice(-4), [
     ['download-file', 'README.md'],
     ['download-directory', 'notes'],
+    ['export-directory', 'notes', 'html'],
+    ['export-directory', 'notes', 'pdf'],
   ]);
 });

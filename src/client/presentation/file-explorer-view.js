@@ -970,6 +970,7 @@ export class FileExplorerView {
       return;
     }
 
+    const contextAnchor = event.currentTarget instanceof Element ? event.currentTarget : event.target;
     const menu = document.createElement('div');
     menu.className = 'file-context-menu';
 
@@ -979,7 +980,7 @@ export class FileExplorerView {
       button.textContent = item.label;
       button.addEventListener('click', () => {
         this.removeContextMenu();
-        item.onSelect?.();
+        item.onSelect?.({ anchor: contextAnchor });
       });
       menu.appendChild(button);
     }

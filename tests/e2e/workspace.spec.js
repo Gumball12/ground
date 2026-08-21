@@ -364,6 +364,64 @@ test('export html downloads a self-contained rendered document', async ({ page, 
   await expect(popup.locator('#exportStatus')).toContainText('HTML download started.');
 });
 
+test('keeps basic markdown visually aligned between preview and HTML export', async ({ page, context }) => {
+  await restoreReadmeTestDocument(page);
+  await openFile(page, 'README.md', { waitFor: 'preview' });
+  await replaceEditorContent(page, [
+    '# Export parity',
+    '',
+    'A paragraph with **strong text**, *emphasis*, and [a link](https://example.com).',
+    '',
+    '> A short blockquote for visual comparison.',
+    '',
+    '- First item',
+    '- Second item',
+  ].join('\n'));
+  await waitForPreview(page);
+  await page.setViewportSize({ height: 900, width: 1280 });
+  await page.mouse.move(0, 0);
+
+  const previewContent = page.locator('#previewContent');
+  await expect(previewContent).toContainText('A paragraph with strong text');
+  const previewPresentation = await previewContent.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      maxWidth: style.maxWidth,
+      padding: style.padding,
+      paragraphColor: getComputedStyle(element.querySelector('p') || element).color,
+    };
+  });
+  const popupPromise = context.waitForEvent('page');
+  await page.locator('#toolbarOverflowToggle').click();
+  await page.locator('#exportMenuGroup > summary').click();
+  await page.locator('#exportHtmlBtn').click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState('domcontentloaded');
+  await expect(popup.locator('#exportStatus')).toContainText('HTML download started.');
+  await popup.setViewportSize({ height: 900, width: 1280 });
+  await popup.mouse.move(0, 0);
+  const exportContent = popup.locator('#exportContent');
+  const exportPresentation = await exportContent.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      maxWidth: style.maxWidth,
+      padding: style.padding,
+      paragraphColor: getComputedStyle(element.querySelector('p') || element).color,
+    };
+  });
+
+  expect(exportPresentation).toEqual(previewPresentation);
+  await expect(previewContent).toHaveScreenshot('markdown-preview-parity-app.png', { animations: 'disabled' });
+  await expect(exportContent).toHaveScreenshot('markdown-preview-parity-export.png', { animations: 'disabled' });
+  await restoreReadmeTestDocument(page);
+});
+
 test('export docx uses the export page and posts the rendered snapshot html', async ({ page, context }) => {
   await restoreReadmeTestDocument(page);
   await openFile(page, 'README.md', { waitFor: 'preview' });
@@ -895,7 +953,8 @@ test('creates files inside a folder from the tree context menu', async ({ page }
   const dailyFolder = page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first();
   await dailyFolder.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
-  await page.locator('.file-context-menu').getByRole('button', { name: 'New markdown file' }).click();
+  await page.locator('.file-context-menu').getByRole('button', { name: 'New…' }).click();
+  await page.locator('.create-menu').getByRole('menuitem', { name: /Markdown note/i }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionNote')).toContainText('Parent folder: daily');
@@ -1155,9 +1214,52 @@ test('downloads files and directories from the sidebar context menu', async ({ p
 
   const directoryDownloadPromise = page.waitForEvent('download');
   await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Download' }).click();
+  await page.locator('.file-context-menu').getByRole('button', { name: 'Download source ZIP' }).click();
   const directoryDownload = await directoryDownloadPromise;
   expect(directoryDownload.suggestedFilename()).toBe('daily.zip');
+});
+
+test('exports a folder as one self-contained HTML document', async ({ page, context }) => {
+  await openHome(page);
+
+  const popupDownloadPromise = context.waitForEvent('page').then(async (popup) => ({
+    download: await popup.waitForEvent('download'),
+    popup,
+  }));
+  await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
+  await page.locator('.file-context-menu').getByRole('button', { name: 'Export HTML' }).click();
+  const { download, popup } = await popupDownloadPromise;
+  const chunks = [];
+  for await (const chunk of await download.createReadStream()) {
+    chunks.push(chunk);
+  }
+  const html = Buffer.concat(chunks).toString('utf8');
+
+  expect(download.suggestedFilename()).toBe('daily.html');
+  expect(html).toContain('daily/2026-03-05.md');
+  expect(html).toContain('export-document-section');
+  await expect(popup.locator('#exportStatus')).toContainText('HTML download started.');
+});
+
+test('prints all markdown notes in a folder as one PDF document', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    window.print = () => {
+      window.__collabmdPrinted = true;
+      window.dispatchEvent(new Event('afterprint'));
+    };
+  });
+  await openHome(page);
+
+  const popupPromise = context.waitForEvent('page');
+  await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
+  await page.locator('.file-context-menu').getByRole('button', { name: 'Print / save PDF' }).click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState('domcontentloaded');
+
+  await expect.poll(() => popup.evaluate(() => window.__collabmdPrinted)).toBe(true);
+  await expect(popup.locator('#exportContent')).toContainText('daily/2026-03-05.md');
+  await expect(popup.locator('.export-document-section')).toHaveCount(1);
+  await expect(popup.locator('#exportStatus')).toContainText('Print dialog opened.');
 });
 
 test('deletes empty folders from the sidebar context menu', async ({ page }) => {
