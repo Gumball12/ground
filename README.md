@@ -26,7 +26,7 @@ Throughout this guide, **vault** simply means a regular folder on your computer 
 
 Requirements for the fastest first run:
 
-- Node.js 24 for `npx` and source installs
+- Node.js 26 for `npx` and source installs
 - ripgrep for global text search (`rg`; included in the Docker image)
 - Homebrew only if you want the `brew install` path
 
@@ -88,7 +88,7 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 ### Requirements
 
 - macOS, Linux, or Windows (via WSL2)
-- Node.js 24 for `npx` and source installs
+- Node.js 26 for `npx` and source installs
 - ripgrep for global text search. Install with `brew install ripgrep` on macOS, `apk add ripgrep` on Alpine, or `apt install ripgrep` on Debian/Ubuntu. Docker images already include it.
 
 ### Run via npx (Node.js)
@@ -557,7 +557,7 @@ Health check: `GET /health`
 
 ## Troubleshooting
 
-- `npx collabmd@latest` fails immediately: confirm you are running Node.js 24, which is the supported runtime for source and npm usage
+- `npx collabmd@latest` fails immediately: confirm you are running Node.js 26, which is the supported runtime for source and npm usage
 - The app is reachable only from localhost: pass `--host 0.0.0.0` or set `HOST=0.0.0.0` when you intend to expose it on your network
 - Port `1234` is already in use: pass `--port 3000` or set `PORT` to another free port
 - Tunnel did not start: install `cloudflared`, or pass `--no-tunnel` to stay local-only

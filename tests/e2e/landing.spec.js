@@ -14,6 +14,8 @@ test('landing reflects current features and stays usable across viewports', asyn
   await expect(page.locator('main')).toContainText('Structurizr');
   await expect(page.locator('main')).toContainText('Readonly PDFs');
   await expect(page.locator('main')).toContainText('Opt-in Vim keybindings');
+  await expect(page.locator('main')).toContainText('whole folders as self-contained HTML and PDF');
+  await expect(page.locator('#install')).toContainText('Requires Node.js 26');
   await expect(page.locator('#panel-docker .copy-btn')).toHaveAttribute(
     'data-copy',
     'docker run --rm -p 1234:1234 -v "$PWD:/data" ghcr.io/andes90/collabmd:latest',

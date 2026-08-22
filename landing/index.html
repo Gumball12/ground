@@ -100,8 +100,8 @@
     <!-- ============ FORMAT MARQUEE ============ -->
     <div class="marquee" aria-hidden="true">
       <div class="marquee-track">
-        <span>.md</span><span>.mdx</span><span>.mmd</span><span>.mermaid</span><span>.puml</span><span>.plantuml</span><span>.dsl</span><span>.excalidraw</span><span>.drawio</span><span>.pdf</span><span>[[wiki-links]]</span><span>backlinks</span>
-        <span>.md</span><span>.mdx</span><span>.mmd</span><span>.mermaid</span><span>.puml</span><span>.plantuml</span><span>.dsl</span><span>.excalidraw</span><span>.drawio</span><span>.pdf</span><span>[[wiki-links]]</span><span>backlinks</span>
+        <span>.md</span><span>.mdx</span><span>.html</span><span>.mmd</span><span>.mermaid</span><span>.puml</span><span>.plantuml</span><span>.dsl</span><span>.excalidraw</span><span>.drawio</span><span>.pdf</span><span>[[wiki-links]]</span><span>backlinks</span>
+        <span>.md</span><span>.mdx</span><span>.html</span><span>.mmd</span><span>.mermaid</span><span>.puml</span><span>.plantuml</span><span>.dsl</span><span>.excalidraw</span><span>.drawio</span><span>.pdf</span><span>[[wiki-links]]</span><span>backlinks</span>
       </div>
     </div>
 
@@ -240,15 +240,16 @@
         <!-- 4. Diagrams -->
         <article class="feat feat-flip reveal">
           <div class="feat-copy">
-            <h3 class="feat-title">Diagrams and PDFs stay in context.</h3>
+            <h3 class="feat-title">Rich files stay in context.</h3>
             <p class="feat-body">
-              Edit Mermaid, PlantUML, and Structurizr DSL beside their previews. Open
-              Excalidraw and draw.io canvases, or read PDFs without leaving the vault.
+              Edit Mermaid, PlantUML, and Structurizr DSL beside their previews. Preview
+              HTML safely, open Excalidraw and draw.io canvases, or read PDFs without leaving the vault.
             </p>
             <ul class="feat-list">
               <li>Interactive Structurizr C4 navigation from context to component</li>
-              <li>Excalidraw and draw.io canvases with visual git diffs</li>
+              <li>Excalidraw frame presentations and visual git diffs for diagrams</li>
               <li>Readonly PDFs with search, outline, links, zoom, and password support</li>
+              <li>Export notes or whole folders as self-contained HTML and PDF</li>
             </ul>
           </div>
           <div class="feat-visual" aria-hidden="true">
@@ -387,7 +388,7 @@
       <div class="wrap">
         <header class="section-head reveal">
           <h2 class="section-title">Choose how to run it.</h2>
-          <p class="section-sub">macOS, Linux, or Windows via WSL2. Requires Node.js 24 for the npx path; ripgrep powers global search.</p>
+          <p class="section-sub">macOS, Linux, or Windows via WSL2. Requires Node.js 26 for the npx path; ripgrep powers global search.</p>
         </header>
 
         <div class="install reveal">
