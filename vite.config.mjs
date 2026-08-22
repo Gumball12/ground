@@ -7,8 +7,6 @@ const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 const clientAppRoot = resolve(projectRoot, 'src/client/app');
 const clientDistRoot = resolve(projectRoot, 'dist/client');
 const backendProxyTarget = process.env.COLLABMD_DEV_PROXY_TARGET || 'http://127.0.0.1:1234';
-const excalidrawMermaidStubSource = resolve(projectRoot, 'src/client/excalidraw-mermaid-stub.js');
-
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? './' : '/',
   build: {
@@ -26,11 +24,6 @@ export default defineConfig(({ command }) => ({
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
       },
-    },
-  },
-  resolve: {
-    alias: {
-      '@excalidraw/mermaid-to-excalidraw': excalidrawMermaidStubSource,
     },
   },
   root: clientAppRoot,

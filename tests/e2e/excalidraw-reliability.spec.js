@@ -119,6 +119,36 @@ async function attachDiagnostics(testInfo, seed, pages) {
   });
 }
 
+test('@excalidraw-smoke pastes Mermaid text as Excalidraw elements', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const filePath = 'paste-mermaid.e2e.excalidraw';
+
+  try {
+    await prepareFile(page, filePath);
+    await openDirectEditor(page, filePath);
+    await waitForAuthority(page);
+    await page.locator('canvas.excalidraw__canvas.interactive').click();
+
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate((source) => navigator.clipboard.writeText(source), [
+      'graph TD',
+      '  A[Start] --> B[End]',
+    ].join('\n'));
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+
+    await expect.poll(() => page.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getElementCount()
+    ))).toBeGreaterThan(0);
+    const scene = await getScene(page);
+    expect(scene.elements.some((element) => element.type === 'arrow')).toBe(true);
+    expect(scene.elements.some((element) => element.text === 'Start')).toBe(true);
+    expect(scene.elements.some((element) => element.text === 'End')).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
 test('@excalidraw-smoke presents Excalidraw frames as keyboard-navigable slides', async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();

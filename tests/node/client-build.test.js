@@ -42,7 +42,7 @@ test('client build emits hashed entry assets and bundled preview runtimes', asyn
   assert.doesNotMatch(indexHtml, /main-entry\.js/);
 });
 
-test('excalidraw build references hashed HTML entry assets and omits the disabled mermaid-to-excalidraw payload', async () => {
+test('excalidraw build references the lazy Mermaid-to-Excalidraw converter', async () => {
   const excalidrawHtml = await readFile(resolve(clientDistDir, 'excalidraw-editor.html'), 'utf8');
   const excalidrawJsPath = extractAssetPath(
     excalidrawHtml,
@@ -56,14 +56,6 @@ test('excalidraw build references hashed HTML entry assets and omits the disable
   await access(resolve(clientDistDir, 'assets', excalidrawCssReference), fsConstants.R_OK);
   assert.match(excalidrawHtml, /src="\.\/app-config\.js"/);
   assert.doesNotMatch(excalidrawHtml, /excalidraw-editor-entry\.js/);
-  const importedSpecifiers = [
-    ...excalidrawBundle.matchAll(/from"([^"]+)"/g),
-    ...excalidrawBundle.matchAll(/import\("([^"]+)"\)/g),
-  ].map((match) => match[1]);
-
-  assert.match(excalidrawBundle, /excalidraw-mermaid-stub/i);
-  assert.deepEqual(
-    importedSpecifiers.filter((specifier) => /(flowchart-elk|mindmap-definition|sequenceDiagram|katex|cytoscape|elk)/i.test(specifier)),
-    [],
-  );
+  assert.doesNotMatch(excalidrawBundle, /excalidraw-mermaid-stub/i);
+  assert.match(excalidrawBundle, /mermaid\.core-[A-Za-z0-9_-]+\.js/u);
 });
