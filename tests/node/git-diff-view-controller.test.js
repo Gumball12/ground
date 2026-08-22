@@ -225,6 +225,30 @@ test('GitDiffViewController describes staged state as inclusion in the next comm
   assert.equal(controller.repoStatus, repoStatus);
 });
 
+test('GitDiffViewController keeps Open in editor available for an empty workspace diff', async (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+  installWindowStub(t);
+  installFetchStub(t, [{
+    body: {
+      files: [],
+      summary: { additions: 0, deletions: 0, filesChanged: 0 },
+    },
+  }]);
+  const openedFiles = [];
+  const controller = new GitDiffViewController({
+    gitApiClient: new GitApiClient(),
+    onOpenFile: (filePath) => openedFiles.push(filePath),
+  });
+  controller.initialize();
+
+  await controller.openWorkspaceDiff({ filePath: '1-on-1.md', scope: 'all' });
+  harness.elements.diffOpenEditorBtn.dispatch('click');
+
+  assert.equal('disabled' in harness.elements.diffOpenEditorBtn.attributes, false);
+  assert.deepEqual(openedFiles, ['1-on-1.md']);
+});
+
 test('GitDiffViewController opens commit diffs in stacked mode and lazy-loads expanded files', async (t) => {
   const harness = createHarness();
   t.after(() => harness.restore());

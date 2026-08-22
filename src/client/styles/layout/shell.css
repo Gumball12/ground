@@ -62,6 +62,7 @@
   align-items: baseline;
   gap: var(--space-3);
   min-width: 0;
+  overflow: hidden;
 }
 
 .pane-label {
@@ -76,6 +77,9 @@
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-meta);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .resizer {

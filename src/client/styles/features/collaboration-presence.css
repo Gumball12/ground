@@ -9,6 +9,19 @@
   align-items: center;
 }
 
+.toolbar-presence-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.toolbar-presence-count {
+  background: transparent;
+  padding-inline: var(--space-1);
+  min-height: auto;
+}
+
 .toolbar-badge-button {
   cursor: pointer;
   transition: background var(--transition-interactive), box-shadow var(--transition-interactive), color var(--transition-interactive);
@@ -68,7 +81,6 @@
   padding: 0 8px 0 6px;
   gap: 4px;
   border-radius: var(--radius-full);
-  box-shadow: var(--shadow-accent-ring);
 }
 
 .user-avatar.is-local + .user-avatar {

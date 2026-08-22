@@ -457,6 +457,7 @@ export class GitDiffViewController {
     this.data = null;
     this.currentIndex = 0;
     this.activeFilePath = null;
+    this.workspaceFilePath = null;
     this.fileCache = new Map();
     this.fileErrors = new Map();
     this.loadingFiles = new Set();
@@ -508,12 +509,12 @@ export class GitDiffViewController {
         return;
       }
 
-      const currentFile = this.getCurrentFile();
-      if (!currentFile?.path) {
+      const filePath = this.getCurrentFile()?.path ?? this.workspaceFilePath;
+      if (!filePath) {
         return;
       }
 
-      this.onOpenFile?.(currentFile.path);
+      this.onOpenFile?.(filePath);
     });
     this.primaryActionButton?.addEventListener('click', () => {
       if (!this.isActive) {
@@ -612,6 +613,7 @@ export class GitDiffViewController {
     this.layoutMode = 'focused';
     this.currentIndex = 0;
     this.activeFilePath = null;
+    this.workspaceFilePath = null;
     this.fileCache.clear();
     this.fileErrors.clear();
     this.loadingFiles.clear();
@@ -636,6 +638,7 @@ export class GitDiffViewController {
     this.commitMeta = null;
     this.historyFilePath = null;
     this.activeFilePath = filePath;
+    this.workspaceFilePath = filePath;
     this.fileCache.clear();
     this.fileErrors.clear();
     this.loadingFiles.clear();
@@ -688,6 +691,7 @@ export class GitDiffViewController {
     this.commitMeta = null;
     this.historyFilePath = String(historyFilePath ?? '').trim() || null;
     this.activeFilePath = path || null;
+    this.workspaceFilePath = null;
     this.fileCache.clear();
     this.fileErrors.clear();
     this.loadingFiles.clear();
@@ -1881,6 +1885,7 @@ export class GitDiffViewController {
     });
 
     const hasCurrentFile = Boolean(this.getCurrentFile()?.path);
+    const hasEditorFile = hasCurrentFile || Boolean(this.workspaceFilePath);
     const actionState = this.getCurrentActionState();
     const primaryAction = this.getPrimaryAction();
     const includedFileCount = Number(this.repoStatus?.summary?.staged || 0);
@@ -1895,7 +1900,7 @@ export class GitDiffViewController {
     if (this.openEditorButton) {
       this.openEditorButton.textContent = 'Open in editor';
     }
-    this.openEditorButton?.toggleAttribute('disabled', !hasCurrentFile || isCommitSource);
+    this.openEditorButton?.toggleAttribute('disabled', !hasEditorFile || isCommitSource);
     if (this.primaryActionButton) {
       const emphasizeInclude = primaryAction === 'stage' && !actionState.canUnstage;
       this.primaryActionButton.classList.toggle('ui-button--primary', emphasizeInclude);
