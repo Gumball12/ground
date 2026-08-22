@@ -179,6 +179,7 @@ describe('uiFeature browser helpers', () => {
       },
       syncCurrentUserName: vi.fn(),
       syncFileHistoryButton: vi.fn(),
+      syncReviewFileChangesButton: vi.fn(),
       syncIdentityManagementUi: vi.fn(),
       syncToolbarOverflowVisibility: vi.fn(),
       syncVimModeToggle: vi.fn(),
@@ -229,6 +230,7 @@ describe('uiFeature browser helpers', () => {
       },
       setSidebarTab: vi.fn(),
       syncFileHistoryButton: vi.fn(),
+      syncReviewFileChangesButton: vi.fn(),
     };
     Object.assign(context, {
       handleGitRepoChange: gitFeature.handleGitRepoChange,
@@ -241,6 +243,22 @@ describe('uiFeature browser helpers', () => {
     expect(context.elements.gitSidebarTab.classList.contains('hidden')).toBe(false);
     expect(context.elements.gitSidebarTab.classList.contains('has-changes')).toBe(true);
     expect(context.gitDiffView.setRepoStatus).toHaveBeenCalledWith(status);
+  });
+
+  it('shows Review changes for an open file in a Git repository', () => {
+    document.body.innerHTML = '<button id="review-file-changes" class="hidden"></button>';
+    const button = document.getElementById('review-file-changes');
+    const context = {
+      currentFilePath: 'README.md',
+      elements: { reviewFileChangesButton: button },
+      gitRepoAvailable: true,
+    };
+
+    gitFeature.syncReviewFileChangesButton.call(context);
+    expect(button.classList.contains('hidden')).toBe(false);
+
+    gitFeature.syncReviewFileChangesButton.call(context, { mode: 'diff' });
+    expect(button.classList.contains('hidden')).toBe(true);
   });
 
   it('collapses the sidebar for mobile restores', () => {
@@ -609,6 +627,7 @@ describe('uiFeature browser helpers', () => {
       <button id="chat-toggle"></button>
       <button id="share-button"></button>
       <button id="file-history"></button>
+      <button id="review-file-changes"></button>
       <button id="edit-name"></button>
       <button id="display-name-cancel"></button>
       <button id="git-commit-cancel"></button>
@@ -656,6 +675,7 @@ describe('uiFeature browser helpers', () => {
         gitSidebarTab: document.getElementById('git-tab'),
         markdownToolbar: document.getElementById('markdown-toolbar'),
         previewContent: document.getElementById('preview-content'),
+        reviewFileChangesButton: document.getElementById('review-file-changes'),
         shareButton: document.getElementById('share-button'),
         sidebarClose: document.getElementById('sidebar-close'),
         sidebarToggle: document.getElementById('sidebar-toggle'),
@@ -667,6 +687,7 @@ describe('uiFeature browser helpers', () => {
       handleDisplayNameSubmit: vi.fn(),
       handleFileHistorySelection: vi.fn(),
       handleGitCommitSubmit: vi.fn(),
+      handleGitDiffSelection: vi.fn(),
       handleGitFileHistorySelection: vi.fn(),
       handleGitResetSubmit: vi.fn(),
       handleHashChange: vi.fn(),
@@ -687,6 +708,12 @@ describe('uiFeature browser helpers', () => {
 
     Object.assign(context, uiFeatureShellMethods);
     context.bindEvents();
+
+    context.elements.reviewFileChangesButton.click();
+    expect(context.handleGitDiffSelection).toHaveBeenCalledWith('README.md', {
+      closeSidebarOnMobile: true,
+      scope: 'all',
+    });
 
     document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     expect(context.closeChatPanel).toHaveBeenCalledTimes(1);

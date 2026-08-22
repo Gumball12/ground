@@ -65,6 +65,7 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 - **Local-files-first** — your filesystem remains the source of truth
 - **Realtime collaboration** — multiple people can edit the same file at the same time via Yjs
 - **External edit sync** — changes made from tools like Obsidian or direct file writes are reflected back into open documents and the file explorer
+- **Git review** — review an open file's changes, include them in the next commit, and commit with a message from the browser
 - **File upload** — import multiple supported Markdown, HTML, Base, diagram, image, and PDF files into the vault from the file explorer
 - **Markdown with context** — live preview, wiki-links, backlinks, outline, quick switcher, and scroll sync
 - **Global text search** — search text across supported vault files with ripgrep-backed results grouped by file

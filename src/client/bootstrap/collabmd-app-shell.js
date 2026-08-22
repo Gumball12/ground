@@ -570,6 +570,7 @@ export class CollabMdAppShell {
         });
         this.syncCommentChrome(filePath);
         this.syncFileHistoryButton({ filePath, mode: 'editor' });
+        this.syncReviewFileChangesButton({ filePath, mode: 'editor' });
         if (this.elements.activeFileName) {
           this.elements.activeFileName.textContent = displayName;
         }

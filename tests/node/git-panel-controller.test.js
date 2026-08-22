@@ -182,6 +182,26 @@ test('GitPanelController renders history rows and selects commits in history mod
   assert.deepEqual(selectedCommits, ['abc123456789']);
 });
 
+test('GitPanelController uses plain-language commit inclusion labels', (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const controller = new GitPanelController();
+  controller.status = {
+    sections: [{
+      files: [{ code: 'M', path: 'README.md', scope: 'staged', status: 'modified' }],
+      key: 'staged',
+      label: 'Staged Changes',
+    }],
+    summary: { changedFiles: 1, staged: 1 },
+  };
+
+  const markup = controller.renderChangesPanel();
+
+  assert.match(markup, /Included in Next Commit/u);
+  assert.match(markup, /Remove from commit/u);
+  assert.match(markup, /Commit 1 file/u);
+});
+
 test('GitPanelController exposes the full file path as a hover title for trimmed file rows', async (t) => {
   const harness = createPanelHarness();
   t.after(() => harness.restore());

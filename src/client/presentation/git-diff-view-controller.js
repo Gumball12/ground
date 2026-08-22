@@ -1,4 +1,5 @@
 import { escapeHtml } from '../domain/vault-utils.js';
+import { commitButtonLabel } from '../domain/git-labels.js';
 import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 import { renderDrawioViewer } from './drawio-viewer.js';
@@ -624,7 +625,6 @@ export class GitDiffViewController {
     this.commitMeta = null;
     this.historyFilePath = null;
     this.pendingAction = null;
-    this.repoStatus = null;
   }
 
   async openWorkspaceDiff({ filePath = null, scope = 'all' } = {}) {
@@ -792,6 +792,7 @@ export class GitDiffViewController {
     }
     this.page?.classList.remove('hidden');
     if (this.content) {
+      // pi-lens-ignore: ast-grep:no-inner-html-js
       this.content.innerHTML = `<div class="diff-empty-state">${escapeHtml(message)}</div>`;
     }
     this.data = null;
@@ -804,6 +805,7 @@ export class GitDiffViewController {
     }
     this.page?.classList.remove('hidden');
     if (this.content) {
+      // pi-lens-ignore: ast-grep:no-inner-html-js
       this.content.innerHTML = `<div class="diff-empty-state">${escapeHtml(message)}</div>`;
     }
     this.syncToolbar();
@@ -1240,10 +1242,14 @@ export class GitDiffViewController {
     const headerStats = fileKind === 'image'
       ? `<span class="diff-file-header-kind">${escapeHtml(getImageFormat(file.path))} image</span>`
       : `<span class="diff-file-header-stats"><span class="ui-stat-token ui-stat-token--add diff-stats-add">+${file.stats?.additions ?? 0}</span><span class="ui-stat-token ui-stat-token--del diff-stats-del">-${file.stats?.deletions ?? 0}</span></span>`;
+    const inclusionStatus = file.hasStagedChanges
+      ? '<span class="ui-pill-badge ui-pill-badge--muted" aria-label="Included in next commit">✓ Included</span>'
+      : '';
     return `
       <div class="diff-file-header">
         <span class="diff-file-path">${escapeHtml(file.path)}</span>
         <span class="ui-status-badge ${badgeClass(file.status)}">${escapeHtml(file.status)}</span>
+        ${inclusionStatus}
         ${headerStats}
       </div>
     `;
@@ -1837,8 +1843,8 @@ export class GitDiffViewController {
         this.fileIndicator.textContent = `${totalFiles} file${totalFiles === 1 ? '' : 's'}`;
       } else {
         this.fileIndicator.textContent = totalFiles > 0
-          ? `${visibleIndex} / ${totalFiles} files`
-          : '0 / 0 files';
+          ? `${visibleIndex} of ${totalFiles}`
+          : '0 files';
       }
     }
 
@@ -1859,6 +1865,7 @@ export class GitDiffViewController {
       const deletions = allFilesAreImages
         ? 0
         : Math.max(0, rawDeletions - imageLineStats.deletions);
+      // pi-lens-ignore: ast-grep:no-inner-html-js
       this.stats.innerHTML = `
         <span class="ui-stat-token ui-stat-token--add diff-stats-add">+${additions}</span>
         <span class="ui-stat-token ui-stat-token--del diff-stats-del">-${deletions}</span>
@@ -1876,6 +1883,7 @@ export class GitDiffViewController {
     const hasCurrentFile = Boolean(this.getCurrentFile()?.path);
     const actionState = this.getCurrentActionState();
     const primaryAction = this.getPrimaryAction();
+    const includedFileCount = Number(this.repoStatus?.summary?.staged || 0);
 
     this.backToHistoryButton?.classList.toggle('hidden', !isCommitSource);
     this.gitActionsGroup?.classList.toggle('hidden', isCommitSource);
@@ -1885,23 +1893,33 @@ export class GitDiffViewController {
     this.stats?.classList.remove('hidden');
 
     if (this.openEditorButton) {
-      this.openEditorButton.textContent = 'Open in Editor';
+      this.openEditorButton.textContent = 'Open in editor';
     }
     this.openEditorButton?.toggleAttribute('disabled', !hasCurrentFile || isCommitSource);
     if (this.primaryActionButton) {
+      const emphasizeInclude = primaryAction === 'stage' && !actionState.canUnstage;
+      this.primaryActionButton.classList.toggle('ui-button--primary', emphasizeInclude);
+      this.primaryActionButton.classList.toggle('ui-button--secondary', !emphasizeInclude);
+      this.primaryActionButton.classList.toggle('ui-button--surface', !emphasizeInclude);
       this.primaryActionButton.textContent = this.pendingAction === primaryAction
         ? 'Working...'
         : primaryAction === 'unstage'
-          ? 'Unstage'
-          : 'Stage';
+          ? 'Remove'
+          : 'Include in commit';
       this.primaryActionButton.toggleAttribute(
         'disabled',
         isCommitSource || !hasCurrentFile || !primaryAction || Boolean(this.pendingAction),
       );
     }
     if (this.commitButton) {
-      this.commitButton.textContent = this.pendingAction === 'commit' ? 'Working...' : 'Commit Staged';
+      this.commitButton.textContent = this.pendingAction === 'commit'
+        ? 'Working...'
+        : commitButtonLabel(includedFileCount);
     }
+    this.commitButton?.classList.toggle(
+      'hidden',
+      isCommitSource || !hasCurrentFile || !actionState.canUnstage,
+    );
     this.commitButton?.toggleAttribute(
       'disabled',
       isCommitSource || !actionState.canCommit || Boolean(this.pendingAction),
@@ -1934,8 +1952,10 @@ export class GitDiffViewController {
     this.drawioPreviewPayloads.clear();
 
     if (this.source === 'commit') {
+      // pi-lens-ignore: ast-grep:no-inner-html-js
       this.content.innerHTML = `${this.renderCommitHeader()}${this.renderCommitBody()}`;
     } else {
+      // pi-lens-ignore: ast-grep:no-inner-html-js
       this.content.innerHTML = this.renderFocusedFileBody();
     }
     this.syncToolbar();

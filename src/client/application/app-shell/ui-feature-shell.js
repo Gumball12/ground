@@ -189,6 +189,13 @@ function bindToolbarEvents() {
     this.closeToolbarOverflowMenu?.();
   });
 
+  this.elements.reviewFileChangesButton?.addEventListener('click', () => {
+    this.handleGitDiffSelection(this.currentFilePath, {
+      closeSidebarOnMobile: true,
+      scope: 'all',
+    });
+  });
+
   this.elements.fileHistoryButton?.addEventListener('click', () => {
     const route = this.navigation.getHashRoute();
     if (route.type === 'git-file-preview') {
@@ -230,7 +237,7 @@ function bindDialogEvents() {
       this.elements.gitCommitInput.value = '';
     }
     if (this.elements.gitCommitSubmit) {
-      this.elements.gitCommitSubmit.textContent = 'Commit staged changes';
+      this.elements.gitCommitSubmit.textContent = 'Commit included files';
     }
   });
 

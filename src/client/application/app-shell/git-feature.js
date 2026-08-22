@@ -1,3 +1,4 @@
+import { commitButtonLabel } from '../../domain/git-labels.js';
 import { createWorkspaceChange } from '../../../domain/workspace-change.js';
 
 export const gitFeature = {
@@ -89,6 +90,7 @@ export const gitFeature = {
     this.elements.gitSidebarTab?.classList.toggle('has-changes', hasChanges);
     
     this.gitDiffView.setRepoStatus(this.gitRepoAvailable ? status : null);
+    this.syncReviewFileChangesButton();
 
     if (!this.gitRepoAvailable && this.activeSidebarTab === 'git') {
       this.syncFileHistoryButton({ mode: this.navigation.getHashRoute().type === 'git-file-preview' ? 'history-preview' : 'editor' });
@@ -146,6 +148,21 @@ export const gitFeature = {
     button.title = 'View file history';
   },
 
+  syncReviewFileChangesButton({
+    filePath = this.currentFilePath,
+    mode = 'editor',
+  } = {}) {
+    const button = this.elements.reviewFileChangesButton;
+    if (!button) {
+      return;
+    }
+
+    button.classList.toggle(
+      'hidden',
+      !this.gitRepoAvailable || mode !== 'editor' || !filePath,
+    );
+  },
+
   syncMainChrome({ badgeLabel = '', mode, title = null } = {}) {
     const isSpecialMode = mode === 'diff' || mode === 'history' || mode === 'history-preview';
     this.elements.toolbarViewToggle?.classList.toggle('hidden', isSpecialMode);
@@ -161,6 +178,7 @@ export const gitFeature = {
     }
 
     this.syncFileHistoryButton({ filePath: this.currentFilePath, mode });
+    this.syncReviewFileChangesButton({ filePath: this.currentFilePath, mode });
   },
 
   async showGitDiff({ filePath = null, scope = 'all' } = {}) {
@@ -635,17 +653,18 @@ export const gitFeature = {
       return;
     }
 
+    const includedFileCount = Number(this.gitPanel.status?.summary?.staged || 0);
+    const commitLabel = commitButtonLabel(includedFileCount);
     if (this.elements.gitCommitTitle) {
-      this.elements.gitCommitTitle.textContent = 'Commit staged changes';
+      this.elements.gitCommitTitle.textContent = commitLabel;
     }
     if (this.elements.gitCommitCopy) {
-      const stagedCount = Number(this.gitPanel.status?.summary?.staged || 0);
-      this.elements.gitCommitCopy.textContent = stagedCount > 0
-        ? `${stagedCount} staged file${stagedCount === 1 ? '' : 's'} will be included.`
-        : 'All staged changes will be included.';
+      this.elements.gitCommitCopy.textContent = includedFileCount > 0
+        ? `This commit will include ${includedFileCount} file${includedFileCount === 1 ? '' : 's'}.`
+        : 'All included changes will be committed.';
     }
     if (this.elements.gitCommitSubmit) {
-      this.elements.gitCommitSubmit.textContent = 'Commit staged changes';
+      this.elements.gitCommitSubmit.textContent = commitLabel;
     }
     input.value = '';
 
@@ -673,7 +692,7 @@ export const gitFeature = {
     }
     if (!message) {
       input.focus();
-      this.toastController.show('Commit message cannot be empty');
+      this.toastController.show('Describe what changed before committing');
       return;
     }
 
@@ -693,10 +712,10 @@ export const gitFeature = {
       });
       dialog.close();
     } catch (error) {
-      this.toastController.show(error.message || 'Failed to commit staged changes');
+      this.toastController.show(error.message || 'Failed to commit included changes');
     } finally {
       if (submit) {
-        submit.textContent = 'Commit staged changes';
+        submit.textContent = 'Commit included files';
       }
       submit?.toggleAttribute('disabled', false);
     }

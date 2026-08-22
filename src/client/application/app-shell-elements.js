@@ -59,6 +59,7 @@ export function bindAppShellElements(doc = document) {
     htmlPreviewMaximizeButton: doc.getElementById('htmlPreviewMaximize'),
     previewContent: doc.getElementById('previewContent'),
     previewContainer: doc.getElementById('previewContainer'),
+    reviewFileChangesButton: doc.getElementById('reviewFileChangesBtn'),
     presencePanel: doc.getElementById('presencePanel'),
     presencePanelList: doc.getElementById('presencePanelList'),
     presencePanelStatus: doc.getElementById('presencePanelStatus'),

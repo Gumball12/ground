@@ -193,6 +193,38 @@ function installWindowStub(t) {
   });
 }
 
+test('GitDiffViewController describes staged state as inclusion in the next commit', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+
+  const controller = new GitDiffViewController();
+  controller.data = {
+    files: [{ hasStagedChanges: true, path: 'README.md' }],
+    summary: {},
+  };
+  controller.repoStatus = { summary: { staged: 1 } };
+  controller.syncToolbar();
+
+  assert.equal(harness.elements.diffFileIndicator.textContent, '1 of 1');
+  assert.equal(harness.elements.diffPrimaryActionBtn.textContent, 'Remove');
+  assert.equal(harness.elements.diffCommitBtn.textContent, 'Commit 1 file');
+  assert.equal(harness.elements.diffCommitBtn.classList.contains('hidden'), false);
+  assert.match(controller.renderFileHeader(controller.data.files[0]), /✓ Included/u);
+
+  controller.data.files[0] = { hasWorkingTreeChanges: true, path: 'README.md' };
+  controller.repoStatus = { summary: { staged: 0 } };
+  controller.syncToolbar();
+
+  assert.equal(harness.elements.diffPrimaryActionBtn.textContent, 'Include in commit');
+  assert.equal(harness.elements.diffPrimaryActionBtn.classList.contains('ui-button--primary'), true);
+  assert.equal(harness.elements.diffCommitBtn.classList.contains('hidden'), true);
+  assert.doesNotMatch(controller.renderFileHeader(controller.data.files[0]), /✓ Included/u);
+
+  const repoStatus = controller.repoStatus;
+  controller.hide();
+  assert.equal(controller.repoStatus, repoStatus);
+});
+
 test('GitDiffViewController opens commit diffs in stacked mode and lazy-loads expanded files', async (t) => {
   const harness = createHarness();
   t.after(() => harness.restore());

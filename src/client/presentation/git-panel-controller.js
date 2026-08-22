@@ -1,4 +1,5 @@
 import { escapeHtml } from '../domain/vault-utils.js';
+import { commitButtonLabel } from '../domain/git-labels.js';
 import { getVaultPathLeaf, getVaultPathParent } from '../domain/vault-paths.js';
 import { buttonClassNames } from './components/ui/button.js';
 import { segmentedButtonClassNames, segmentedControlClassNames } from './components/ui/segmented-control.js';
@@ -659,12 +660,13 @@ export class GitPanelController {
     }
 
     const isCollapsed = this.collapsedSections.has(section.key);
+    const label = section.key === 'staged' ? 'Included in Next Commit' : section.label;
 
     return `
       <section class="git-section">
         <button class="git-section-header" type="button" data-git-section-toggle="${escapeHtml(section.key)}">
           ${chevronSvg(isCollapsed)}
-          ${escapeHtml(section.label)}
+          ${escapeHtml(label)}
           <span class="ui-pill-badge ui-pill-badge--count ui-pill-badge--muted git-section-count">${files.length}</span>
         </button>
         <div class="git-file-list${isCollapsed ? ' hidden' : ''}">
@@ -724,8 +726,8 @@ export class GitPanelController {
     const fullPath = String(file.path || '');
     const statusClass = badgeClass(file.status);
     const stageAction = file.scope === 'staged'
-      ? { label: 'Unstage', value: 'unstage' }
-      : { label: 'Stage', value: 'stage' };
+      ? { label: 'Remove from commit', value: 'unstage' }
+      : { label: 'Include in commit', value: 'stage' };
     const actionKey = `${stageAction.value}:${file.scope}:${file.path}`;
     const isPending = this.pendingActionKey === actionKey;
     const resetActionKey = `reset:${file.scope}:${file.path}`;
@@ -874,7 +876,7 @@ export class GitPanelController {
       .filter(Boolean)
       .join('');
     const hasChanges = Boolean(this.status.summary?.changedFiles);
-    const hasStagedChanges = Number(this.status.summary?.staged || 0) > 0;
+    const includedFileCount = Number(this.status.summary?.staged || 0);
     const isCommitPending = this.pendingActionKey === 'commit-staged';
 
     return `
@@ -891,9 +893,9 @@ export class GitPanelController {
               class="${buttonClassNames({ variant: 'primary', action: true, wide: true, extra: 'git-footer-commit-btn' })}"
               type="button"
               data-git-commit-staged
-              ${!hasStagedChanges || isCommitPending ? 'disabled' : ''}
+              ${includedFileCount === 0 || isCommitPending ? 'disabled' : ''}
             >
-              ${isCommitPending ? 'Working...' : 'Commit Staged'}
+              ${isCommitPending ? 'Working...' : commitButtonLabel(includedFileCount)}
             </button>
           </div>
         </div>
@@ -906,6 +908,7 @@ export class GitPanelController {
       return;
     }
 
+    // pi-lens-ignore: ast-grep:no-inner-html-js
     this.panel.innerHTML = `
       <div class="git-panel-empty ui-empty-state ui-empty-state--compact">
         <p class="ui-empty-state-copy">${escapeHtml(message)}</p>
@@ -933,6 +936,7 @@ export class GitPanelController {
     const isPullPending = this.pendingActionKey === 'sync:pull';
     const isPushPending = this.pendingActionKey === 'sync:push';
 
+    // pi-lens-ignore: ast-grep:no-inner-html-js
     this.panel.innerHTML = `
       <div class="git-branch-bar">
         <div class="git-branch-meta">

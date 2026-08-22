@@ -210,6 +210,14 @@
           </div>
 
           <div class="toolbar-right">
+            <button class="ui-button ui-button--secondary ui-button--compact hidden" id="reviewFileChangesBtn" type="button" aria-label="Review changes to this file" title="Review changes to this file">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <span class="ui-toolbar-button-label">Review changes</span>
+            </button>
+
             <button class="ui-button ui-button--ghost ui-button--toolbar mobile-view-toggle" id="mobileViewToggle" aria-label="Toggle editor/preview" title="Toggle view">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -622,16 +630,10 @@
                 </button>
                 <div class="diff-toolbar-actions-group diff-toolbar-actions-group-git" id="diffGitActionsGroup" role="group" aria-label="Git file actions">
                   <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface" id="diffPrimaryActionBtn" type="button" disabled>
-                    Stage
+                    Include in commit
                   </button>
                   <button class="ui-button ui-button--primary ui-button--action ui-button--wide" id="diffCommitBtn" type="button" disabled>
-                    Commit Staged
-                  </button>
-                </div>
-                <span class="diff-toolbar-actions-divider" id="diffToolbarDivider" aria-hidden="true"></span>
-                <div class="diff-toolbar-actions-group" id="diffEditorActionsGroup" role="group" aria-label="Navigation actions">
-                  <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface diff-open-editor-btn" id="diffOpenEditorBtn" type="button" disabled>
-                    Open in Editor
+                    Commit included files
                   </button>
                 </div>
               </div>
@@ -648,6 +650,12 @@
               <div class="ui-segmented-control diff-mode-toggle" role="group" aria-label="Diff view mode">
                 <button class="ui-segmented-btn active view-btn diff-mode-btn" data-diff-mode="unified" type="button">Unified</button>
                 <button class="ui-segmented-btn view-btn diff-mode-btn" data-diff-mode="split" type="button">Split</button>
+              </div>
+              <span class="diff-toolbar-actions-divider" id="diffToolbarDivider" aria-hidden="true"></span>
+              <div class="diff-toolbar-actions-group" id="diffEditorActionsGroup" role="group" aria-label="Navigation actions">
+                <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface diff-open-editor-btn" id="diffOpenEditorBtn" type="button" disabled>
+                  Open in editor
+                </button>
               </div>
             </div>
           </div>
@@ -697,16 +705,17 @@
     <dialog class="app-dialog" id="gitCommitDialog">
       <form class="app-dialog-form" id="gitCommitForm" method="dialog">
         <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="gitCommitTitle">Commit staged changes</h2>
-          <p class="app-dialog-copy" id="gitCommitCopy">All staged changes will be included.</p>
+          <h2 class="app-dialog-title" id="gitCommitTitle">Commit included files</h2>
+          <p class="app-dialog-copy" id="gitCommitCopy">All included changes will be committed.</p>
         </div>
         <label class="app-dialog-field" for="gitCommitInput">
-          <span class="app-dialog-label">Commit message</span>
-          <input type="text" class="ui-input" id="gitCommitInput" name="gitCommitMessage" autocomplete="off" spellcheck="true" required>
+          <span class="app-dialog-label">What changed?</span>
+          <input type="text" class="ui-input" id="gitCommitInput" name="gitCommitMessage" autocomplete="off" spellcheck="true" aria-describedby="gitCommitHint" required>
+          <span class="app-dialog-hint" id="gitCommitHint">This becomes the Git commit message.</span>
         </label>
         <div class="app-dialog-actions">
           <button type="button" class="ui-button ui-button--secondary" id="gitCommitCancel">Cancel</button>
-          <button type="submit" class="ui-button ui-button--primary" id="gitCommitSubmit">Commit staged changes</button>
+          <button type="submit" class="ui-button ui-button--primary" id="gitCommitSubmit">Commit included files</button>
         </div>
       </form>
     </dialog>
