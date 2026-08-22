@@ -51,6 +51,7 @@ import {
   isStructurizrFilePath,
 } from '../../domain/file-kind.js';
 import { normalizeCommentQuote } from '../../domain/comment-threads.js';
+import { formatDocumentText } from '../domain/document-formatter.js';
 import { createMarkdownToolbarEdit } from '../domain/markdown-formatting.js';
 import { mermaidLanguage, mermaidLanguageDescription } from '../domain/mermaid-language.js';
 import { wikiLinkCompletions } from '../domain/wiki-link-completions.js';
@@ -712,6 +713,37 @@ export class EditorViewAdapter {
 
   requestMeasure() {
     this.editorView?.requestMeasure();
+  }
+
+  async formatDocument(filePath) {
+    const view = this.editorView;
+    if (!view || view.state.readOnly) {
+      return 'unsupported';
+    }
+
+    const source = view.state.doc.toString();
+    const formatted = await formatDocumentText(filePath, source);
+    if (formatted == null) {
+      return 'unsupported';
+    }
+    if (this.editorView !== view || view.state.doc.toString() !== source) {
+      return 'changed';
+    }
+    if (formatted === source) {
+      return 'unchanged';
+    }
+
+    const selection = EditorSelection.create(view.state.selection.ranges.map(({ anchor, head }) => (
+      EditorSelection.range(Math.min(anchor, formatted.length), Math.min(head, formatted.length))
+    )));
+    view.dispatch({
+      changes: { from: 0, to: source.length, insert: formatted },
+      selection,
+      scrollIntoView: true,
+      userEvent: 'input.format',
+    });
+    view.focus();
+    return 'formatted';
   }
 
   runEditorCommand(commandId) {

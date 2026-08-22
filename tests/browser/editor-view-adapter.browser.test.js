@@ -86,6 +86,36 @@ describe('EditorViewAdapter collaboration history', () => {
   });
 });
 
+describe('EditorViewAdapter document formatting', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('formats the shared document as one undoable edit', async () => {
+    document.body.innerHTML = '<div id="editor"></div>';
+    const adapter = new EditorViewAdapter({
+      editorContainer: document.getElementById('editor'),
+      initialTheme: 'light',
+      lineInfoElement: null,
+    });
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    ytext.insert(0, '# Title\n\ntext   here');
+    const undoManager = new Y.UndoManager(ytext);
+
+    adapter.initialize({ awareness: null, filePath: 'README.md', undoManager, ytext });
+
+    expect(await adapter.formatDocument('README.md')).toBe('formatted');
+    expect(adapter.getText()).toBe('# Title\n\ntext here\n');
+    expect(adapter.runEditorCommand('undo')).toBe(true);
+    expect(adapter.getText()).toBe('# Title\n\ntext   here');
+
+    adapter.destroy();
+    undoManager.destroy();
+    ydoc.destroy();
+  });
+});
+
 describe('EditorViewAdapter search', () => {
   afterEach(() => {
     document.body.innerHTML = '';

@@ -274,6 +274,10 @@ export class EditorSession {
     this.viewAdapter.requestMeasure();
   }
 
+  formatDocument(filePath) {
+    return this.viewAdapter.formatDocument(filePath);
+  }
+
   runEditorCommand(commandId) {
     return this.viewAdapter.runEditorCommand(commandId);
   }

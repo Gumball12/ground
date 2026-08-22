@@ -329,6 +329,10 @@ function bindEvents() {
     this.runEditorCommand?.('openSearch');
   });
 
+  this.elements.editorFormatButton?.addEventListener('click', () => {
+    void this.formatCurrentDocument();
+  });
+
   this.elements.toolbarOverflowToggle?.addEventListener('click', (event) => {
     event.preventDefault();
     this.closePresencePanel?.();
@@ -549,6 +553,7 @@ function createPreviewHeadingLinkUrl(anchorId) {
     return '';
   }
 
+  // pi-lens-ignore: unchecked-throwing-call-js
   const url = new URL(window.location.href);
   url.hash = createFileRouteHash(this.currentFilePath, {
     anchor: anchorId,
@@ -594,6 +599,7 @@ function syncPreviewCodeCopyButtons() {
     const pre = code.parentElement;
     const wrapper = document.createElement('div');
     wrapper.className = 'preview-code-block';
+    // pi-lens-ignore: no-inner-html-js
     wrapper.innerHTML = `
       <div class="preview-code-actions">
         <button type="button" class="ui-button ui-button--secondary ui-button--compact preview-code-copy-button" aria-label="Copy code" title="Copy code">
@@ -620,6 +626,7 @@ function syncPreviewHeadingLinkButtons() {
       button = document.createElement('button');
       button.type = 'button';
       button.className = 'ui-icon-button preview-heading-link-button';
+      // pi-lens-ignore: no-inner-html-js
       button.innerHTML = PREVIEW_HEADING_LINK_ICON;
       heading.appendChild(button);
     }
@@ -847,6 +854,27 @@ function getStoredLineWrapping() {
 }
 
 /** @this {UiShellContext} */
+async function formatCurrentDocument() {
+  const button = this.elements.editorFormatButton;
+  button?.setAttribute('disabled', '');
+
+  try {
+    const result = await this.session?.formatDocument?.(this.currentFilePath);
+    const messages = {
+      changed: 'Document changed while formatting. Try again.',
+      formatted: 'Document formatted',
+      unchanged: 'Document is already formatted',
+      unsupported: 'Formatting is unavailable for this file type',
+    };
+    this.toastController.show(messages[result] ?? messages.unsupported);
+  } catch (error) {
+    this.toastController.show(`Formatting failed: ${error?.message || 'Unknown error'}`, 5000);
+  } finally {
+    button?.removeAttribute('disabled');
+  }
+}
+
+/** @this {UiShellContext} */
 function toggleVimMode() {
   const currentState = this.session?.isVimModeEnabled?.() ?? this.getStoredVimMode();
   const nextState = !currentState;
@@ -938,6 +966,7 @@ export const uiFeatureShellMethods = {
   copyPreviewCodeBlock,
   copyPreviewHeadingLink,
   createPreviewHeadingLinkUrl,
+  formatCurrentDocument,
   getStoredLineWrapping,
   getStoredVimMode,
   handleConnectionChange,

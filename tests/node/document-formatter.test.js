@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  canFormatDocument,
+  formatDocumentText,
+} from '../../src/client/domain/document-formatter.js';
+
+test('formatDocumentText formats supported text files without claiming unsupported DSLs', async () => {
+  assert.equal(await formatDocumentText('README.md', '# Title\n\ntext   here'), '# Title\n\ntext here\n');
+  assert.equal(await formatDocumentText('view.base', 'views:\n - type: table'), 'views:\n  - type: table\n');
+  assert.equal(await formatDocumentText('page.html', '<main><h1>Hello</h1></main>'), '<main><h1>Hello</h1></main>\n');
+  assert.equal(
+    await formatDocumentText('diagram.mmd', 'sequenceDiagram\nparticipant A\nA->>B: Hello'),
+    'sequenceDiagram\n  participant A\n  A ->> B: Hello\n',
+  );
+  assert.equal(await formatDocumentText('diagram.puml', '@startuml\nA -> B\n@enduml'), null);
+  assert.equal(canFormatDocument('model.dsl'), false);
+});
+
+test('formatDocumentText rejects invalid Mermaid without rewriting it', async () => {
+  await assert.rejects(
+    formatDocumentText('diagram.mmd', 'flowchart TD\nA -->'),
+    /Mermaid syntax is invalid/,
+  );
+});

@@ -5,6 +5,7 @@ import {
   isMarkdownFilePath,
   isStructurizrFilePath,
 } from '../../domain/file-kind.js';
+import { canFormatDocument } from '../domain/document-formatter.js';
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 
@@ -163,6 +164,7 @@ export class WorkspacePreviewController {
     this.backlinksPanel.setDisplayMode?.(usesHeaderBacklinks ? 'header' : 'dock');
 
     this.elements.editorFindButton?.classList.toggle('hidden', !isMarkdown);
+    this.elements.editorFormatButton?.classList.toggle('hidden', !canFormatDocument(filePath));
     this.elements.markdownToolbar?.classList.toggle('hidden', !isMarkdown);
     this.elements.exportMenuGroup?.classList.toggle('hidden', !isMarkdown);
     this.elements.htmlPreviewMaximizeButton?.classList.toggle('hidden', !isHtml);

@@ -551,6 +551,29 @@ describe('uiFeature browser helpers', () => {
     expect(context.runEditorCommand).toHaveBeenCalledWith('openSearch');
   });
 
+  it('formats the current document from the editor button', async () => {
+    document.body.innerHTML = '<button id="editor-format"></button>';
+    const formatDocument = vi.fn(async () => 'formatted');
+    const show = vi.fn();
+    const context = {
+      currentFilePath: 'README.md',
+      elements: {
+        editorFormatButton: document.getElementById('editor-format'),
+      },
+      session: { formatDocument },
+      toastController: { show },
+      toggleQuickSwitcher: vi.fn(async () => {}),
+    };
+
+    Object.assign(context, uiFeatureShellMethods);
+    context.bindEvents();
+    context.elements.editorFormatButton.click();
+    await vi.waitFor(() => expect(show).toHaveBeenCalledWith('Document formatted'));
+
+    expect(formatDocument).toHaveBeenCalledWith('README.md');
+    expect(context.elements.editorFormatButton.disabled).toBe(false);
+  });
+
   it('syncs app shell viewport css vars from visualViewport metrics', () => {
     const context = {};
 
