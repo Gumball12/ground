@@ -250,6 +250,7 @@
 }
 
 .preview-content p:has(> .excalidraw-embed-placeholder:only-child),
+.preview-content p:has(> .drawio-embed-placeholder:only-child),
 .preview-content p:has(> .bases-embed-placeholder:only-child),
 .preview-content p:has(> .video-embed-placeholder:only-child),
 .preview-content p:has(> .plantuml-shell:only-child) {

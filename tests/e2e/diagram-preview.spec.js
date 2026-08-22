@@ -667,6 +667,23 @@ test('embedded drawio uses the shared diagram preview header chrome', async ({ p
   await expect(embed.locator('.drawio-embed-header .drawio-embed-icon')).toBeVisible();
   await expect(embed.locator('.drawio-embed-btn[aria-label="Edit in draw.io"]')).toBeVisible();
   await expect(embed.locator('.drawio-embed-btn').filter({ hasText: 'Open' })).toHaveCount(0);
+
+  await page.locator('.view-btn[data-view="preview"]').click();
+  await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
+
+  await expect.poll(() => page.evaluate(() => {
+    const preview = document.querySelector('#previewContent');
+    const drawioEmbed = preview?.querySelector('.drawio-embed');
+    if (!(preview instanceof HTMLElement) || !(drawioEmbed instanceof HTMLElement)) {
+      return null;
+    }
+
+    const previewStyle = getComputedStyle(preview);
+    const availableWidth = preview.getBoundingClientRect().width
+      - Number.parseFloat(previewStyle.paddingLeft)
+      - Number.parseFloat(previewStyle.paddingRight);
+    return Math.abs(availableWidth - drawioEmbed.getBoundingClientRect().width);
+  })).toBeLessThanOrEqual(1);
 });
 
 test('preserves embedded drawio preview instances across unrelated preview rerenders', async ({ page }) => {
