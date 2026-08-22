@@ -469,6 +469,32 @@ function buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled }
 }
 
 const diagramCommentsContext = React.createContext(null);
+const presentationContext = React.createContext(null);
+
+function PresentationToolbar() {
+  const context = React.useContext(presentationContext);
+  if (!context) {
+    return null;
+  }
+
+  const label = context.active ? 'Exit presentation' : 'Start presentation';
+  const icon = context.active ? '×' : '▶';
+  let title = context.active ? 'Exit presentation' : 'Present frames';
+  if (context.frameCount === 0) {
+    title = 'Add a frame to create slides';
+  }
+
+  return React.createElement('button', {
+    'aria-label': label,
+    'aria-pressed': context.active,
+    className: `diagram-comment-button excalidraw-presentation-toggle sidebar-trigger${context.active ? ' is-active' : ''}`,
+    'data-testid': 'excalidraw-presentation-toggle',
+    disabled: context.frameCount === 0,
+    onClick: context.toggle,
+    title,
+    type: 'button',
+  }, React.createElement('span', { 'aria-hidden': 'true' }, icon));
+}
 
 function DiagramCommentsToolbar() {
   const context = React.useContext(diagramCommentsContext);
@@ -518,7 +544,12 @@ function DiagramCommentsToolbar() {
 
 const DiagramCommentsExcalidraw = React.memo(function DiagramCommentsExcalidraw({ initialData = null, renderKey = 0, viewModeEnabled }) {
   const renderTopRightUI = React.useCallback(
-    () => React.createElement(DiagramCommentsToolbar),
+    () => React.createElement('div', {
+      className: 'excalidraw-editor-toolbar',
+    }, [
+      React.createElement(PresentationToolbar, { key: 'presentation' }),
+      React.createElement(DiagramCommentsToolbar, { key: 'comments' }),
+    ]),
     [],
   );
 
@@ -566,7 +597,13 @@ function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = nu
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [replyDraft, setReplyDraft] = React.useState('');
+  const [presentationFrameId, setPresentationFrameId] = React.useState(null);
   const [, setViewportRevision] = React.useState(0);
+  const presentationFrames = (
+    getMountedExcalidrawAPI()?.getSceneElementsIncludingDeleted?.() || []
+  ).filter((element) => element?.type === 'frame' && !element.isDeleted);
+  const presentationIndex = presentationFrames.findIndex((frame) => frame.id === presentationFrameId);
+  const presentationMode = presentationFrameId !== null;
 
   React.useEffect(() => {
     const api = getMountedExcalidrawAPI();
@@ -587,6 +624,76 @@ function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = nu
   }, [apiId]);
 
   useCloseDiagramCommentsOnCanvas(drawerOpen, setDrawerOpen);
+
+  const goToPresentationFrame = React.useCallback((index) => {
+    const targetIndex = Math.min(Math.max(index, 0), presentationFrames.length - 1);
+    const frame = presentationFrames[targetIndex];
+    const api = getMountedExcalidrawAPI();
+    if (!api || !frame) {
+      return;
+    }
+
+    setPresentationFrameId(frame.id);
+    api.setViewport({
+      animation: true,
+      fit: 'contain',
+      offsets: { ui: true },
+      target: frame,
+    });
+  }, [presentationFrames]);
+
+  const togglePresentation = React.useCallback(() => {
+    if (presentationMode) {
+      setPresentationFrameId(null);
+      return;
+    }
+
+    setDrawerOpen(false);
+    setComposerOpen(false);
+    setActiveThreadId(null);
+    goToPresentationFrame(0);
+  }, [goToPresentationFrame, presentationMode]);
+
+  React.useEffect(() => {
+    if (!presentationFrameId || presentationIndex >= 0) {
+      return;
+    }
+
+    if (presentationFrames.length > 0) {
+      goToPresentationFrame(0);
+    } else {
+      setPresentationFrameId(null);
+    }
+  }, [goToPresentationFrame, presentationFrameId, presentationFrames.length, presentationIndex]);
+
+  React.useEffect(() => {
+    if (!presentationMode) {
+      return undefined;
+    }
+
+    const handlePresentationKeyDown = (event) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setPresentationFrameId(null);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        goToPresentationFrame(presentationIndex + 1);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        goToPresentationFrame(presentationIndex - 1);
+      }
+    };
+
+    document.addEventListener('keydown', handlePresentationKeyDown, true);
+    return () => document.removeEventListener('keydown', handlePresentationKeyDown, true);
+  }, [goToPresentationFrame, presentationIndex, presentationMode]);
 
   React.useEffect(() => {
     if (activeThreadId && !threads.some((thread) => thread.id === activeThreadId)) {
@@ -833,7 +940,8 @@ function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = nu
     ]);
   };
 
-  const renderCommentsOverlay = visible && room
+  const commentsVisible = visible && !presentationMode;
+  const renderCommentsOverlay = commentsVisible && room
     ? React.createElement('div', {
       'aria-label': 'Diagram comments overlay',
       className: 'diagram-comments-overlay',
@@ -865,7 +973,44 @@ function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = nu
     ])
     : null;
 
-  return React.createElement(diagramCommentsContext.Provider, {
+  const renderPresentationNavigation = presentationMode
+    ? React.createElement('div', {
+      'aria-label': 'Presentation navigation',
+      className: 'excalidraw-presentation-navigation',
+      key: 'presentation-navigation',
+      role: 'toolbar',
+    }, [
+      React.createElement('button', {
+        'aria-label': 'Previous slide',
+        className: 'diagram-comment-button',
+        disabled: presentationIndex <= 0,
+        key: 'previous',
+        onClick: () => goToPresentationFrame(presentationIndex - 1),
+        type: 'button',
+      }, '←'),
+      React.createElement('span', {
+        'aria-live': 'polite',
+        className: 'excalidraw-presentation-status',
+        key: 'status',
+      }, `${presentationFrames[presentationIndex]?.name || `Slide ${presentationIndex + 1}`} · ${presentationIndex + 1} / ${presentationFrames.length}`),
+      React.createElement('button', {
+        'aria-label': 'Next slide',
+        className: 'diagram-comment-button',
+        disabled: presentationIndex >= presentationFrames.length - 1,
+        key: 'next',
+        onClick: () => goToPresentationFrame(presentationIndex + 1),
+        type: 'button',
+      }, '→'),
+    ])
+    : null;
+
+  return React.createElement(presentationContext.Provider, {
+    value: {
+      active: presentationMode,
+      frameCount: presentationFrames.length,
+      toggle: togglePresentation,
+    },
+  }, React.createElement(diagramCommentsContext.Provider, {
     value: {
       canWrite,
       drawerOpen,
@@ -874,17 +1019,18 @@ function DiagramCommentsEditor({ apiId = '', canWrite = false, focusRequest = nu
       selectedElement,
       threads,
       toggleDrawer: () => setDrawerOpen((open) => !open),
-      visible,
+      visible: commentsVisible,
     },
   }, [
     React.createElement(DiagramCommentsExcalidraw, {
       initialData,
       key: 'excalidraw',
       renderKey: editorRenderKey,
-      viewModeEnabled: getDocumentViewState().viewModeEnabled,
+      viewModeEnabled: presentationMode || getDocumentViewState().viewModeEnabled,
     }),
     renderCommentsOverlay,
-  ]);
+    renderPresentationNavigation,
+  ]));
 }
 
 function renderExcalidrawApp({ initialData } = {}) {

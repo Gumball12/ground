@@ -38,11 +38,53 @@ body[data-surface='excalidraw-editor'][data-document-mode='preview'] .disable-vi
   pointer-events: none;
 }
 
+.excalidraw-editor-toolbar,
 .diagram-comments-toolbar {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   pointer-events: auto;
+}
+
+.excalidraw-presentation-toggle {
+  width: var(--control-h-md);
+  min-width: var(--control-h-md);
+  height: var(--control-h-md);
+}
+
+.excalidraw-presentation-navigation {
+  position: absolute;
+  z-index: 30;
+  bottom: var(--space-4);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+  transform: translateX(-50%);
+}
+
+.excalidraw-presentation-navigation .diagram-comment-button {
+  width: var(--control-h-sm);
+  min-width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0;
+}
+
+.excalidraw-presentation-status {
+  min-width: 7rem;
+  max-width: min(20rem, 55vw);
+  color: var(--color-text-muted);
+  font-size: var(--text-ui-sm);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .diagram-comment-button,

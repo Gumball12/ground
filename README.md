@@ -189,7 +189,7 @@ CollabMD starts a local server, scans the vault, and opens a browser-based edito
 - **Presence + follow mode** — see who is online and follow another collaborator's active cursor
 - **Quick switcher, global text search, and outline** — move around large vaults and long documents faster
 - **Document export** — download individual Markdown notes as self-contained HTML or DOCX, print/save notes or whole folders as PDF, export folders as one offline HTML document, or download their source files and assets as ZIP
-- **Standalone diagram files** — open `.mmd` / `.mermaid`, `.puml` / `.plantuml`, or `.dsl` files in side-by-side editor + preview; Structurizr workspaces provide context → container → component navigation; `.excalidraw` files use direct preview mode, `.drawio` files use an embedded diagrams.net editor/viewer, and `.pdf` files use a readonly browser preview
+- **Standalone diagram files** — open `.mmd` / `.mermaid`, `.puml` / `.plantuml`, or `.dsl` files in side-by-side editor + preview; Structurizr workspaces provide context → container → component navigation; `.excalidraw` files support frame-based presentations with arrow-key navigation and `Escape` to exit, `.drawio` files use an embedded diagrams.net editor/viewer, and `.pdf` files use a readonly browser preview
 
 Text comment threads are source-anchored for markdown, Mermaid, PlantUML, and Structurizr DSL files. You can comment on a whole line or a text selection, then reopen the thread from either the editor marker or preview bubble. Excalidraw threads attach to selected canvas elements and also appear in the workspace overview. Draw.io comments are not supported.
 

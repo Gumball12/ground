@@ -119,6 +119,47 @@ async function attachDiagnostics(testInfo, seed, pages) {
   });
 }
 
+test('@excalidraw-smoke presents Excalidraw frames as keyboard-navigable slides', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const filePath = 'presentation.e2e.excalidraw';
+
+  try {
+    await prepareFile(page, filePath, createScene([
+      { ...createElement('slide-1', { index: 'a0', type: 'frame' }), name: 'Intro' },
+      { ...createElement('slide-2', { index: 'a1', type: 'frame', x: 400 }), name: 'Details' },
+    ]));
+    await openDirectEditor(page, filePath);
+    await waitForAuthority(page);
+
+    const toggle = page.getByTestId('excalidraw-presentation-toggle');
+    await expect(toggle).toBeEnabled();
+    const [presentationBox, commentsBox] = await Promise.all([
+      toggle.boundingBox(),
+      page.getByTestId('diagram-comments-toggle').boundingBox(),
+    ]);
+    expect(presentationBox?.width).toBe(commentsBox?.width);
+    expect(presentationBox?.height).toBe(commentsBox?.height);
+    await toggle.click();
+
+    await expect.poll(() => page.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.isViewMode()
+    ))).toBe(true);
+    await expect(page.getByText('Intro · 1 / 2')).toBeVisible();
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByText('Details · 2 / 2')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByLabel('Presentation navigation')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.isViewMode()
+    ))).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
+
 test('@excalidraw-smoke fallback, reconnect, and durable convergence obey authority', async ({ browser }, testInfo) => {
   const context = await browser.newContext();
   const pageA = await context.newPage();
