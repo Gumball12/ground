@@ -532,10 +532,11 @@ export class CollabMdAppShell {
       },
       onCommentsChange: (threads) => this.handleCommentThreadsChange(threads),
       onFileAwarenessChange: (users) => this.updateFileAwareness(users),
-      onFileOpenError: () => {
-        this.showEditorLoadError();
+      onFileOpenError: ({ code } = {}) => {
+        const notFound = code === 'not-found';
+        this.showEditorLoadError(notFound ? 'File not found' : 'Failed to load file');
         this.syncWrapToggle();
-        this.toastController.show('Failed to initialize editor');
+        this.toastController.show(notFound ? 'File not found' : 'Failed to initialize editor');
       },
       onFileOpenReady: () => {
         this.hideEditorLoading();

@@ -354,3 +354,16 @@ test('FileHistoryViewController preserves history list scroll position across se
 
   assert.equal(harness.historyList.scrollTop, 240);
 });
+
+test('FileHistoryViewController omits undefined status and zero stats while a revision loads', () => {
+  const controller = Object.create(FileHistoryViewController.prototype);
+  controller.currentFilePath = 'diagram.excalidraw';
+
+  const markup = controller.renderSelectedBody({
+    entry: { type: 'commit' },
+    loading: true,
+  });
+
+  assert.doesNotMatch(markup, /undefined|\+0|-0/u);
+  assert.match(markup, /Loading diff/u);
+});

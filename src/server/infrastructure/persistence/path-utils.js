@@ -12,12 +12,18 @@ export function isIgnoredVaultEntry(name) {
 }
 
 function normalizeRequestedPath(requestedPath) {
-  const normalized = normalize(String(requestedPath ?? '').trim().replace(/\\/g, '/'));
-  if (!normalized || normalized === '.') {
+  const value = String(requestedPath ?? '').trim().replace(/\\/g, '/');
+  const segments = value.split('/');
+  if (
+    !value
+    || isAbsolute(value)
+    || segments.some((segment) => segment === '.' || segment === '..')
+  ) {
     return '';
   }
 
-  return normalized;
+  const normalized = normalize(value);
+  return normalized === '.' ? '' : normalized;
 }
 
 export function sanitizeVaultPath(vaultDir, requestedPath) {

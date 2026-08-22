@@ -155,8 +155,13 @@ function teardownDrawioFrame() {
 }
 
 function buildDrawioFrameUrl() {
-  const baseUrl = runtimeConfig.drawioBaseUrl || 'https://embed.diagrams.net';
-  const url = new URL(baseUrl);
+  const fallbackUrl = 'https://embed.diagrams.net';
+  let url;
+  try {
+    url = new URL(runtimeConfig.drawioBaseUrl || fallbackUrl);
+  } catch {
+    url = new URL(fallbackUrl);
+  }
   url.searchParams.set('embed', '1');
   url.searchParams.set('proto', 'json');
   url.searchParams.set('spin', '1');
@@ -396,7 +401,7 @@ function handleLeaseState(nextState) {
   state.canClaim = Boolean(nextState?.canClaim);
 
   if (state.isEditor) {
-    state.bannerText = 'Editing';
+    state.bannerText = 'Changes save automatically.';
   } else if (nextState?.hasHealthyHolder) {
     const holderName = nextState.holderName || 'Another user';
     state.bannerText = `${holderName} is editing this diagram. Read-only mode. Updates appear after they save.`;

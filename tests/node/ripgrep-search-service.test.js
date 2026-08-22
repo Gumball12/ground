@@ -166,7 +166,7 @@ test('RipgrepSearchService searches with safe rg args and handles no matches', a
   const maxCountIndex = calls[1].args.indexOf('--max-count');
   assert.equal(calls[1].args[maxCountIndex + 1], '6');
   assert.equal(calls[1].args.includes('*.drawio'), true);
-  assert.equal(calls[1].args.includes('*.excalidraw'), true);
+  assert.equal(calls[1].args.includes('*.excalidraw'), false);
   assert.equal(calls[1].args.includes('!node_modules/**'), true);
   assert.equal(calls[1].args.includes('!.obsidian/**'), true);
   assert.equal(calls[1].args.includes('!.trash/**'), true);

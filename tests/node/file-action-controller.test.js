@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { FileActionController } from '../../src/client/presentation/file-action-controller.js';
 import { FileTreeState } from '../../src/client/presentation/file-tree-state.js';
+import { normalizeVaultPathInput } from '../../src/client/domain/vault-paths.js';
 
 function installDocumentStub(t) {
   const originalDocument = globalThis.document;
@@ -138,6 +139,14 @@ function createController(t, overrides = {}) {
 
   return { calls, controller, state };
 }
+
+test('normalizeVaultPathInput rejects unsafe paths instead of rewriting them', () => {
+  assert.equal(normalizeVaultPathInput('../escape'), '');
+  assert.equal(normalizeVaultPathInput('notes/../escape'), '');
+  assert.equal(normalizeVaultPathInput('/absolute/path'), '');
+  assert.equal(normalizeVaultPathInput(''), '');
+  assert.equal(normalizeVaultPathInput('notes/today'), 'notes/today');
+});
 
 test('FileActionController creates files and expands parent directories', async (t) => {
   const { calls, controller, state } = createController(t);

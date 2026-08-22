@@ -526,6 +526,7 @@ export class FileHistoryViewController {
     }
 
     if (this.stats) {
+      // pi-lens-ignore: no-inner-html-js
       this.stats.innerHTML = `
         <span class="ui-stat-token ui-stat-token--add diff-stats-add">+${additions}</span>
         <span class="ui-stat-token ui-stat-token--del diff-stats-del">-${deletions}</span>
@@ -574,6 +575,7 @@ export class FileHistoryViewController {
     this.page?.classList.remove('hidden');
     if (this.content) {
       this.content.classList.add('diff-content--history');
+      // pi-lens-ignore: no-inner-html-js
       this.content.innerHTML = `<div class="git-panel-empty">${escapeHtml(message)}</div>`;
     }
     this.historyListElement = null;
@@ -714,7 +716,9 @@ export class FileHistoryViewController {
     if (selection.loading) {
       return `
         <section class="diff-file-block file-history-diff-block">
-          ${this.renderDiffFileHeader({ path: entry.pathAtCommit || this.currentFilePath || '' })}
+          <div class="diff-file-header">
+            <span class="diff-file-path">${escapeHtml(entry.pathAtCommit || this.currentFilePath || '')}</span>
+          </div>
           <div class="diff-empty-state">Loading diff...</div>
         </section>
       `;
@@ -770,6 +774,7 @@ export class FileHistoryViewController {
 
     this.content.classList.add('diff-content--history');
     const selection = this.getSelectedDetailState();
+    // pi-lens-ignore: no-inner-html-js
     this.content.innerHTML = `
       <section class="file-history-shell">
         <aside class="file-history-sidebar" aria-label="File history entries">

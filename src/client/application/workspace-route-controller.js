@@ -285,8 +285,11 @@ export class WorkspaceRouteController {
     this.fileHistoryView?.hide?.();
     this.clearStaticPreviewDocument?.();
     this.syncMainChrome({ mode: 'editor' });
-    await this.workspaceCoordinator.openFile(filePath, options);
+    const didOpen = await this.workspaceCoordinator.openFile(filePath, options);
     this.setSession(this.workspaceCoordinator.getSession());
+    if (didOpen === false) {
+      return false;
+    }
 
     if (shouldRevealInTree) {
       this.revealFileInTree(filePath, { clearSearch: true });

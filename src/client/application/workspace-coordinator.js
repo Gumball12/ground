@@ -205,7 +205,14 @@ export class WorkspaceCoordinator {
 
   async openFile(filePath, { drawioMode = null } = {}) {
     if (!this.isTabActive()) {
-      return;
+      return false;
+    }
+
+    if (!filePath || !this.getFileList().includes(filePath)) {
+      this.cleanupSession();
+      this.stateStore.sessionLoadToken += 1;
+      this.onFileOpenError({ code: 'not-found', filePath });
+      return false;
     }
 
     const normalizedDrawioMode = drawioMode ?? null;
@@ -227,7 +234,7 @@ export class WorkspaceCoordinator {
     ) {
       this.onUpdateActiveFile(filePath);
       this.onUpdateLobbyCurrentFile(filePath);
-      return;
+      return true;
     }
 
     const loadToken = ++this.stateStore.sessionLoadToken;
@@ -258,7 +265,7 @@ export class WorkspaceCoordinator {
         session: null,
         supportsBacklinks: chromeState.supportsBacklinks,
       });
-      return;
+      return true;
     }
 
     const EditorSession = await this.loadEditorSessionClass();
@@ -434,6 +441,7 @@ export class WorkspaceCoordinator {
         session.ensureInitialContent?.();
         await readySession('post-initialize');
       }
+      return true;
     } catch (error) {
       console.error('[app] Failed to initialize editor:', error);
       session.destroy();
@@ -446,7 +454,8 @@ export class WorkspaceCoordinator {
         return;
       }
 
-      this.onFileOpenError();
+      this.onFileOpenError({ code: 'load-failed', filePath });
+      return false;
     }
   }
 }

@@ -217,7 +217,7 @@ function bindToolbarEvents() {
 /** @this {UiShellContext} */
 function bindDialogEvents() {
   this.elements.displayNameCancel?.addEventListener('click', () => {
-    this.elements.displayNameDialog?.close();
+    this.handleDisplayNameCancel();
   });
 
   this.elements.gitCommitCancel?.addEventListener('click', () => {
@@ -263,6 +263,19 @@ function bindDialogEvents() {
 }
 
 /** @this {UiShellContext} */
+function focusEditor(event) {
+  event?.preventDefault?.();
+  const container = this.elements.editorContainer;
+  if (!container) return;
+
+  const target = container.querySelector('.cm-content, iframe, [contenteditable="true"]') ?? container;
+  if (target === container && !container.hasAttribute('tabindex')) {
+    container.setAttribute('tabindex', '-1');
+  }
+  target.focus();
+}
+
+/** @this {UiShellContext} */
 function bindEvents() {
   const stopFollowing = () => this.stopFollowingUser?.();
   this.elements.editorContainer?.addEventListener('pointerdown', stopFollowing);
@@ -270,6 +283,7 @@ function bindEvents() {
   this.elements.editorContainer?.addEventListener('wheel', stopFollowing, { passive: true });
   this.elements.previewContainer?.addEventListener('pointerdown', stopFollowing);
   this.elements.previewContainer?.addEventListener('wheel', stopFollowing, { passive: true });
+  this.elements.skipToEditor?.addEventListener('click', (event) => this.focusEditor(event));
 
   this.elements.emptyStateNewFileBtn?.addEventListener('click', () => {
     this.fileExplorer.actionController.openRootCreateMenu({
@@ -953,13 +967,17 @@ function hideEditorLoading() {
 }
 
 /** @this {UiShellContext} */
-function showEditorLoadError() {
+function showEditorLoadError(message = 'Failed to load file') {
   if (!this.elements.editorContainer) return;
+  const loading = document.createElement('div');
+  const text = document.createElement('span');
+  loading.className = 'editor-loading';
+  loading.id = 'editorLoading';
+  text.className = 'loading-text';
+  text.textContent = message;
+  loading.appendChild(text);
   this.elements.editorContainer.classList.remove('is-loading-editor');
-  this.elements.editorContainer.innerHTML = `
-      <div class="editor-loading" id="editorLoading">
-        <span class="loading-text">Failed to load file</span>
-      </div>`;
+  this.elements.editorContainer.replaceChildren(loading);
 }
 
 /** @this {UiShellContext} */
@@ -975,6 +993,7 @@ export const uiFeatureShellMethods = {
   copyPreviewCodeBlock,
   copyPreviewHeadingLink,
   createPreviewHeadingLinkUrl,
+  focusEditor,
   formatCurrentDocument,
   getStoredLineWrapping,
   getStoredVimMode,

@@ -8,10 +8,12 @@ import {
 } from '../../domain/file-kind.js';
 
 export function normalizeVaultPathInput(value) {
-  const segments = String(value ?? '')
-    .trim()
-    .replace(/\\/g, '/')
-    .replace(/^\/+/u, '')
+  const normalized = String(value ?? '').trim().replace(/\\/g, '/');
+  if (!normalized || normalized.startsWith('/')) {
+    return '';
+  }
+
+  const segments = normalized
     .split('/')
     .map((segment) => segment.trim())
     .filter(Boolean);

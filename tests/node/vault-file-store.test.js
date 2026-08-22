@@ -785,10 +785,14 @@ test('VaultFileStore rejects path traversal even when the target uses a vault ex
   await writeFile(join(vaultDir, 'escape.md'), '# Escape\n', 'utf-8');
 
   assert.equal(await store.readMarkdownFile('../escape.md'), null);
+  assert.equal(await store.readMarkdownFile('notes/../escape.md'), null);
 
   const createResult = await store.createFile('../created-outside.md', '# Nope\n');
   assert.equal(createResult.ok, false);
   assert.match(createResult.error, /must end in \.md, .*\.png, .*\.svg/i);
+
+  const normalizedTraversalResult = await store.createFile('notes/../created-inside.md', '# Nope\n');
+  assert.equal(normalizedTraversalResult.ok, false);
 
   const renameResult = await store.renameFile('README.md', '../escape.md');
   assert.equal(renameResult.ok, false);

@@ -44,6 +44,7 @@ function openDisplayNameDialog({ mode = 'edit' } = {}) {
   if (!dialog || !input) return;
 
   const isOnboarding = mode === 'onboarding';
+  this._displayNameDialogMode = mode;
   if (title) {
     title.textContent = isOnboarding ? 'Choose your display name' : 'Update display name';
   }
@@ -86,6 +87,17 @@ function promptForDisplayNameIfNeeded() {
   requestAnimationFrame(() => {
     this.openDisplayNameDialog({ mode: 'onboarding' });
   });
+}
+
+/** @this {UiIdentityContext} */
+function handleDisplayNameCancel() {
+  if (this._displayNameDialogMode === 'onboarding' && !this.getStoredUserName()) {
+    const guestName = this.getCurrentUserName();
+    if (guestName) {
+      this.preferences.setUserName(guestName);
+    }
+  }
+  this.elements.displayNameDialog?.close();
 }
 
 /** @this {UiIdentityContext} */
@@ -164,6 +176,7 @@ export const uiFeatureIdentityMethods = {
   getCurrentUser,
   getCurrentUserName,
   getStoredUserName,
+  handleDisplayNameCancel,
   handleDisplayNameSubmit,
   isIdentityManagedByAuth,
   openDisplayNameDialog,

@@ -64,7 +64,16 @@ function createCoordinator(overrides = {}) {
     },
     createEditorSession: () => session,
     getDisplayName: () => 'README',
-    getFileList: () => [],
+    getFileList: overrides.getFileList ?? (() => [
+      'README.assets/diagram.png',
+      'README.md',
+      'docs/brief.pdf',
+      'report.html',
+      'test.dsl',
+      'vault/architecture.drawio',
+      'vault/new-diagram.excalidraw',
+      'views/board.base',
+    ]),
     getLineWrappingEnabled: () => true,
     getLocalUser: () => null,
     getStoredUserName: () => 'Tester',
@@ -163,6 +172,15 @@ test('EditorSession emitContentChange deduplicates repeated content', () => {
   session.getText = () => 'hello world';
   assert.equal(session.emitContentChange(), true);
   assert.deepEqual(notifications, ['change', 'change']);
+});
+
+test('WorkspaceCoordinator rejects missing files before creating an editor session', async () => {
+  const { coordinator } = createCoordinator({ getFileList: () => ['README.md'] });
+
+  const opened = await coordinator.openFile('__missing__.md');
+
+  assert.equal(opened, false);
+  assert.equal(coordinator.getSession(), null);
 });
 
 test('WorkspaceCoordinator renders an arbitrary .dsl workspace root', async () => {

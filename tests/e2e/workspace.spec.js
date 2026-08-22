@@ -141,6 +141,27 @@ test('shows empty state when no file is selected', async ({ page }) => {
   await expect(page.locator('#refreshFilesBtn')).toHaveCount(0);
 });
 
+test('missing and invalid file routes do not mount phantom editors', async ({ page }) => {
+  await openFile(page, 'README.md');
+
+  for (const route of ['__qa_missing_file__.md', '../README.md', '']) {
+    await page.goto(`/#file=${encodeURIComponent(route)}`);
+    await expect(page.locator('#editorLoading')).toContainText('File not found');
+    await expect(page.locator('.cm-editor')).toHaveCount(0);
+  }
+});
+
+test('skip to editor preserves the file route and focuses CodeMirror', async ({ page }) => {
+  await openFile(page, 'README.md');
+  const expectedUrl = page.url();
+
+  await page.locator('#skipToEditor').focus();
+  await page.keyboard.press('Enter');
+
+  await expect(page).toHaveURL(expectedUrl);
+  await expect(page.locator('.cm-content')).toBeFocused();
+});
+
 test('prompts first-time visitors for a display name', async ({ browser }) => {
   const page = await browser.newPage();
 
@@ -154,9 +175,12 @@ test('prompts first-time visitors for a display name', async ({ browser }) => {
 
   await page.locator('#displayNameCancel').click();
   await expect(page.locator('#displayNameDialog')).not.toBeVisible();
-  await expect.poll(async () => (
-    page.evaluate(() => window.localStorage.getItem('collabmd-user-name'))
-  )).toBeNull();
+  const guestName = await page.evaluate(() => window.localStorage.getItem('collabmd-user-name'));
+  expect(guestName).not.toBeNull();
+
+  await page.reload();
+  await expect(page.locator('#displayNameDialog')).not.toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem('collabmd-user-name'))).toBe(guestName);
 
   await page.close();
 });

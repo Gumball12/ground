@@ -299,7 +299,14 @@ test('HTTP server searches vault text with ripgrep-backed API', async (t) => {
   await writeFile(join(app.vaultDir, 'docs', 'guide.md'), '# Guide\n\nFind the search needle here.\n', 'utf8');
   await writeFile(join(app.vaultDir, 'docs', 'report.html'), '<h1>HTML needle</h1>\n', 'utf8');
   await writeFile(join(app.vaultDir, 'diagram.drawio'), '<mxfile>needle in drawio text</mxfile>\n', 'utf8');
-  await writeFile(join(app.vaultDir, 'sketch.excalidraw'), '{"text":"needle should not be searched"}\n', 'utf8');
+  await writeFile(join(app.vaultDir, 'sketch.excalidraw'), JSON.stringify({
+    elements: [
+      { id: 'visible', isDeleted: false, text: 'Visible needle label', type: 'text' },
+      { id: 'deleted', isDeleted: true, text: 'Deleted needle label', type: 'text' },
+      { id: 'shape', points: [['needle', 0]], type: 'rectangle' },
+    ],
+    type: 'excalidraw',
+  }), 'utf8');
 
   const response = await httpRequest(`${app.baseUrl}/api/search?q=needle&limit=10`);
   assert.equal(response.statusCode, 200);
@@ -311,7 +318,14 @@ test('HTTP server searches vault text with ripgrep-backed API', async (t) => {
   assert.equal(payload.files.some((entry) => entry.file === 'docs/report.html' && entry.kind === 'html'), true);
   assert.equal(payload.files.some((entry) => entry.file === 'diagram.drawio'), true);
   assert.equal(payload.files.some((entry) => entry.file === 'sketch.excalidraw'), true);
-  assert.equal(payload.files.find((entry) => entry.file === 'sketch.excalidraw')?.kind, 'excalidraw');
+  const sketch = payload.files.find((entry) => entry.file === 'sketch.excalidraw');
+  assert.equal(sketch?.kind, 'excalidraw');
+  assert.equal(sketch?.matchCount, 1);
+  assert.match(sketch?.snippets[0]?.text ?? '', /Visible needle label/u);
+
+  const structuralResponse = await httpRequest(`${app.baseUrl}/api/search?q=points&limit=10`);
+  const structuralPayload = JSON.parse(structuralResponse.body);
+  assert.equal(structuralPayload.files.some((entry) => entry.file === 'sketch.excalidraw'), false);
 
   const guide = payload.files.find((entry) => entry.file === 'docs/guide.md');
   assert.equal(guide.snippets[0].line, 3);

@@ -1,5 +1,9 @@
 /* ===== OVERRIDES / CODEMIRROR ===== */
 
+.editor-container .cm-content {
+  font-variant-ligatures: none;
+}
+
 .cm-tooltip-autocomplete {
   width: min(420px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);

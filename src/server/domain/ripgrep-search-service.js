@@ -1,4 +1,6 @@
 import { execFile as execFileCallback } from 'node:child_process';
+import { glob, readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { getVaultFileKind } from '../../domain/file-kind.js';
@@ -26,8 +28,14 @@ const TEXT_SEARCH_GLOBS = Object.freeze([
   '*.plantuml',
   '*.dsl',
   '*.drawio',
-  '*.excalidraw',
 ]);
+
+function parseByteLimit(value) {
+  const match = String(value ?? '').trim().match(/^(\d+)([KMG])?$/iu);
+  if (!match) return 1024 * 1024;
+  const multipliers = { K: 1024, M: 1024 ** 2, G: 1024 ** 3 };
+  return Number(match[1]) * (multipliers[match[2]?.toUpperCase()] ?? 1);
+}
 
 function normalizePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -218,6 +226,72 @@ export function parseRipgrepJson(stdout, {
   };
 }
 
+async function searchExcalidrawText({ maxFileSize, maxFiles, maxSnippetsPerFile, query, signal, vaultDir }) {
+  const files = [];
+  let matchCount = 0;
+  let truncated = false;
+  const normalizedQuery = query.toLocaleLowerCase();
+  const paths = glob('**/*.excalidraw', {
+    cwd: vaultDir,
+    exclude: ['**/.*', '**/node_modules/**'],
+  });
+
+  for await (const filePath of paths) {
+    signal?.throwIfAborted?.();
+    const absolutePath = join(vaultDir, filePath);
+    if ((await stat(absolutePath)).size > parseByteLimit(maxFileSize)) continue;
+
+    let scene;
+    try {
+      scene = JSON.parse(await readFile(absolutePath, 'utf8'));
+    } catch {
+      continue;
+    }
+
+    const snippets = [];
+    let fileMatchCount = 0;
+    for (const element of Array.isArray(scene?.elements) ? scene.elements : []) {
+      if (element?.isDeleted || element?.type !== 'text' || typeof element.text !== 'string') continue;
+      const text = element.text;
+      const normalizedText = text.toLocaleLowerCase();
+      let matchStart = normalizedText.indexOf(normalizedQuery);
+      while (matchStart >= 0) {
+        fileMatchCount += 1;
+        matchCount += 1;
+        if (snippets.length < maxSnippetsPerFile) {
+          const snippet = createSnippet(text, matchStart, matchStart + query.length);
+          snippets.push({
+            column: matchStart + 1,
+            line: 1,
+            matchEnd: snippet.matchEnd,
+            matchStart: snippet.matchStart,
+            text: snippet.text,
+          });
+        } else {
+          truncated = true;
+        }
+        matchStart = normalizedText.indexOf(normalizedQuery, matchStart + Math.max(query.length, 1));
+      }
+    }
+
+    if (fileMatchCount > 0) {
+      if (files.length >= maxFiles) {
+        truncated = true;
+        continue;
+      }
+      files.push({
+        file: filePath.replaceAll('\\', '/'),
+        kind: 'excalidraw',
+        matchCount: fileMatchCount,
+        snippets,
+        truncated: fileMatchCount > snippets.length,
+      });
+    }
+  }
+
+  return { files, matchCount, truncated };
+}
+
 export class RipgrepSearchService {
   constructor({
     execFileImpl = execFile,
@@ -309,7 +383,7 @@ export class RipgrepSearchService {
       maxFileSize: this.maxFileSize,
       maxSnippetsPerFile: this.maxSnippetsPerFile,
     });
-
+    let parsed;
     try {
       const result = await this.execFileImpl('rg', args, {
         cwd: this.vaultDir,
@@ -318,56 +392,53 @@ export class RipgrepSearchService {
         ...(signal ? { signal } : {}),
         timeout: this.timeoutMs,
       });
-      const parsed = parseRipgrepJson(result.stdout, {
+      parsed = parseRipgrepJson(result.stdout, {
         maxFiles,
         maxSnippetsPerFile: this.maxSnippetsPerFile,
         query: normalizedQuery,
       });
-      parsed.search = this.getClientConfig();
-
-      logPerfEvent(this.perfLoggingEnabled, 'search-query', {
-        durationMs: Date.now() - startedAt,
-        fileCount: parsed.files.length,
-        matchCount: parsed.matchCount,
-        truncated: parsed.truncated,
-      });
-      return parsed;
     } catch (error) {
       if (error?.code === 1) {
-        const empty = createEmptySearchResult({
+        parsed = createEmptySearchResult({
           query: normalizedQuery,
           searchAvailable: this.available,
         });
-        empty.search = this.getClientConfig();
-        logPerfEvent(this.perfLoggingEnabled, 'search-query', {
-          durationMs: Date.now() - startedAt,
-          fileCount: 0,
-          matchCount: 0,
-          truncated: false,
+      } else {
+        const isMaxBuffer = error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+        parsed = parseRipgrepJson(error?.stdout ?? '', {
+          maxFiles,
+          maxSnippetsPerFile: this.maxSnippetsPerFile,
+          query: normalizedQuery,
         });
-        return empty;
+        if (isMaxBuffer && parsed.files.length > 0) {
+          parsed.truncated = true;
+        } else {
+          error.statusCode = error?.signal === 'SIGTERM' ? 504 : 500;
+          throw error;
+        }
       }
+    }
 
-      const isMaxBuffer = error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
-      const parsed = parseRipgrepJson(error?.stdout ?? '', {
-        maxFiles,
+    if (parsed.files.length < maxFiles) {
+      const excalidraw = await searchExcalidrawText({
+        maxFileSize: this.maxFileSize,
+        maxFiles: maxFiles - parsed.files.length,
         maxSnippetsPerFile: this.maxSnippetsPerFile,
         query: normalizedQuery,
+        signal,
+        vaultDir: this.vaultDir,
       });
-      if (isMaxBuffer && parsed.files.length > 0) {
-        parsed.search = this.getClientConfig();
-        parsed.truncated = true;
-        logPerfEvent(this.perfLoggingEnabled, 'search-query', {
-          durationMs: Date.now() - startedAt,
-          fileCount: parsed.files.length,
-          matchCount: parsed.matchCount,
-          truncated: true,
-        });
-        return parsed;
-      }
-
-      error.statusCode = error?.signal === 'SIGTERM' ? 504 : 500;
-      throw error;
+      parsed.files.push(...excalidraw.files);
+      parsed.matchCount += excalidraw.matchCount;
+      parsed.truncated ||= excalidraw.truncated;
     }
+    parsed.search = this.getClientConfig();
+    logPerfEvent(this.perfLoggingEnabled, 'search-query', {
+      durationMs: Date.now() - startedAt,
+      fileCount: parsed.files.length,
+      matchCount: parsed.matchCount,
+      truncated: parsed.truncated,
+    });
+    return parsed;
   }
 }
