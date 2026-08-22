@@ -1,5 +1,4 @@
-import { stripVaultFileExtension } from '../../domain/file-kind.js';
-import { escapeHtml } from '../domain/vault-utils.js';
+import { createFileSearchEntry, findFileSearchMatch } from '../domain/file-search.js';
 import { getVaultFileIconSvg } from './file-icon-svg.js';
 import {
   DEFAULT_SEARCH_DEBOUNCE_MS,
@@ -17,115 +16,13 @@ function getRawFileName(filePath) {
   return String(filePath ?? '').split('/').pop() || String(filePath ?? '');
 }
 
-function createCorpusEntry(filePath) {
-  const displayName = stripVaultFileExtension(filePath);
-  const fileName = displayName.split('/').pop() || displayName;
-  const rawFileName = getRawFileName(filePath);
-
-  return {
-    displayName,
-    fileName,
-    filePath,
-    lowerDisplayName: displayName.toLowerCase(),
-    lowerFileName: fileName.toLowerCase(),
-    lowerPath: String(filePath).toLowerCase(),
-    lowerRawFileName: rawFileName.toLowerCase(),
-  };
-}
-
 function getFileName(filePath) {
-  const displayName = stripVaultFileExtension(filePath);
-  return displayName.split('/').pop() || displayName;
+  return createFileSearchEntry(filePath).fileName;
 }
 
 function getDirPath(filePath) {
-  const displayName = stripVaultFileExtension(filePath);
+  const displayName = createFileSearchEntry(filePath).displayName;
   return displayName.includes('/') ? displayName.substring(0, displayName.lastIndexOf('/')) : '';
-}
-
-function createRangeIndices(start, length) {
-  return Array.from({ length }, (_, index) => start + index);
-}
-
-function findFuzzyMatch(text, query) {
-  const indices = [];
-  let queryIndex = 0;
-  let score = 0;
-  let consecutiveBonus = 0;
-
-  for (let index = 0; index < text.length && queryIndex < query.length; index += 1) {
-    if (/\s/u.test(query[queryIndex]) && /[\s/\\_-]/u.test(text[index])) {
-      queryIndex += 1;
-      consecutiveBonus = 0;
-      continue;
-    }
-
-    if (text[index] !== query[queryIndex]) {
-      if (queryIndex > 0) {
-        score -= 0.25;
-      }
-      consecutiveBonus = 0;
-      continue;
-    }
-
-    queryIndex += 1;
-    indices.push(index);
-    consecutiveBonus += 1;
-    score += consecutiveBonus;
-
-    if (
-      index === 0
-      || text[index - 1] === '/'
-      || text[index - 1] === '-'
-      || text[index - 1] === '_'
-      || text[index - 1] === ' '
-    ) {
-      score += 5;
-    }
-  }
-
-  return queryIndex === query.length && score > 0
-    ? { indices, score }
-    : null;
-}
-
-function findCorpusMatch(entry, query) {
-  const fileIndex = entry.lowerFileName.indexOf(query);
-  if (fileIndex >= 0) {
-    return {
-      indices: createRangeIndices(fileIndex + (entry.displayName.length - entry.fileName.length), query.length),
-      score: 100 + (1 / entry.fileName.length),
-    };
-  }
-
-  const pathIndex = entry.lowerDisplayName.indexOf(query);
-  if (pathIndex >= 0) {
-    return {
-      indices: createRangeIndices(pathIndex, query.length),
-      score: 50 + (1 / entry.displayName.length),
-    };
-  }
-
-  const rawFileIndex = entry.lowerRawFileName.indexOf(query);
-  if (rawFileIndex >= 0) {
-    return {
-      indices: createRangeIndices(
-        rawFileIndex + (entry.displayName.length - entry.fileName.length),
-        query.length,
-      ),
-      score: 40 + (1 / entry.lowerRawFileName.length),
-    };
-  }
-
-  const rawPathIndex = entry.lowerPath.indexOf(query);
-  if (rawPathIndex >= 0) {
-    return {
-      indices: createRangeIndices(rawPathIndex, query.length),
-      score: 25 + (1 / entry.lowerPath.length),
-    };
-  }
-
-  return findFuzzyMatch(entry.lowerDisplayName, query);
 }
 
 function splitMatchIndices(entry, indices = []) {
@@ -138,42 +35,25 @@ function splitMatchIndices(entry, indices = []) {
   };
 }
 
-function highlightText(text, indices = []) {
-  if (indices.length === 0) {
-    return escapeHtml(text);
-  }
-
+function appendHighlightedText(element, text, indices = []) {
   const matchedIndices = new Set(indices);
-  let result = '';
-  let runStart = null;
   let cursor = 0;
 
-  const appendRun = (runEnd) => {
-    result += escapeHtml(text.slice(cursor, runStart));
-    result += `<mark>${escapeHtml(text.slice(runStart, runEnd + 1))}</mark>`;
-    cursor = runEnd + 1;
-    runStart = null;
-  };
+  while (cursor < text.length) {
+    const matched = matchedIndices.has(cursor);
+    let end = cursor + 1;
+    while (end < text.length && matchedIndices.has(end) === matched) end += 1;
 
-  for (let index = 0; index < text.length; index += 1) {
-    if (!matchedIndices.has(index)) {
-      if (runStart !== null) {
-        appendRun(index - 1);
-      }
-      continue;
+    const value = text.slice(cursor, end);
+    if (matched) {
+      const mark = document.createElement('mark');
+      mark.textContent = value;
+      element.append(mark);
+    } else {
+      element.append(value);
     }
-
-    if (runStart === null) {
-      runStart = index;
-    }
+    cursor = end;
   }
-
-  if (runStart !== null) {
-    appendRun(text.length - 1);
-  }
-
-  result += escapeHtml(text.slice(cursor));
-  return result;
 }
 
 export class QuickSwitcherController {
@@ -429,7 +309,7 @@ export class QuickSwitcherController {
     const allFiles = this.getFileList?.() ?? [];
     if (allFiles !== this.lastFileListRef) {
       this.lastFileListRef = allFiles;
-      this.fileCorpus = allFiles.map((filePath) => createCorpusEntry(filePath));
+      this.fileCorpus = allFiles.map((filePath) => createFileSearchEntry(filePath));
     }
 
     this.fileMatches.clear();
@@ -462,7 +342,7 @@ export class QuickSwitcherController {
       const ranked = [];
       let fileMatchCount = 0;
       this.fileCorpus.forEach((entry) => {
-        const match = findCorpusMatch(entry, query);
+        const match = findFileSearchMatch(entry, query);
         if (!match) {
           return;
         }
@@ -556,11 +436,20 @@ export class QuickSwitcherController {
       const corpusEntry = this.fileCorpus.find((entry) => entry.filePath === filePath);
       const matchIndices = corpusEntry ? splitMatchIndices(corpusEntry, match?.indices) : { dirPath: [], fileName: [] };
 
-      item.innerHTML = `
-        ${getVaultFileIconSvg(filePath, { className: 'qs-result-icon' })}
-        <span class="qs-result-name">${highlightText(fileName, matchIndices.fileName)}</span>
-        ${dirPath ? `<span class="qs-result-path" title="${escapeHtml(dirPath)}">${highlightText(dirPath, matchIndices.dirPath)}</span>` : ''}
-      `;
+      const svg = getVaultFileIconSvg(filePath, { className: 'qs-result-icon' });
+      item.append(document.createRange().createContextualFragment(svg));
+      const name = document.createElement('span');
+      name.className = 'qs-result-name';
+      appendHighlightedText(name, fileName, matchIndices.fileName);
+      item.append(name);
+
+      if (dirPath) {
+        const path = document.createElement('span');
+        path.className = 'qs-result-path';
+        path.title = dirPath;
+        appendHighlightedText(path, dirPath, matchIndices.dirPath);
+        item.append(path);
+      }
 
       item.addEventListener('click', () => {
         this.selectedIndex = index;
@@ -645,11 +534,16 @@ export class QuickSwitcherController {
 
       const header = document.createElement('div');
       header.className = 'qs-text-group-header';
-      header.innerHTML = `
-        <span class="qs-text-file-name">${escapeHtml(getFileName(fileGroup.file))}</span>
-        <span class="qs-text-file-meta">${escapeHtml(getDirPath(fileGroup.file))}</span>
-        <span class="qs-text-count">${escapeHtml(formatMatchCount(fileGroup.matchCount, { truncated: fileGroup.truncated }))}</span>
-      `;
+      [
+        ['qs-text-file-name', getFileName(fileGroup.file)],
+        ['qs-text-file-meta', getDirPath(fileGroup.file)],
+        ['qs-text-count', formatMatchCount(fileGroup.matchCount, { truncated: fileGroup.truncated })],
+      ].forEach(([className, text]) => {
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        header.append(span);
+      });
       group.appendChild(header);
 
       (fileGroup.snippets ?? []).forEach((snippet) => {
@@ -664,10 +558,13 @@ export class QuickSwitcherController {
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', itemIndex === this.selectedTextIndex ? 'true' : 'false');
         item.dataset.textIndex = String(itemIndex);
-        item.innerHTML = `
-          <span class="qs-text-line">L${escapeHtml(String(snippet.line ?? 1))}</span>
-          <span class="qs-text-snippet">${this.highlightSnippet(snippet)}</span>
-        `;
+        const line = document.createElement('span');
+        line.className = 'qs-text-line';
+        line.textContent = `L${snippet.line ?? 1}`;
+        const snippetText = document.createElement('span');
+        snippetText.className = 'qs-text-snippet';
+        this.appendHighlightedSnippet(snippetText, snippet);
+        item.append(line, snippetText);
         item.addEventListener('click', () => {
           this.selectedTextIndex = itemIndex;
           this.confirmSelection();
@@ -687,11 +584,14 @@ export class QuickSwitcherController {
     this.updateSelection();
   }
 
-  highlightSnippet(snippet = {}) {
+  appendHighlightedSnippet(element, snippet = {}) {
     const text = String(snippet.text ?? '');
     const start = Math.min(Math.max(Number(snippet.matchStart) || 0, 0), text.length);
     const end = Math.min(Math.max(Number(snippet.matchEnd) || start, start), text.length);
-    return `${escapeHtml(text.slice(0, start))}<mark>${escapeHtml(text.slice(start, end))}</mark>${escapeHtml(text.slice(end))}`;
+    element.append(text.slice(0, start));
+    const mark = document.createElement('mark');
+    mark.textContent = text.slice(start, end);
+    element.append(mark, text.slice(end));
   }
 
   moveSelection(delta) {

@@ -2,6 +2,8 @@
 
 .preview-container,
 .cm-scroller,
+.cm-tooltip-autocomplete > ul,
+.presence-panel-list,
 .file-tree,
 .git-panel,
 .diff-scroll,
@@ -25,6 +27,8 @@
 
 .preview-container::-webkit-scrollbar,
 .cm-scroller::-webkit-scrollbar,
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar,
+.presence-panel-list::-webkit-scrollbar,
 .file-tree::-webkit-scrollbar,
 .git-panel::-webkit-scrollbar,
 .diff-scroll::-webkit-scrollbar,
@@ -48,6 +52,8 @@
 
 .preview-container::-webkit-scrollbar-track,
 .cm-scroller::-webkit-scrollbar-track,
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar-track,
+.presence-panel-list::-webkit-scrollbar-track,
 .file-tree::-webkit-scrollbar-track,
 .git-panel::-webkit-scrollbar-track,
 .diff-scroll::-webkit-scrollbar-track,
@@ -70,6 +76,8 @@
 
 .preview-container::-webkit-scrollbar-thumb,
 .cm-scroller::-webkit-scrollbar-thumb,
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar-thumb,
+.presence-panel-list::-webkit-scrollbar-thumb,
 .file-tree::-webkit-scrollbar-thumb,
 .git-panel::-webkit-scrollbar-thumb,
 .diff-scroll::-webkit-scrollbar-thumb,
@@ -93,6 +101,8 @@
 
 .preview-container::-webkit-scrollbar-thumb:hover,
 .cm-scroller::-webkit-scrollbar-thumb:hover,
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar-thumb:hover,
+.presence-panel-list::-webkit-scrollbar-thumb:hover,
 .file-tree::-webkit-scrollbar-thumb:hover,
 .git-panel::-webkit-scrollbar-thumb:hover,
 .diff-scroll::-webkit-scrollbar-thumb:hover,

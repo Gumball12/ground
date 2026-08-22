@@ -1,3 +1,7 @@
+import { createFileSearchEntry, findFileSearchMatch } from './file-search.js';
+
+const MAX_VISIBLE_RESULTS = 30;
+
 /**
  * CodeMirror autocomplete source for [[wiki-links]].
  *
@@ -29,25 +33,23 @@ export function wikiLinkCompletions(getFileList) {
       return null;
     }
 
-    const query = afterOpen.toLowerCase();
+    const query = afterOpen.trim().toLowerCase().replace(/\s+/gu, ' ');
     const from = line.from + openIndex + 2;
-    const files = getFileList();
+    const entries = getFileList().map((filePath) => createFileSearchEntry(filePath));
+    const matches = query
+      ? entries
+        .map((entry) => ({ entry, match: findFileSearchMatch(entry, query) }))
+        .filter(({ match }) => match)
+        .sort((left, right) => right.match.score - left.match.score
+          || left.entry.lowerPath.localeCompare(right.entry.lowerPath))
+      : entries.map((entry) => ({ entry, match: null }));
 
-    // Build completion options: show file paths without .md extension
-    const options = files
-      .map((filePath) => {
-        const label = filePath.replace(/\.md$/i, '');
-        // Match against full path and just the filename
-        const fileName = label.split('/').pop();
-        return { filePath, label, fileName };
-      })
-      .filter(({ label, fileName }) =>
-        label.toLowerCase().includes(query) || fileName.toLowerCase().includes(query),
-      )
-      .map(({ label, fileName }) => ({
-        label,
-        // Show just the filename as detail when in a subdirectory
-        detail: label.includes('/') ? `  ${fileName}` : undefined,
+    const options = matches
+      .slice(0, MAX_VISIBLE_RESULTS)
+      .map(({ entry }) => ({
+        label: entry.filePath,
+        displayLabel: entry.filePath.split('/').pop(),
+        detail: entry.displayName.slice(0, -entry.fileName.length - 1) || undefined,
         apply: (view, completion, from, to) => {
           // Replace from the query start to cursor, and also consume any trailing `]]`
           let end = to;

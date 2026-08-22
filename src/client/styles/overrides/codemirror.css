@@ -1,55 +1,63 @@
 /* ===== OVERRIDES / CODEMIRROR ===== */
 
 .cm-tooltip-autocomplete {
+  width: min(420px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   overflow: hidden;
-  border: 1px solid var(--color-divider) !important;
-  border-radius: var(--radius-md) !important;
-  background: var(--color-surface) !important;
-  box-shadow: var(--shadow-md) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-lg) !important;
+  background: oklch(from var(--color-surface) l c h / 0.98) !important;
+  box-shadow: var(--shadow-lg) !important;
+  backdrop-filter: blur(12px);
   font-family: var(--font-body);
-  font-size: var(--text-sm);
+  font-size: var(--text-ui-sm);
 }
 
 .cm-tooltip-autocomplete > ul {
   max-height: 240px !important;
-  padding: var(--space-1) 0;
+  padding: var(--space-1);
 }
 
 .cm-tooltip-autocomplete > ul > li {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: 36px;
   padding: var(--space-2) var(--space-3) !important;
+  border-radius: var(--radius-md);
   line-height: 1.4;
 }
 
 .cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background: var(--color-primary) !important;
-  color: var(--color-text-inverse) !important;
+  background: var(--color-surface-offset) !important;
+  color: var(--color-text) !important;
+}
+
+.cm-tooltip-autocomplete .cm-completionIcon {
+  display: none;
 }
 
 .cm-tooltip-autocomplete .cm-completionLabel {
   flex: 1;
   overflow: hidden;
+  font-family: var(--font-body) !important;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cm-tooltip-autocomplete .cm-completionDetail {
+  max-width: 45%;
   margin-left: auto;
-  color: inherit;
-  opacity: 0.6;
+  overflow: hidden;
+  color: var(--color-text-faint);
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-body) !important;
   font-size: var(--text-xs);
-}
-
-.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
-  opacity: 0.85;
-}
-
-.cm-completionIcon-text::after {
-  content: '📄';
-  font-size: var(--text-ui-sm);
+  font-style: normal;
 }
 
 .cm-panels-top {
