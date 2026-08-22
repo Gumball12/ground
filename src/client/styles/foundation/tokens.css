@@ -1,5 +1,13 @@
 /* ===== FOUNDATION / TOKENS ===== */
 
+@font-face {
+  font-display: swap;
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../../assets/vendor/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
 :root {
   --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
   --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);

@@ -2,13 +2,9 @@ import { vim } from '@replit/codemirror-vim';
 import { autocompletion, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import {
   defaultKeymap,
-  history,
-  historyKeymap,
   indentLess,
   indentMore,
   indentWithTab,
-  redo,
-  undo,
 } from '@codemirror/commands';
 import { html } from '@codemirror/lang-html';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -45,7 +41,7 @@ import {
   lineNumbers,
   rectangularSelection,
 } from '@codemirror/view';
-import { yCollab } from 'y-codemirror.next';
+import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 
 import {
   isBaseFilePath,
@@ -151,8 +147,6 @@ const EDITOR_COMMANDS = Object.freeze({
   indentLess,
   indentMore,
   openSearch: openSearchPanelPreservingViewport,
-  redo,
-  undo,
 });
 
 class RemoteUpdateCaretWidget extends WidgetType {
@@ -447,6 +441,7 @@ export class EditorViewAdapter {
     this.onSelectionChanged = onSelectionChanged;
     this.onViewportChanged = onViewportChanged;
     this.editorView = null;
+    this.undoManager = null;
     this.themeCompartment = new Compartment();
     this.syntaxThemeCompartment = new Compartment();
     this.lineWrappingCompartment = new Compartment();
@@ -483,11 +478,11 @@ export class EditorViewAdapter {
   }
 
   getBaseExtensions(filePath, { readOnly = false } = {}) {
+    const wikiLinkCompletionSource = wikiLinkCompletions(this.getFileList);
     const extensions = [
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightSpecialChars(),
-      history(),
       foldGutter(),
       drawSelection(),
       EditorState.allowMultipleSelections.of(true),
@@ -495,9 +490,10 @@ export class EditorViewAdapter {
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching({ renderMatch: renderBracketMatch }),
       closeBrackets(),
-      autocompletion({
-        override: [wikiLinkCompletions(this.getFileList)],
-      }),
+      autocompletion(),
+      EditorState.languageData.of(() => [{
+        autocomplete: wikiLinkCompletionSource,
+      }]),
       rectangularSelection(),
       crosshairCursor(),
       highlightActiveLine(),
@@ -507,7 +503,6 @@ export class EditorViewAdapter {
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
-        ...historyKeymap,
         ...searchKeymap.map((binding) => (
           binding.run === openSearchPanel
             ? { ...binding, run: openSearchPanelPreservingViewport }
@@ -599,10 +594,12 @@ export class EditorViewAdapter {
 
   initialize({ awareness, filePath, undoManager, ytext }) {
     const preserveScrollTop = this.editorView?.scrollDOM?.scrollTop ?? 0;
+    this.undoManager = undoManager;
     const state = EditorState.create({
       doc: ytext.toString(),
       extensions: [
         ...this.getBaseExtensions(filePath),
+        keymap.of(yUndoManagerKeymap),
         yCollab(ytext, awareness, { undoManager }),
       ],
     });
@@ -615,6 +612,7 @@ export class EditorViewAdapter {
 
   initializeProvisional({ content = '', filePath }) {
     const preserveScrollTop = this.editorView?.scrollDOM?.scrollTop ?? 0;
+    this.undoManager = null;
     const state = EditorState.create({
       doc: String(content ?? ''),
       extensions: this.getBaseExtensions(filePath, { readOnly: true }),
@@ -635,6 +633,7 @@ export class EditorViewAdapter {
       clearTimeout(this.remoteUpdateFlashTimer);
       this.remoteUpdateFlashTimer = 0;
     }
+    this.undoManager = null;
     this.teardownEditorView({ clearContainer: true });
   }
 
@@ -720,13 +719,22 @@ export class EditorViewAdapter {
       return false;
     }
 
-    const command = EDITOR_COMMANDS[String(commandId ?? '')];
+    const normalizedCommandId = String(commandId ?? '');
+    if ((normalizedCommandId === 'undo' || normalizedCommandId === 'redo') && this.undoManager) {
+      const applied = this.undoManager[normalizedCommandId]() != null;
+      if (applied) {
+        this.editorView.focus();
+      }
+      return applied;
+    }
+
+    const command = EDITOR_COMMANDS[normalizedCommandId];
     if (typeof command !== 'function') {
       return false;
     }
 
     const applied = command(this.editorView);
-    if (applied && commandId !== 'openSearch') {
+    if (applied && normalizedCommandId !== 'openSearch') {
       this.editorView.focus();
     }
 

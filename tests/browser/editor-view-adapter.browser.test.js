@@ -45,6 +45,47 @@ describe('EditorViewAdapter Vim mode', () => {
   });
 });
 
+describe('EditorViewAdapter collaboration history', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('undoes only local edits through toolbar and keyboard commands', () => {
+    document.body.innerHTML = '<div id="editor"></div>';
+    const adapter = new EditorViewAdapter({
+      editorContainer: document.getElementById('editor'),
+      initialTheme: 'light',
+      lineInfoElement: null,
+    });
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    const undoManager = new Y.UndoManager(ytext);
+
+    adapter.initialize({ awareness: null, filePath: 'README.md', undoManager, ytext });
+    adapter.insertText('local');
+    ydoc.transact(() => ytext.insert(ytext.length, '-remote'), { remote: true });
+
+    expect(adapter.runEditorCommand('undo')).toBe(true);
+    expect(adapter.getText()).toBe('-remote');
+    expect(adapter.runEditorCommand('redo')).toBe(true);
+    expect(adapter.getText()).toBe('local-remote');
+
+    const modifier = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? { metaKey: true }
+      : { ctrlKey: true };
+    adapter.editorView.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
+      ...modifier,
+      bubbles: true,
+      key: 'z',
+    }));
+    expect(adapter.getText()).toBe('-remote');
+
+    adapter.destroy();
+    undoManager.destroy();
+    ydoc.destroy();
+  });
+});
+
 describe('EditorViewAdapter search', () => {
   afterEach(() => {
     document.body.innerHTML = '';

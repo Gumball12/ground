@@ -50,10 +50,9 @@ export function wikiLinkCompletions(getFileList) {
         detail: label.includes('/') ? `  ${fileName}` : undefined,
         apply: (view, completion, from, to) => {
           // Replace from the query start to cursor, and also consume any trailing `]]`
-          const docText = view.state.doc.toString();
           let end = to;
           // If there's already a `]]` right after cursor, consume it
-          if (docText.slice(to, to + 2) === ']]') {
+          if (view.state.sliceDoc(to, to + 2) === ']]') {
             end = to + 2;
           }
           view.dispatch({
@@ -62,7 +61,6 @@ export function wikiLinkCompletions(getFileList) {
           });
         },
         type: 'text',
-        boost: label.toLowerCase().startsWith(query) ? 1 : 0,
       }));
 
     if (options.length === 0) {

@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 
-import { createLanguageExtension } from '../../src/client/infrastructure/editor-view-adapter.js';
+import {
+  createLanguageExtension,
+  EditorViewAdapter,
+} from '../../src/client/infrastructure/editor-view-adapter.js';
 
 function collectSyntaxNodeNames(state) {
   const names = [];
@@ -60,6 +63,21 @@ test('createLanguageExtension uses HTML and embedded CSS syntax for HTML files',
   assert.ok(nodeNames.includes('Element'));
   assert.ok(nodeNames.includes('StyleSheet'));
   assert.ok(!nodeNames.includes('Paragraph'));
+});
+
+test('wiki-link completions preserve language completion sources', () => {
+  const adapter = new EditorViewAdapter({
+    editorContainer: null,
+    getFileList: () => ['README.md'],
+    initialTheme: 'light',
+    lineInfoElement: null,
+  });
+  const state = EditorState.create({
+    doc: '<div>[[',
+    extensions: adapter.getBaseExtensions('index.html', { readOnly: true }),
+  });
+
+  assert.ok(state.languageDataAt('autocomplete', state.doc.length).length >= 2);
 });
 
 test('createLanguageExtension uses Mermaid syntax for .mmd files', () => {
