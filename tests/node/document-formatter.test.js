@@ -14,8 +14,69 @@ test('formatDocumentText formats supported text files without claiming unsupport
     await formatDocumentText('diagram.mmd', 'sequenceDiagram\nparticipant A\nA->>B: Hello'),
     'sequenceDiagram\n  participant A\n  A ->> B: Hello\n',
   );
-  assert.equal(await formatDocumentText('diagram.puml', '@startuml\nA -> B\n@enduml'), null);
+  assert.equal(canFormatDocument('diagram.puml'), true);
   assert.equal(canFormatDocument('model.dsl'), false);
+});
+
+test('formatDocumentText indents PlantUML blocks while preserving opaque regions and line endings', async () => {
+  const source = [
+    '@startuml',
+    '    actor A',
+    'if (ready?) then (yes)',
+    ':Run;   ',
+    '  """',
+    'keep multiline text unchanged',
+    '"""',
+    'else (no)',
+    '  note right',
+    'keep    this',
+    'end note',
+    ' !if %enabled()',
+    'leave preprocessor content alone',
+    '!endif',
+    'package "Core" {',
+    'component API',
+    '}',
+    'endif',
+    'alt success',
+    'A -> B',
+    'else failure',
+    'loop retry',
+    'A -> B',
+    'end',
+    'end',
+    '@enduml',
+  ].join('\r\n');
+  const expected = [
+    '@startuml',
+    '    actor A',
+    'if (ready?) then (yes)',
+    '  :Run;   ',
+    '  """',
+    'keep multiline text unchanged',
+    '"""',
+    'else (no)',
+    '  note right',
+    'keep    this',
+    'end note',
+    ' !if %enabled()',
+    'leave preprocessor content alone',
+    '!endif',
+    '  package "Core" {',
+    '    component API',
+    '  }',
+    'endif',
+    'alt success',
+    '  A -> B',
+    'else failure',
+    '  loop retry',
+    '    A -> B',
+    '  end',
+    'end',
+    '@enduml',
+  ].join('\r\n');
+
+  assert.equal(await formatDocumentText('diagram.puml', source), expected);
 });
 
 test('formatDocumentText rejects invalid Mermaid without rewriting it', async () => {

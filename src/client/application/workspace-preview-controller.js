@@ -25,6 +25,16 @@ function hasHtmlScripts(content) {
   )));
 }
 
+function syncFormatDocumentButton(button, filePath, isPlantUml) {
+  if (!button) return;
+  const actionLabel = isPlantUml ? 'Indent PlantUML document' : 'Format document';
+  button.classList.toggle('hidden', !canFormatDocument(filePath));
+  button.setAttribute('aria-label', actionLabel);
+  button.setAttribute('title', actionLabel);
+  const label = button.querySelector('.ui-action-label');
+  if (label) label.textContent = isPlantUml ? 'Indent' : 'Format';
+}
+
 export class WorkspacePreviewController {
   constructor({
     backlinksPanel,
@@ -164,7 +174,7 @@ export class WorkspacePreviewController {
     this.backlinksPanel.setDisplayMode?.(usesHeaderBacklinks ? 'header' : 'dock');
 
     this.elements.editorFindButton?.classList.toggle('hidden', !isMarkdown);
-    this.elements.editorFormatButton?.classList.toggle('hidden', !canFormatDocument(filePath));
+    syncFormatDocumentButton(this.elements.editorFormatButton, filePath, isPlantUml);
     this.elements.markdownToolbar?.classList.toggle('hidden', !isMarkdown);
     this.elements.exportMenuGroup?.classList.toggle('hidden', !isMarkdown);
     this.elements.htmlPreviewMaximizeButton?.classList.toggle('hidden', !isHtml);

@@ -81,6 +81,28 @@ test('WorkspacePreviewController wraps Mermaid and PlantUML file content for pre
   );
 });
 
+test('WorkspacePreviewController labels PlantUML formatting as indentation', () => {
+  const attributes = {};
+  const label = { textContent: '' };
+  let hidden = true;
+  const controller = createController({
+    elements: {
+      editorFormatButton: {
+        classList: { toggle: (_name, value) => { hidden = value; } },
+        querySelector: () => label,
+        setAttribute: (name, value) => { attributes[name] = value; },
+      },
+    },
+  });
+
+  controller.syncFileChrome('diagram.puml');
+
+  assert.equal(hidden, false);
+  assert.equal(attributes['aria-label'], 'Indent PlantUML document');
+  assert.equal(attributes.title, 'Indent PlantUML document');
+  assert.equal(label.textContent, 'Indent');
+});
+
 test('WorkspacePreviewController pauses preview hydration during editor scroll activity', () => {
   const events = [];
   const controller = createController({

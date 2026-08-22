@@ -1,4 +1,4 @@
-import { supportsBacklinksForFilePath } from '../../../domain/file-kind.js';
+import { getVaultFileKind, supportsBacklinksForFilePath } from '../../../domain/file-kind.js';
 import { isPlainQuickSwitcherShortcut } from '../../domain/keyboard-shortcuts.js';
 import { createFileRouteHash, isCollabMdHashRoute } from '../../domain/hash-routes.js';
 
@@ -862,7 +862,9 @@ async function formatCurrentDocument() {
     const result = await this.session?.formatDocument?.(this.currentFilePath);
     const messages = {
       changed: 'Document changed while formatting. Try again.',
-      formatted: 'Document formatted',
+      formatted: getVaultFileKind(this.currentFilePath) === 'plantuml'
+        ? 'PlantUML indentation applied'
+        : 'Document formatted',
       unchanged: 'Document is already formatted',
       unsupported: 'Formatting is unavailable for this file type',
     };
