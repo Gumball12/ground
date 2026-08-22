@@ -533,7 +533,7 @@ function getHeadingLinkLabel(heading) {
     return heading.textContent.trim();
   }
 
-  headingClone.querySelectorAll('.preview-heading-link-button').forEach((button) => button.remove());
+  headingClone.querySelectorAll('.preview-heading-fold-button, .preview-heading-link-button').forEach((button) => button.remove());
   return headingClone.textContent.replace(/\s+/g, ' ').trim();
 }
 
@@ -632,6 +632,90 @@ function syncPreviewCodeCopyButtons() {
   });
 }
 
+function applyPreviewHeadingFolds(previewContent) {
+  const parents = new Set(Array.from(previewContent?.querySelectorAll?.('.preview-heading-fold-button') ?? [])
+    .map((button) => button.closest('h1, h2, h3, h4, h5, h6')?.parentElement)
+    .filter(Boolean));
+
+  parents.forEach((parent) => {
+    const collapsedLevels = [];
+    Array.from(parent.children).forEach((child) => {
+      const level = /^H([1-6])$/.exec(child.tagName)?.[1];
+      if (level) {
+        const headingLevel = Number(level);
+        while (collapsedLevels.at(-1) >= headingLevel) {
+          collapsedLevels.pop();
+        }
+        child.hidden = collapsedLevels.length > 0;
+        if (child.dataset.previewHeadingCollapsed === 'true') {
+          collapsedLevels.push(headingLevel);
+        }
+      } else {
+        child.hidden = collapsedLevels.length > 0;
+      }
+    });
+  });
+}
+
+/** @this {UiShellContext} */
+function unfoldPreviewHeading(target) {
+  if (!(target instanceof HTMLElement) || !/^H[1-6]$/.test(target.tagName)) {
+    return false;
+  }
+
+  const collapsedHeadings = [];
+  let ancestorLevel = Number(target.tagName[1]) + 1;
+  for (let heading = target; heading; heading = heading.previousElementSibling) {
+    const level = Number(/^H([1-6])$/.exec(heading.tagName)?.[1]);
+    if (!level || level >= ancestorLevel) {
+      continue;
+    }
+
+    ancestorLevel = level;
+    if (heading.dataset.previewHeadingCollapsed === 'true') {
+      collapsedHeadings.push(heading);
+    }
+  }
+
+  if (collapsedHeadings.length === 0) {
+    return false;
+  }
+
+  collapsedHeadings.forEach((heading) => delete heading.dataset.previewHeadingCollapsed);
+  this.syncPreviewHeadingFoldButtons();
+  this.scrollSyncController?.invalidatePreviewBlocks?.();
+  this.schedulePreviewLayoutSync?.({ delayMs: 0 });
+  this.refreshCommentUiLayout?.();
+  return true;
+}
+
+/** @this {UiShellContext} */
+function syncPreviewHeadingFoldButtons() {
+  const headings = this.elements.previewContent?.querySelectorAll?.('h1, h2, h3, h4, h5, h6') ?? [];
+
+  Array.from(headings).forEach((heading) => {
+    if (!(heading instanceof HTMLElement)) {
+      return;
+    }
+
+    const headingLabel = getHeadingLinkLabel(heading);
+    let button = heading.querySelector(':scope > .preview-heading-fold-button');
+    if (!(button instanceof HTMLButtonElement)) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ui-icon-button preview-heading-fold-button';
+      heading.prepend(button);
+    }
+
+    const collapsed = heading.dataset.previewHeadingCollapsed === 'true';
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${headingLabel}`);
+    button.setAttribute('title', `${collapsed ? 'Expand' : 'Collapse'} section`);
+  });
+
+  applyPreviewHeadingFolds(this.elements.previewContent);
+}
+
 /** @this {UiShellContext} */
 function syncPreviewHeadingLinkButtons() {
   const headings = this.elements.previewContent?.querySelectorAll?.('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]') ?? [];
@@ -718,6 +802,18 @@ function applyPendingPreviewRouteAnchor({ allowExpired = false, behavior = 'auto
 /** @this {UiShellContext} */
 function handlePreviewContentClick(event) {
   if (!(event.target instanceof Element)) {
+    return;
+  }
+
+  const foldButton = event.target.closest('button.preview-heading-fold-button');
+  const heading = foldButton?.closest('h1, h2, h3, h4, h5, h6');
+  if (foldButton instanceof HTMLButtonElement && heading instanceof HTMLElement) {
+    event.preventDefault();
+    heading.dataset.previewHeadingCollapsed = String(heading.dataset.previewHeadingCollapsed !== 'true');
+    this.syncPreviewHeadingFoldButtons();
+    this.scrollSyncController?.invalidatePreviewBlocks?.();
+    this.schedulePreviewLayoutSync?.({ delayMs: 0 });
+    this.refreshCommentUiLayout?.();
     return;
   }
 
@@ -1015,6 +1111,7 @@ export const uiFeatureShellMethods = {
   showEditorLoadError,
   showEditorLoading,
   syncPreviewCodeCopyButtons,
+  syncPreviewHeadingFoldButtons,
   syncPreviewHeadingLinkButtons,
   syncVisualViewportBounds,
   syncToolbarOverflowVisibility,
@@ -1022,5 +1119,6 @@ export const uiFeatureShellMethods = {
   syncWrapToggle,
   toggleToolbarOverflowMenu,
   toggleLineWrapping,
+  unfoldPreviewHeading,
   toggleVimMode,
 };

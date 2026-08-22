@@ -209,7 +209,11 @@ export class CollabMdAppShell {
     });
     this.outlineController = new OutlineController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
-      onNavigateToHeading: ({ sourceLine }) => {
+      onNavigateToHeading: ({ headingId, sourceLine }) => {
+        const heading = document.getElementById(headingId);
+        if (this.elements.previewContent?.contains(heading)) {
+          this.unfoldPreviewHeading(heading);
+        }
         if (!Number.isFinite(sourceLine)) return;
         this.scrollSyncController.suspendSync(250);
         this.session?.scrollToLine(sourceLine, 0);
@@ -255,6 +259,7 @@ export class CollabMdAppShell {
         this.excalidrawEmbed.reconcileEmbeds(this.elements.previewContent, { isLargeDocument: stats.isLargeDocument });
         this.scrollSyncController.setLargeDocumentMode(stats.isLargeDocument);
         this.syncPreviewCodeCopyButtons();
+        this.syncPreviewHeadingFoldButtons();
         this.syncPreviewHeadingLinkButtons();
         this.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true });
         this.schedulePreviewLayoutSync({ delayMs: 0 });

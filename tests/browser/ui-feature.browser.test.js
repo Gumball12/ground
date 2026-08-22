@@ -979,6 +979,65 @@ describe('uiFeature browser helpers', () => {
     expect(clickEvent.preventDefault).toHaveBeenCalledTimes(1);
   });
 
+  it('folds heading sections while preserving nested folds', () => {
+    document.body.innerHTML = `
+      <div id="preview-content" class="preview-content">
+        <h1>Document</h1>
+        <h2>Section A</h2>
+        <p id="section-a-content">A content</p>
+        <h3>Section B</h3>
+        <p id="section-b-content">B content</p>
+        <h2>Section C</h2>
+        <p id="section-c-content">C content</p>
+      </div>
+    `;
+
+    const previewContent = document.getElementById('preview-content');
+    const context = {
+      elements: { previewContent },
+      refreshCommentUiLayout: vi.fn(),
+      schedulePreviewLayoutSync: vi.fn(),
+      scrollSyncController: { invalidatePreviewBlocks: vi.fn() },
+    };
+    Object.assign(context, uiFeatureShellMethods);
+    context.syncPreviewHeadingFoldButtons();
+
+    const [sectionA, sectionB, sectionC] = previewContent.querySelectorAll('h2, h3');
+    const clickFold = (heading) => context.handlePreviewContentClick({
+      preventDefault: vi.fn(),
+      target: heading.querySelector('.preview-heading-fold-button'),
+    });
+    const sectionBButton = sectionB.querySelector('.preview-heading-fold-button');
+    clickFold(sectionB);
+
+    expect(sectionBButton.getAttribute('aria-expanded')).toBe('false');
+    expect(sectionBButton.getAttribute('aria-label')).toBe('Expand Section B');
+    expect(document.getElementById('section-b-content').hidden).toBe(true);
+    expect(sectionC.hidden).toBe(false);
+
+    clickFold(sectionA);
+
+    expect(document.getElementById('section-a-content').hidden).toBe(true);
+    expect(sectionB.hidden).toBe(true);
+    expect(sectionC.hidden).toBe(false);
+
+    clickFold(sectionA);
+
+    expect(document.getElementById('section-a-content').hidden).toBe(false);
+    expect(sectionB.hidden).toBe(false);
+    expect(document.getElementById('section-b-content').hidden).toBe(true);
+
+    clickFold(sectionA);
+    expect(sectionB.hidden).toBe(true);
+
+    expect(context.unfoldPreviewHeading(sectionB)).toBe(true);
+    expect(sectionA.dataset.previewHeadingCollapsed).toBeUndefined();
+    expect(sectionB.dataset.previewHeadingCollapsed).toBeUndefined();
+    expect(document.getElementById('section-a-content').hidden).toBe(false);
+    expect(document.getElementById('section-b-content').hidden).toBe(false);
+    expect(context.scrollSyncController.invalidatePreviewBlocks).toHaveBeenCalledTimes(5);
+  });
+
   it('copies preview heading links and applies pending route anchors', async () => {
     document.body.innerHTML = `
       <div id="previewContainer">
