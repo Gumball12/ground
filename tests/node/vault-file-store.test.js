@@ -370,12 +370,17 @@ test('VaultFileStore reads and writes editable vault content by path kind', asyn
   t.after(cleanup);
 
   await store.createFile('views/tasks.base', 'views:\n  - type: table\n');
+  await store.createFile('reports/status.html', '<h1>Status</h1>');
   await store.createFile('diagrams/flow.mmd', 'flowchart TD\n  A --> B\n');
   await store.createFile('diagrams/sequence.plantuml', '@startuml\nAlice -> Bob: Hi\n@enduml\n');
 
   assert.equal(
     await store.readEditableVaultContent('views/tasks.base'),
     'views:\n  - type: table\n',
+  );
+  assert.equal(
+    await store.readEditableVaultContent('reports/status.html'),
+    '<h1>Status</h1>',
   );
   assert.equal(
     await store.readEditableVaultContent('diagrams/flow.mmd'),
@@ -386,9 +391,9 @@ test('VaultFileStore reads and writes editable vault content by path kind', asyn
     '@startuml\nAlice -> Bob: Hi\n@enduml\n',
   );
 
-  const writeResult = await store.writeEditableVaultContent('diagrams/flow.mmd', 'flowchart TD\n  B --> C\n');
+  const writeResult = await store.writeEditableVaultContent('reports/status.html', '<h1>Updated</h1>');
   assert.equal(writeResult.ok, true);
-  assert.equal(await store.readEditableVaultContent('diagrams/flow.mmd'), 'flowchart TD\n  B --> C\n');
+  assert.equal(await store.readEditableVaultContent('reports/status.html'), '<h1>Updated</h1>');
 });
 
 test('VaultFileStore editable vault content preserves read and write validation behavior', async (t) => {

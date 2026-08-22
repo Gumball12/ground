@@ -48,6 +48,20 @@ test('createLanguageExtension keeps Markdown syntax for markdown files', () => {
   assert.ok(!nodeNames.includes('BlockMapping'));
 });
 
+test('createLanguageExtension uses HTML and embedded CSS syntax for HTML files', () => {
+  const state = EditorState.create({
+    doc: '<!doctype html><style>body { color: red; }</style><h1>Hello</h1>',
+    extensions: [createLanguageExtension('reports/status.html')],
+  });
+
+  const nodeNames = collectSyntaxNodeNames(state);
+
+  assert.ok(nodeNames.includes('DoctypeDecl'));
+  assert.ok(nodeNames.includes('Element'));
+  assert.ok(nodeNames.includes('StyleSheet'));
+  assert.ok(!nodeNames.includes('Paragraph'));
+});
+
 test('createLanguageExtension uses Mermaid syntax for .mmd files', () => {
   const state = EditorState.create({
     doc: 'flowchart TD\n  A[Start] --> B{Done?}\n  %% comment\n',

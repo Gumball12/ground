@@ -65,7 +65,7 @@ Prefer video? [Open the WebM demo](https://raw.githubusercontent.com/andes90/col
 - **Local-files-first** — your filesystem remains the source of truth
 - **Realtime collaboration** — multiple people can edit the same file at the same time via Yjs
 - **External edit sync** — changes made from tools like Obsidian or direct file writes are reflected back into open documents and the file explorer
-- **File upload** — import multiple supported Markdown, Base, diagram, image, and PDF files into the vault from the file explorer
+- **File upload** — import multiple supported Markdown, HTML, Base, diagram, image, and PDF files into the vault from the file explorer
 - **Markdown with context** — live preview, wiki-links, backlinks, outline, quick switcher, and scroll sync
 - **Global text search** — search text across supported vault files with ripgrep-backed results grouped by file
 - **Source-anchored comments** — comment on lines or selected text with inline markers and preview bubbles, or pin threads to Excalidraw elements
@@ -180,8 +180,8 @@ collabmd ~/my-vault --no-tunnel
 
 CollabMD starts a local server, scans the vault, and opens a browser-based editor with:
 
-- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.dsl`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
-- **Live preview** — rendered as you type, with syntax-highlighted code blocks, public video embeds, plus Mermaid, PlantUML, and Structurizr diagrams
+- **File explorer sidebar** — upload, browse, create, rename, and delete `.md`, `.markdown`, `.mdx`, `.html`, `.htm`, `.base`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`, `.dsl`, `.excalidraw`, `.drawio`, `.pdf`, and supported image files plus folders
+- **Live preview** — rendered as you type, with sandboxed static HTML, syntax-highlighted code blocks, public video embeds, plus Mermaid, PlantUML, and Structurizr diagrams
 - **Anchored comments** — add comments from the editor or selected Excalidraw elements, reopen threads in context, and review them from the comments drawer
 - **`[[wiki-links]]` + backlinks** — jump between notes and inspect linked mentions
 - **Room chat** — discuss changes without leaving the workspace
@@ -195,6 +195,8 @@ Text comment threads are source-anchored for markdown, Mermaid, PlantUML, and St
 Draw.io files use the diagrams.net embed/runtime. Opening a `.drawio` file directly mounts an interactive editor in the preview pane. Markdown embeds such as `![[architecture.drawio]]` use the diagrams.net viewer for a lighter inline preview and include an `Open` action to jump into the full file view.
 
 Draw.io collaboration is intentionally conservative in this release: one connected client holds the edit lease for a `.drawio` file, while other viewers open it read-only and refresh after saves land. This avoids silent overwrite races without claiming true realtime canvas co-editing.
+
+HTML files open in preview mode by default, with split view still available from the view toggle and a preview-header action for maximizing the iframe. HTML previews run scripts inside an opaque-origin sandbox without same-origin access. A restrictive CSP blocks API connections, forms, workers, nested frames, external subresources, popups, and top-level navigation; inline CSS and self-contained `data:`/`blob:` images, fonts, and media remain supported.
 
 Markdown video embeds are opt-in and use standard image syntax such as `![Video](https://www.youtube.com/watch?v=...)` or `![Video](https://cdn.example.com/demo.webm)`. The preview currently supports public YouTube URLs plus direct public `https` video files ending in `.mp4`, `.webm`, or `.ogg`. The editor toolbar also includes a `Video` action that inserts the same Markdown syntax for you.
 
@@ -738,7 +740,7 @@ cp .env.example .env
 - If `COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE` is not set, SSH falls back to `StrictHostKeyChecking=accept-new`.
 - External filesystem edits are reconciled back into active rooms and the explorer. Ambiguous watcher bursts still fall back to batched workspace reconciliation.
 - `.obsidian`, `.git`, `.trash`, and `node_modules` directories are ignored.
-- Markdown, Base, Mermaid, PlantUML, Structurizr DSL, draw.io, Excalidraw, PDF, and image files are tracked by the vault tree; global text search indexes supported text formats.
+- Markdown, HTML, Base, Mermaid, PlantUML, Structurizr DSL, draw.io, Excalidraw, PDF, and image files are tracked by the vault tree; global text search indexes supported text formats.
 - PlantUML preview rendering is server-side and uses `PLANTUML_SERVER_URL`; point it at a self-hosted renderer if you do not want to use the public PlantUML service.
 - Structurizr previews use a read-only official Local sidecar and a disposable `.collabmd/structurizr` mirror; the authoritative vault is never mounted into the renderer as its data directory.
 - `docker compose up` uses the included local PlantUML and Structurizr services and avoids public diagram renderers by default. The initial git clone may also require a longer health-check grace period than a purely local vault.

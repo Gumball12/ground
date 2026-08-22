@@ -10,6 +10,7 @@ import {
   redo,
   undo,
 } from '@codemirror/commands';
+import { html } from '@codemirror/lang-html';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { yaml } from '@codemirror/lang-yaml';
 import {
@@ -48,6 +49,7 @@ import { yCollab } from 'y-codemirror.next';
 
 import {
   isBaseFilePath,
+  isHtmlFilePath,
   isMermaidFilePath,
   isPlantUmlFilePath,
   isStructurizrFilePath,
@@ -391,6 +393,10 @@ function createEditorTheme(theme) {
 }
 
 export function createLanguageExtension(filePath) {
+  if (isHtmlFilePath(filePath)) {
+    return html();
+  }
+
   if (isMermaidFilePath(filePath)) {
     return mermaidLanguage;
   }

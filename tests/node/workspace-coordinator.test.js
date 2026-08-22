@@ -33,6 +33,9 @@ function createCoordinator(overrides = {}) {
     getScrollContainer() {
       return null;
     },
+    getText() {
+      return '<h1>Hello</h1>';
+    },
     hasBootstrapContent() {
       return false;
     },
@@ -103,6 +106,9 @@ function createCoordinator(overrides = {}) {
     onRenderExcalidrawPreview: () => {
       events.push('render-excalidraw');
     },
+    onRenderHtmlPreview: () => {
+      events.push('render-html');
+    },
     onRenderImagePreview: () => {
       events.push('render-image');
     },
@@ -171,6 +177,19 @@ test('WorkspaceCoordinator renders an arbitrary .dsl workspace root', async () =
   await coordinator.openFile('test.dsl');
 
   assert.equal(renderedPath, 'test.dsl');
+});
+
+test('WorkspaceCoordinator renders editable HTML source as HTML preview', async () => {
+  let renderedContent = null;
+  const { coordinator } = createCoordinator({
+    onRenderHtmlPreview: ({ content }) => {
+      renderedContent = content;
+    },
+  });
+
+  await coordinator.openFile('report.html');
+
+  assert.equal(renderedContent, '<h1>Hello</h1>');
 });
 
 test('WorkspaceCoordinator marks file open before post-paint work completes', async () => {

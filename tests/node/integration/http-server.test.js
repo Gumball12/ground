@@ -297,6 +297,7 @@ test('HTTP server searches vault text with ripgrep-backed API', async (t) => {
 
   await mkdir(join(app.vaultDir, 'docs'), { recursive: true });
   await writeFile(join(app.vaultDir, 'docs', 'guide.md'), '# Guide\n\nFind the search needle here.\n', 'utf8');
+  await writeFile(join(app.vaultDir, 'docs', 'report.html'), '<h1>HTML needle</h1>\n', 'utf8');
   await writeFile(join(app.vaultDir, 'diagram.drawio'), '<mxfile>needle in drawio text</mxfile>\n', 'utf8');
   await writeFile(join(app.vaultDir, 'sketch.excalidraw'), '{"text":"needle should not be searched"}\n', 'utf8');
 
@@ -307,6 +308,7 @@ test('HTTP server searches vault text with ripgrep-backed API', async (t) => {
   assert.equal(payload.ok, true);
   assert.equal(payload.search.backend, 'ripgrep');
   assert.equal(payload.files.some((entry) => entry.file === 'docs/guide.md'), true);
+  assert.equal(payload.files.some((entry) => entry.file === 'docs/report.html' && entry.kind === 'html'), true);
   assert.equal(payload.files.some((entry) => entry.file === 'diagram.drawio'), true);
   assert.equal(payload.files.some((entry) => entry.file === 'sketch.excalidraw'), true);
   assert.equal(payload.files.find((entry) => entry.file === 'sketch.excalidraw')?.kind, 'excalidraw');
@@ -322,7 +324,7 @@ test('HTTP server cancels an in-flight text search when the client disconnects',
 
   let searchSignal = null;
   let searchAborted = false;
-  app.server.searchService.search = ({ signal }) => new Promise((resolve, reject) => {
+  app.server.searchService.search = ({ signal }) => new Promise((_resolve, reject) => {
     searchSignal = signal;
     signal.addEventListener('abort', () => {
       searchAborted = true;
@@ -1241,6 +1243,8 @@ test('HTTP server uploads every supported vault file type without changing its b
     'guide.md',
     'guide.markdown',
     'guide.mdx',
+    'report.html',
+    'legacy.htm',
     'view.base',
     'scene.excalidraw',
     'diagram.drawio',

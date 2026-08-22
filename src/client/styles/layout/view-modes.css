@@ -30,6 +30,7 @@
 .editor-layout[data-view="preview"] .preview-content.is-base-file-preview,
 .editor-layout[data-view="preview"] .preview-content.is-image-file-preview,
 .editor-layout[data-view="preview"] .preview-content.is-pdf-file-preview,
+.editor-layout[data-view="preview"] .preview-content.is-html-file-preview,
 .editor-layout[data-view="preview"] .preview-content.is-mermaid-file-preview,
 .editor-layout[data-view="preview"] .preview-content.is-plantuml-file-preview {
   max-width: none;

@@ -10,6 +10,7 @@ test('FileTreeState flattens tree nodes and filters search matches for files and
     {
       children: [
         { name: 'README.md', path: 'docs/README.md', type: 'file' },
+        { name: 'report.html', path: 'docs/report.html', type: 'html' },
         { name: 'architecture.drawio', path: 'docs/architecture.drawio', type: 'drawio' },
         { name: 'diagram.puml', path: 'docs/diagram.puml', type: 'plantuml' },
         { name: 'diagram.png', path: 'docs/diagram.png', type: 'image' },
@@ -26,6 +27,7 @@ test('FileTreeState flattens tree nodes and filters search matches for files and
 
   assert.deepEqual(state.flatFiles, [
     'docs/README.md',
+    'docs/report.html',
     'docs/architecture.drawio',
     'docs/diagram.puml',
     'docs/diagram.png',

@@ -501,8 +501,15 @@ export class CollabMdAppShell {
         this.clearInitialFileBootstrap();
       },
       onConnectionChange: (state) => this.handleConnectionChange(state),
-      onContentChange: ({ isBase, isMermaid, isPlantUml, isStructurizrWorkspace }) => {
+      onContentChange: ({ isBase, isHtml, isMermaid, isPlantUml, isStructurizrWorkspace }) => {
         this.handleCommentEditorContentChange();
+        if (isHtml) {
+          this.workspacePreviewController.renderHtmlFilePreview({
+            content: this.session?.getText?.() ?? '',
+          });
+          return;
+        }
+
         if (isBase) {
           this.scheduleBaseFilePreview(this.currentFilePath, {
             source: this.session?.getText?.() ?? '',
@@ -546,6 +553,7 @@ export class CollabMdAppShell {
       onRenderDrawioPreview: (filePath) => this.workspacePreviewController.renderDrawioFilePreview(filePath),
       onRenderBasePreview: (filePath) => this.renderBaseFilePreview(filePath),
       onRenderExcalidrawPreview: (filePath) => this.workspacePreviewController.renderExcalidrawFilePreview(filePath),
+      onRenderHtmlPreview: (options) => this.workspacePreviewController.renderHtmlFilePreview(options),
       onRenderImagePreview: (filePath) => this.workspacePreviewController.renderImageFilePreview(filePath),
       onRenderPdfPreview: (filePath) => this.workspacePreviewController.renderPdfFilePreview(filePath),
       onRenderStructurizrPreview: (filePath, options) => this.workspacePreviewController.renderStructurizrFilePreview(filePath, options),

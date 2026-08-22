@@ -247,6 +247,35 @@ test('WorkspacePreviewController forces image attachments into preview without o
   ]);
 });
 
+test('WorkspacePreviewController defaults HTML files to preview without overwriting layout preference', () => {
+  const events = [];
+  const controller = createController({
+    layoutController: {
+      setView(view, options) {
+        events.push(['set-view', view, options]);
+      },
+    },
+    outlineController: {
+      close() {
+        events.push(['outline-close']);
+      },
+    },
+    backlinksPanel: {
+      clear() {
+        events.push(['backlinks-clear']);
+      },
+    },
+  });
+
+  controller.syncFileChrome('reports/status.html');
+
+  assert.deepEqual(events, [
+    ['set-view', 'preview', { persist: false }],
+    ['outline-close'],
+    ['backlinks-clear'],
+  ]);
+});
+
 test('WorkspacePreviewController forces PDF files into a readonly preview', () => {
   const events = [];
   const controller = createController({
@@ -407,6 +436,7 @@ test('WorkspacePreviewController delegates standalone base preview rendering', a
     ['class-remove', 'is-base-file-preview'],
     ['class-remove', 'is-image-file-preview'],
     ['class-remove', 'is-pdf-file-preview'],
+    ['class-remove', 'is-html-file-preview'],
     ['class-remove', 'is-mermaid-file-preview'],
     ['class-remove', 'is-plantuml-file-preview'],
     ['class-remove', 'is-structurizr-file-preview'],

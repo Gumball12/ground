@@ -1,5 +1,6 @@
 import {
   isBaseFilePath,
+  isHtmlFilePath,
   isMarkdownFilePath,
   supportsBacklinksForFilePath,
 } from '../../domain/file-kind.js';
@@ -51,6 +52,7 @@ export class WorkspaceCoordinator {
     onRenderBasePreview,
     onRenderExcalidrawPreview,
     onRenderDrawioPreview,
+    onRenderHtmlPreview,
     onRenderImagePreview,
     onRenderPdfPreview,
     onRenderStructurizrPreview,
@@ -103,6 +105,7 @@ export class WorkspaceCoordinator {
     this.onRenderBasePreview = onRenderBasePreview;
     this.onRenderDrawioPreview = onRenderDrawioPreview;
     this.onRenderExcalidrawPreview = onRenderExcalidrawPreview;
+    this.onRenderHtmlPreview = onRenderHtmlPreview;
     this.onRenderImagePreview = onRenderImagePreview;
     this.onRenderPdfPreview = onRenderPdfPreview;
     this.onRenderStructurizrPreview = onRenderStructurizrPreview;
@@ -180,6 +183,7 @@ export class WorkspaceCoordinator {
     isDrawio = false,
     filePath,
     isExcalidraw = false,
+    isHtml = false,
     isImage = false,
     isPdf = false,
     supportsBacklinks,
@@ -187,6 +191,7 @@ export class WorkspaceCoordinator {
     if (isExcalidraw) this.onRenderExcalidrawPreview(filePath);
     if (isBase || isBaseFilePath(filePath)) this.onRenderBasePreview(filePath);
     if (isDrawio) this.onRenderDrawioPreview(filePath);
+    if (isHtml) this.onRenderHtmlPreview({ content: this.session?.getText?.() ?? '' });
     if (isImage) this.onRenderImagePreview(filePath);
     if (isPdf) this.onRenderPdfPreview(filePath);
     if (this.isStructurizrWorkspaceFile(filePath)) {
@@ -210,6 +215,7 @@ export class WorkspaceCoordinator {
     const isBase = this.isBaseFile(filePath);
     const isImage = this.isImageFile(filePath);
     const isPdf = this.isPdfFile(filePath);
+    const isHtml = isHtmlFilePath(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
     const isStructurizrWorkspace = this.isStructurizrWorkspaceFile(filePath);
@@ -272,6 +278,7 @@ export class WorkspaceCoordinator {
 
         this.onContentChange({
           isBase,
+          isHtml,
           isMermaid,
           isPlantUml,
           isStructurizrWorkspace,
@@ -313,6 +320,7 @@ export class WorkspaceCoordinator {
           filePath,
           isBase,
           isExcalidraw,
+          isHtml,
           session,
           supportsBacklinks: chromeState.supportsBacklinks,
         });

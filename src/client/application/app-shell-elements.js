@@ -55,6 +55,7 @@ export function bindAppShellElements(doc = document) {
     gitOperationStatus: doc.getElementById('gitOperationStatus'),
     lineInfo: doc.getElementById('lineInfo'),
     mobileViewToggle: doc.getElementById('mobileViewToggle'),
+    htmlPreviewMaximizeButton: doc.getElementById('htmlPreviewMaximize'),
     previewContent: doc.getElementById('previewContent'),
     previewContainer: doc.getElementById('previewContainer'),
     presencePanel: doc.getElementById('presencePanel'),

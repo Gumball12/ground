@@ -38,6 +38,7 @@ test('Workspace State scan builds entries, metadata, and derived file lists', as
   const { adapter } = await createVault(t, {
     'README.md': '# Readme\n',
     'docs/guide.md': '# Guide\n',
+    'docs/report.html': '<h1>Report</h1>\n',
     'docs/ignored.txt': 'ignored\n',
     'assets/image.webp': 'image',
   });
@@ -50,14 +51,15 @@ test('Workspace State scan builds entries, metadata, and derived file lists', as
     'assets/image.webp',
     'docs',
     'docs/guide.md',
+    'docs/report.html',
   ]);
-  assert.deepEqual(state.filePaths, ['assets/image.webp', 'docs/guide.md', 'README.md']);
+  assert.deepEqual(state.filePaths, ['assets/image.webp', 'docs/guide.md', 'docs/report.html', 'README.md']);
   assert.deepEqual(state.markdownPaths, ['docs/guide.md', 'README.md']);
   assert.equal(state.metadata.get('docs')?.type, 'directory');
   assert.equal(state.metadata.get('docs/guide.md')?.type, 'file');
   assert.equal(Number.isFinite(state.entries.get('docs/guide.md')?.mtimeMs), true);
   assert.equal(state.scannedAt, 1);
-  assert.equal(state.vaultFileCount, 3);
+  assert.equal(state.vaultFileCount, 4);
 });
 
 test('Workspace State derives API mutation snapshots with ancestor directories', async (t) => {

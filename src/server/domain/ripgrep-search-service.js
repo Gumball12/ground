@@ -17,6 +17,8 @@ const TEXT_SEARCH_GLOBS = Object.freeze([
   '*.md',
   '*.markdown',
   '*.mdx',
+  '*.html',
+  '*.htm',
   '*.base',
   '*.mmd',
   '*.mermaid',

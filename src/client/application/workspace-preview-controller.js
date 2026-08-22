@@ -1,10 +1,14 @@
 import {
   isBaseFilePath,
   isDiagramFilePath,
+  isHtmlFilePath,
   isMarkdownFilePath,
   isStructurizrFilePath,
 } from '../../domain/file-kind.js';
+import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
+
+const HTML_PREVIEW_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
 
 export class WorkspacePreviewController {
   constructor({
@@ -43,6 +47,14 @@ export class WorkspacePreviewController {
       updateTheme() {},
     };
     this.elements = elements;
+    this.htmlPreviewShell = null;
+    if (this.elements.htmlPreviewMaximizeButton) {
+      this.elements.htmlPreviewMaximizeButton.addEventListener('click', () => {
+        const isMaximized = this.htmlPreviewShell?.classList.contains('is-maximized');
+        this.setHtmlPreviewMaximized(!isMaximized);
+      });
+      setDiagramActionButtonIcon(this.elements.htmlPreviewMaximizeButton, 'maximize');
+    }
     this.excalidrawEmbed = excalidrawEmbed;
     this.getDisplayName = getDisplayName;
     this.getSession = getSession;
@@ -91,13 +103,29 @@ export class WorkspacePreviewController {
     return source;
   }
 
+  setHtmlPreviewMaximized(maximized) {
+    const isMaximized = Boolean(maximized && this.htmlPreviewShell);
+    this.htmlPreviewShell?.classList.toggle('is-maximized', isMaximized);
+    globalThis.document?.body?.classList.toggle('html-preview-maximized-open', isMaximized);
+
+    const button = this.elements.htmlPreviewMaximizeButton;
+    if (button) {
+      setDiagramActionButtonIcon(button, isMaximized ? 'restore' : 'maximize');
+      button.title = isMaximized ? 'Restore HTML preview' : 'Maximize HTML preview';
+      button.setAttribute('aria-label', button.title);
+    }
+  }
+
   resetPreviewMode() {
+    this.setHtmlPreviewMaximized(false);
+    this.htmlPreviewShell = null;
     this.pdfPreview.cancel();
     this.elements.previewContent?.classList.remove('is-drawio-file-preview');
     this.elements.previewContent?.classList.remove('is-excalidraw-file-preview');
     this.elements.previewContent?.classList.remove('is-base-file-preview');
     this.elements.previewContent?.classList.remove('is-image-file-preview');
     this.elements.previewContent?.classList.remove('is-pdf-file-preview');
+    this.elements.previewContent?.classList.remove('is-html-file-preview');
     this.elements.previewContent?.classList.remove('is-mermaid-file-preview');
     this.elements.previewContent?.classList.remove('is-plantuml-file-preview');
     this.elements.previewContent?.classList.remove('is-structurizr-file-preview');
@@ -110,6 +138,7 @@ export class WorkspacePreviewController {
     const isBase = this.isBaseFile(filePath);
     const isImage = this.isImageFile(filePath);
     const isPdf = this.isPdfFile(filePath);
+    const isHtml = isHtmlFilePath(filePath);
     const isMarkdown = isMarkdownFilePath(filePath);
     const isMermaid = this.isMermaidFile(filePath);
     const isPlantUml = this.isPlantUmlFile(filePath);
@@ -122,7 +151,8 @@ export class WorkspacePreviewController {
     this.elements.editorFindButton?.classList.toggle('hidden', !isMarkdown);
     this.elements.markdownToolbar?.classList.toggle('hidden', !isMarkdown);
     this.elements.exportMenuGroup?.classList.toggle('hidden', !isMarkdown);
-    this.elements.outlineToggle?.classList.toggle('hidden', isDiagramFile || isImage || isPdf || isBase);
+    this.elements.htmlPreviewMaximizeButton?.classList.toggle('hidden', !isHtml);
+    this.elements.outlineToggle?.classList.toggle('hidden', isDiagramFile || isImage || isPdf || isHtml || isBase);
     this.elements.previewContent?.classList.toggle('is-mermaid-file-preview', isMermaid);
     this.elements.previewContent?.classList.toggle('is-plantuml-file-preview', isPlantUml);
     this.elements.previewContent?.classList.toggle('is-structurizr-file-preview', isStructurizr);
@@ -132,7 +162,7 @@ export class WorkspacePreviewController {
       this.backlinksPanel.clear();
     }
 
-    if ((isDrawio && drawioMode !== 'text') || isExcalidraw || isImage || isPdf || (isBase && preferPreviewForBase)) {
+    if ((isDrawio && drawioMode !== 'text') || isExcalidraw || isHtml || isImage || isPdf || (isBase && preferPreviewForBase)) {
       this.layoutController.setView('preview', { persist: false });
       this.outlineController.close();
       this.backlinksPanel.clear();
@@ -289,6 +319,49 @@ export class WorkspacePreviewController {
     this.scrollSyncController.setLargeDocumentMode(false);
     this.scrollSyncController.invalidatePreviewBlocks();
     this.videoEmbed?.reconcileEmbeds(previewElement);
+    this.schedulePreviewLayoutSyncCallback({ delayMs: 0 });
+  }
+
+  renderHtmlFilePreview({ content = '' } = {}) {
+    const previewElement = this.elements.previewContent;
+    if (!previewElement) {
+      return;
+    }
+
+    const wasMaximized = this.htmlPreviewShell?.classList.contains('is-maximized') ?? false;
+    this.videoEmbed?.detachForCommit();
+    this.drawioEmbed.detachForCommit();
+    this.excalidrawEmbed.detachForCommit();
+    this.resetPreviewMode();
+    previewElement.classList.add('is-html-file-preview');
+    const renderHost = this.previewRenderer.ensureRenderHost();
+    this.previewRenderer.normalizePreviewChildren(renderHost);
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'html-file-preview-frame';
+    iframe.title = 'HTML preview';
+    iframe.referrerPolicy = 'no-referrer';
+    iframe.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'");
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    // ponytail: full iframe replacement is simplest; debounce if large HTML files make typing lag.
+    iframe.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}">${String(content ?? '')}`;
+
+    const shell = document.createElement('div');
+    shell.className = 'html-file-preview-shell';
+    shell.append(iframe);
+    this.htmlPreviewShell = shell;
+    this.setHtmlPreviewMaximized(wasMaximized);
+
+    if (renderHost) {
+      renderHost.replaceChildren(shell);
+      renderHost.style.minHeight = '';
+    }
+
+    previewElement.dataset.renderPhase = 'ready';
+    this.outlineController.close();
+    this.backlinksPanel.clear();
+    this.scrollSyncController.setLargeDocumentMode(false);
+    this.scrollSyncController.invalidatePreviewBlocks();
     this.schedulePreviewLayoutSyncCallback({ delayMs: 0 });
   }
 

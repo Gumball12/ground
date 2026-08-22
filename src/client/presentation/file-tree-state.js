@@ -13,17 +13,7 @@ function flattenTree(nodes, files = [], searchEntries = [], fileEntries = []) {
       type: node.type,
     });
 
-    if (
-      node.type === 'file'
-      || node.type === 'base'
-      || node.type === 'excalidraw'
-      || node.type === 'drawio'
-      || node.type === 'mermaid'
-      || node.type === 'plantuml'
-      || node.type === 'structurizr'
-      || node.type === 'pdf'
-      || node.type === 'image'
-    ) {
+    if (node.type !== 'directory') {
       files.push(node.path);
       fileEntries.push({
         mtimeMs: node.mtimeMs,
