@@ -6,7 +6,7 @@ afterEach(() => {
   document.body.className = '';
 });
 
-it('renders interactive HTML in an isolated network-blocked sandbox', () => {
+it('gates untrusted HTML scripts behind per-render consent', async () => {
   const previewContent = document.createElement('div');
   const renderHost = document.createElement('div');
   const embed = { detachForCommit() {} };
@@ -30,25 +30,73 @@ it('renders interactive HTML in an isolated network-blocked sandbox', () => {
     },
   });
 
-  controller.renderHtmlFilePreview({ content: '<style>h1{color:red}</style><h1>Hello</h1><script>alert(1)</script>' });
+  let scriptMessage = null;
+  let resolveScriptMessage;
+  const scriptMessagePromise = new Promise((resolve) => {
+    resolveScriptMessage = resolve;
+  });
+  const handleMessage = (event) => {
+    if (event.data?.source === 'html-preview-test') {
+      scriptMessage = { ...event.data, origin: event.origin };
+      resolveScriptMessage(scriptMessage);
+    }
+  };
+  window.addEventListener('message', handleMessage);
 
-  const shell = renderHost.firstElementChild;
+  controller.renderHtmlFilePreview({
+    content: `<a href="#target">Jump</a><div id="target">Target</div><script>
+document.querySelector('a').click();
+setTimeout(() => parent.postMessage({ source: 'html-preview-test', hash: location.hash, target: Boolean(document.getElementById('target')) }, '*'));
+</script>`,
+  });
+
+  let shell = renderHost.firstElementChild;
   const iframe = shell.querySelector('iframe');
+  const initialLoad = new Promise((resolve) => iframe.addEventListener('load', resolve, { once: true }));
+  document.body.append(renderHost);
+  await initialLoad;
+
   expect(shell.className).toBe('html-file-preview-shell');
-  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
-  expect(iframe.getAttribute('sandbox')).not.toContain('allow-same-origin');
+  expect(iframe.getAttribute('sandbox')).toBe('');
   expect(iframe.referrerPolicy).toBe('no-referrer');
   expect(iframe.getAttribute('allow')).toContain("camera 'none'");
   expect(iframe.srcdoc).toContain("default-src 'none'");
   expect(iframe.srcdoc).toContain("connect-src 'none'");
-  expect(iframe.srcdoc).toContain("script-src 'unsafe-inline'");
-  expect(iframe.srcdoc).toContain("style-src 'unsafe-inline'");
-  expect(iframe.srcdoc).toContain('<h1>Hello</h1>');
+  expect(iframe.srcdoc).toContain("script-src 'none'");
+  expect(iframe.srcdoc).toContain('<base href="about:srcdoc">');
+  expect(scriptMessage).toBeNull();
   expect(previewContent.dataset.renderPhase).toBe('ready');
+
+  const runScriptsButton = shell.querySelector('.html-file-preview-script-gate button');
+  expect(runScriptsButton.textContent).toBe('Run scripts');
+  runScriptsButton.click();
+
+  expect(await scriptMessagePromise).toEqual({
+    hash: '#target',
+    origin: 'null',
+    source: 'html-preview-test',
+    target: true,
+  });
+  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe.srcdoc).toContain("script-src 'unsafe-inline'");
+  expect(shell.querySelector('.html-file-preview-script-gate')).toBeNull();
+
+  controller.renderHtmlFilePreview({ content: '<button onclick="alert(1)">Changed</button>' });
+  shell = renderHost.firstElementChild;
+  expect(shell.querySelector('iframe').getAttribute('sandbox')).toBe('');
+  expect(shell.querySelector('iframe').srcdoc).toContain("script-src 'none'");
+  expect(shell.querySelector('.html-file-preview-script-gate')).not.toBeNull();
+
+  controller.renderHtmlFilePreview({ content: '<p>No scripts</p>' });
+  shell = renderHost.firstElementChild;
+  expect(shell.querySelector('.html-file-preview-script-gate')).toBeNull();
 
   controller.setHtmlPreviewMaximized(true);
   expect(shell.classList.contains('is-maximized')).toBe(true);
   expect(document.body.classList.contains('html-preview-maximized-open')).toBe(true);
   controller.setHtmlPreviewMaximized(false);
   expect(document.body.classList.contains('html-preview-maximized-open')).toBe(false);
+
+  window.removeEventListener('message', handleMessage);
+  renderHost.remove();
 });

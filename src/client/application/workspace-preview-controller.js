@@ -8,7 +8,21 @@ import {
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
 import { resolveApiUrl } from '../domain/runtime-paths.js';
 
-const HTML_PREVIEW_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+const HTML_PREVIEW_CSP = "default-src 'none'; base-uri about:; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; connect-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+
+function createHtmlPreviewDocument(content, allowScripts = false) {
+  const scriptSource = allowScripts ? "'unsafe-inline'" : "'none'";
+  return `<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}; script-src ${scriptSource};"><base href="about:srcdoc">${String(content ?? '')}`;
+}
+
+function hasHtmlScripts(content) {
+  const preview = new DOMParser().parseFromString(content, 'text/html');
+  if (preview.scripts.length > 0) return true;
+  return [...preview.querySelectorAll('*')].some((element) => [...element.attributes].some(({ name, value }) => (
+    (name.startsWith('on') && name in element)
+    || ((name === 'href' || name === 'xlink:href') && /^\s*javascript:/iu.test(value))
+  )));
+}
 
 export class WorkspacePreviewController {
   constructor({
@@ -337,17 +351,36 @@ export class WorkspacePreviewController {
     const renderHost = this.previewRenderer.ensureRenderHost();
     this.previewRenderer.normalizePreviewChildren(renderHost);
 
+    const source = String(content ?? '');
     const iframe = document.createElement('iframe');
     iframe.className = 'html-file-preview-frame';
     iframe.title = 'HTML preview';
     iframe.referrerPolicy = 'no-referrer';
     iframe.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'");
-    iframe.setAttribute('sandbox', 'allow-scripts');
-    // ponytail: full iframe replacement is simplest; debounce if large HTML files make typing lag.
-    iframe.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}">${String(content ?? '')}`;
+    iframe.setAttribute('sandbox', '');
+    // ponytail: full iframe replacement resets script consent whenever the content changes.
+    iframe.srcdoc = createHtmlPreviewDocument(source);
 
     const shell = document.createElement('div');
     shell.className = 'html-file-preview-shell';
+
+    if (hasHtmlScripts(source)) {
+      const scriptGate = document.createElement('div');
+      scriptGate.className = 'html-file-preview-script-gate';
+      scriptGate.textContent = 'Scripts are disabled by default. Run them only if you trust this HTML file.';
+
+      const runScriptsButton = document.createElement('button');
+      runScriptsButton.type = 'button';
+      runScriptsButton.className = 'ui-button ui-button--secondary ui-button--compact';
+      runScriptsButton.textContent = 'Run scripts';
+      runScriptsButton.addEventListener('click', () => {
+        iframe.setAttribute('sandbox', 'allow-scripts');
+        iframe.srcdoc = createHtmlPreviewDocument(source, true);
+        scriptGate.remove();
+      });
+      scriptGate.append(runScriptsButton);
+      shell.append(scriptGate);
+    }
     shell.append(iframe);
     this.htmlPreviewShell = shell;
     this.setHtmlPreviewMaximized(wasMaximized);

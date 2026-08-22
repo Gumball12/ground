@@ -278,6 +278,7 @@
   position: relative;
   display: flex;
   flex: 1;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -307,6 +308,21 @@ body.html-preview-maximized-open #htmlPreviewMaximize {
   z-index: 174;
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-md);
+}
+
+.html-file-preview-script-gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-warning-toast);
+  border-radius: var(--radius-md);
+  background: var(--surface-warning-soft);
+  color: var(--color-text);
+  font-size: var(--text-xs);
 }
 
 .html-file-preview-frame {
