@@ -150,6 +150,44 @@ test('runtime-config parses and builds file anchor routes', (t) => {
   assert.equal(globalThis.window.location.hash, 'file=MongoDB%2Fmigration-plan.md&anchor=approach-b-pros');
 });
 
+test('runtime-config parses and builds Excalidraw element routes', (t) => {
+  const previousWindow = globalThis.window;
+  globalThis.window = createWindowStub('#file=diagrams%2Farchitecture.excalidraw&element=node-1&elementType=group');
+
+  t.after(() => {
+    globalThis.window = previousWindow;
+  });
+
+  assert.deepEqual(getHashRoute(), {
+    anchor: null,
+    column: null,
+    drawioMode: null,
+    elementId: 'node-1',
+    elementType: 'group',
+    filePath: 'diagrams/architecture.excalidraw',
+    line: null,
+    matchLength: null,
+    type: 'file',
+  });
+
+  assert.equal(
+    createFileRouteHash('diagrams/architecture.excalidraw', {
+      elementId: 'node-1',
+      elementType: 'group',
+    }),
+    'file=diagrams%2Farchitecture.excalidraw&element=node-1&elementType=group',
+  );
+
+  navigateToFile('diagrams/architecture.excalidraw', {
+    elementId: 'node-1',
+    elementType: 'group',
+  });
+  assert.equal(
+    globalThis.window.location.hash,
+    'file=diagrams%2Farchitecture.excalidraw&element=node-1&elementType=group',
+  );
+});
+
 test('runtime-config parses and builds file text match routes', (t) => {
   const previousWindow = globalThis.window;
   globalThis.window = createWindowStub('#file=docs%2Fguide.md&line=7&column=11&matchLength=6');

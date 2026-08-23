@@ -315,6 +315,11 @@ export class CollabMdAppShell {
     this.excalidrawEmbed = new ExcalidrawEmbedController({
       getLocalUser: () => this.lobby.getLocalUser(),
       getTheme: () => this.themeController.getTheme(),
+      onOpenElement: ({ elementId, elementType, filePath } = {}) => {
+        if (filePath && elementId) {
+          this.navigation.navigateToFile(filePath, { elementId, elementType });
+        }
+      },
       onOpenFile: (filePath) => filePath && this.navigation.navigateToFile(filePath),
       onStopFollowing: () => this.stopFollowingUser(),
       onToggleQuickSwitcher: () => {

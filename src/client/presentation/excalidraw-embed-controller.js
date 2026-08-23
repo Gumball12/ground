@@ -1,6 +1,7 @@
 import { setDiagramActionButtonIcon } from '../domain/diagram-action-icons.js';
+import { parseExcalidrawElementLink } from '../domain/excalidraw-element-link.js';
 import { reconcileEmbedEntries } from './excalidraw-embed-reconciler.js';
-import { resolveAppUrl, resolveWsServerOverride } from '../domain/runtime-paths.js';
+import { resolveAppPath, resolveAppUrl, resolveWsServerOverride } from '../domain/runtime-paths.js';
 import {
   cancelIdleRender,
   isNearViewport,
@@ -26,6 +27,7 @@ export class ExcalidrawEmbedController {
   constructor({
     getTheme,
     getLocalUser,
+    onOpenElement = null,
     onOpenFile = null,
     onStopFollowing = null,
     onToggleQuickSwitcher = null,
@@ -35,6 +37,7 @@ export class ExcalidrawEmbedController {
   }) {
     this.getTheme = getTheme;
     this.getLocalUser = getLocalUser;
+    this.onOpenElement = onOpenElement;
     this.onOpenFile = onOpenFile;
     this.onStopFollowing = onStopFollowing;
     this.onToggleQuickSwitcher = onToggleQuickSwitcher;
@@ -251,6 +254,28 @@ export class ExcalidrawEmbedController {
     return true;
   }
 
+  openElement(filePath, elementId, elementType = 'element') {
+    if (!filePath || !elementId) {
+      return false;
+    }
+
+    const entry = this._findEntryByFilePath(filePath);
+    if (!entry) {
+      return false;
+    }
+
+    entry.pendingElementFocus = {
+      elementId: String(elementId),
+      elementType: elementType === 'group' ? 'group' : 'element',
+    };
+    if (entry.isReady) {
+      this._postPendingElement(entry);
+    } else if (!entry.wrapper) {
+      this._enqueueHydration(entry, { prioritize: true });
+    }
+    return true;
+  }
+
   prepareFileDisconnect(filePath, { timeoutMs = 10000 } = {}) {
     const entry = this._findEntryByFilePath(filePath);
     if (!entry?.iframe?.contentWindow) {
@@ -419,6 +444,9 @@ export class ExcalidrawEmbedController {
 
     if (!entry.wrapper) {
       const mount = this._createEmbedContainer(entry);
+      if (!mount) {
+        return;
+      }
       entry.header = mount.header;
       entry.wrapper = mount.wrapper;
       entry.iframe = mount.iframe;
@@ -491,6 +519,7 @@ export class ExcalidrawEmbedController {
       reusedEntry.key = nextEntry.key;
       reusedEntry.label = nextEntry.label;
       reusedEntry.placeholder = nextEntry.placeholder;
+      reusedEntry.pendingElementFocus = null;
       reusedEntry.queued = false;
       nextEntries.set(key, reusedEntry);
     });
@@ -644,7 +673,12 @@ export class ExcalidrawEmbedController {
   }
 
   _buildIframeUrl(entry) {
-    const iframeUrl = new URL(resolveAppUrl(EDITOR_IFRAME_PATH));
+    let iframeUrl;
+    try {
+      iframeUrl = new URL(resolveAppUrl(EDITOR_IFRAME_PATH));
+    } catch {
+      return null;
+    }
     const theme = this.getTheme?.() || 'dark';
 
     iframeUrl.searchParams.set('file', entry.filePath);
@@ -687,6 +721,11 @@ export class ExcalidrawEmbedController {
   }
 
   _createEmbedContainer(entry) {
+    const iframeUrl = this._buildIframeUrl(entry);
+    if (!iframeUrl) {
+      return null;
+    }
+
     const wrapper = document.createElement('div');
     wrapper.className = 'excalidraw-embed diagram-preview-shell';
     wrapper.dataset.embedKey = entry.key;
@@ -727,7 +766,7 @@ export class ExcalidrawEmbedController {
     iframe.className = 'excalidraw-embed-iframe';
     iframe.dataset.instanceId = String(++this.instanceCounter);
     entry.instanceId = iframe.dataset.instanceId;
-    iframe.src = this._buildIframeUrl(entry).toString();
+    iframe.src = iframeUrl.toString();
     // The controller already lazy-hydrates embeds near the viewport, so the
     // iframe should start loading immediately once it has been mounted.
     iframe.setAttribute('loading', 'eager');
@@ -1030,6 +1069,7 @@ export class ExcalidrawEmbedController {
     entry.bootMode = null;
     entry.loadedFilePath = null;
     entry.loadedMode = null;
+    entry.pendingElementFocus = null;
     entry.placeholder = null;
     if (entry.wrapper.parentElement !== warmCacheRoot) {
       warmCacheRoot.appendChild(entry.wrapper);
@@ -1053,7 +1093,11 @@ export class ExcalidrawEmbedController {
     entry.bootMode = this._getEntryMode(entry);
     entry.loadedFilePath = null;
     entry.loadedMode = null;
-    entry.iframe.src = this._buildIframeUrl(entry).toString();
+    const iframeUrl = this._buildIframeUrl(entry);
+    if (!iframeUrl) {
+      return;
+    }
+    entry.iframe.src = iframeUrl.toString();
     this._armEntryBootTimeout(entry);
   }
 
@@ -1218,6 +1262,7 @@ export class ExcalidrawEmbedController {
       });
       this._syncEntryFollowState(entry);
       this._postPendingCommentThread?.(entry);
+      this._postPendingElement?.(entry);
       if (this._entryNeedsHardReload(entry)) {
         void this._hydrateEntry(entry);
       }
@@ -1231,6 +1276,17 @@ export class ExcalidrawEmbedController {
 
     if (msg.type === 'stop-following') {
       this.onStopFollowing?.();
+      return;
+    }
+
+    if (msg.type === 'open-element-link') {
+      const target = parseExcalidrawElementLink(msg.href, {
+        appPath: resolveAppPath('/'),
+        origin: window.location.origin,
+      });
+      if (target) {
+        this.onOpenElement?.(target);
+      }
       return;
     }
 
@@ -1298,6 +1354,20 @@ export class ExcalidrawEmbedController {
       type: 'open-comment-thread',
     });
     entry.pendingCommentThreadId = null;
+  }
+
+  _postPendingElement(entry) {
+    if (!entry?.isReady || !entry.pendingElementFocus) {
+      return;
+    }
+
+    this._postMessageToEntry(entry, {
+      elementId: entry.pendingElementFocus.elementId,
+      elementType: entry.pendingElementFocus.elementType,
+      source: 'collabmd-host',
+      type: 'focus-element',
+    });
+    entry.pendingElementFocus = null;
   }
 
   _requestPreviewViewportFit(entry) {

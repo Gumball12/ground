@@ -244,6 +244,33 @@ test('WorkspaceRouteController routes hash changes to empty, git diff, git file 
   ]);
 });
 
+test('WorkspaceRouteController focuses an Excalidraw element route after opening its file', async () => {
+  const calls = [];
+  const fixture = createController({
+    excalidrawEmbed: {
+      openElement: (...args) => calls.push(args),
+      setHydrationPaused() {},
+    },
+    navigation: {
+      getHashRoute: () => ({
+        elementId: 'node-42',
+        elementType: 'group',
+        filePath: 'diagrams/architecture.excalidraw',
+        type: 'file',
+      }),
+      navigateToFile() {},
+    },
+  });
+
+  await fixture.controller.handleHashChange();
+
+  assert.deepEqual(calls, [[
+    'diagrams/architecture.excalidraw',
+    'node-42',
+    'group',
+  ]]);
+});
+
 test('WorkspaceRouteController keeps the active Excalidraw route when reconnecting navigation is declined', async () => {
   const events = [];
   const fixture = createController({

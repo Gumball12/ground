@@ -45,6 +45,11 @@ import {
   summarizeExcalidrawScene,
 } from './domain/excalidraw-diagnostics.js';
 import { isPlainQuickSwitcherShortcut } from './domain/keyboard-shortcuts.js';
+import {
+  createExcalidrawElementLink,
+  parseExcalidrawElementLink,
+} from './domain/excalidraw-element-link.js';
+import { resolveAppPath, resolveAppUrl } from './domain/runtime-paths.js';
 import { ensureClientAuthenticated } from './infrastructure/auth-client.js';
 import {
   EXCALIDRAW_ROOM_CONNECTION_STATE,
@@ -58,6 +63,8 @@ const diagnostics = createExcalidrawDiagnosticRing({
   enabled: params.get('excalidrawDebug') === '1',
 });
 const parentOrigin = window.location.origin;
+const appPath = resolveAppPath('/');
+const appUrl = resolveAppUrl('/');
 const syncTimeoutMs = Number.parseInt(params.get('syncTimeoutMs') || '', 10);
 
 let currentDocument = {
@@ -327,17 +334,34 @@ function getDiagramCommentMarkerPosition(thread, api = getMountedExcalidrawAPI()
   );
 }
 
-function focusDiagramCommentThread(thread) {
+function getDiagramElementTargets(elementId, elementType = 'element', api = getMountedExcalidrawAPI()) {
+  const normalizedElementId = String(elementId ?? '').trim();
+  const elements = api?.getSceneElementsIncludingDeleted?.()
+    ?.filter((element) => !element.isDeleted) || [];
+  if (!normalizedElementId) {
+    return [];
+  }
+
+  if (elementType === 'group') {
+    const groupElements = elements.filter((element) => element.groupIds?.includes(normalizedElementId));
+    if (groupElements.length > 0) {
+      return groupElements;
+    }
+  }
+
+  return elements.filter((element) => element.id === normalizedElementId);
+}
+
+function focusDiagramElement(elementId, elementType = 'element') {
   const api = getMountedExcalidrawAPI();
-  const element = api?.getSceneElementsIncludingDeleted?.()
-    ?.find((candidate) => candidate.id === thread?.elementId && !candidate.isDeleted);
-  if (!api || !element) {
+  const elements = getDiagramElementTargets(elementId, elementType, api);
+  if (!api || elements.length === 0) {
     return;
   }
 
   api.updateScene({
     appState: {
-      selectedElementIds: { [element.id]: true },
+      selectedElementIds: Object.fromEntries(elements.map((element) => [element.id, true])),
     },
     captureUpdate: CaptureUpdateAction.NEVER,
   });
@@ -352,11 +376,16 @@ function focusDiagramCommentThread(thread) {
       animation: false,
       fit: 'contain',
       offsets: { ui: true },
-      target: element,
+      target: elements,
     });
   } finally {
     releaseViewportBroadcastSuppressionAfterPaint();
   }
+
+}
+
+function focusDiagramCommentThread(thread) {
+  focusDiagramElement(thread?.elementId);
 }
 
 function applyDocumentMode(mode = currentDocument.mode) {
@@ -413,6 +442,23 @@ function createRoomClient(filePath) {
   };
 }
 
+function handleExcalidrawLinkOpen(element, event) {
+  if (window.parent === window) {
+    return;
+  }
+
+  const target = parseExcalidrawElementLink(element?.link, {
+    appPath,
+    origin: parentOrigin,
+  });
+  if (!target) {
+    return;
+  }
+
+  event?.preventDefault?.();
+  postToParent('open-element-link', { href: element.link });
+}
+
 function buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled } = {}) {
   const props = {
     onMount: handleEditorMount,
@@ -431,11 +477,17 @@ function buildExcalidrawProps({ initialData, renderTopRightUI, viewModeEnabled }
       collabReady = false;
     },
     aiEnabled: false,
+    generateLinkForSelection: (elementId, elementType) => createExcalidrawElementLink(
+      currentDocument.filePath,
+      elementId,
+      { appUrl, elementType },
+    ),
     isCollaborating: true,
     onChange: (elements, appState, files) => {
       scheduleSyncToRoom(elements, appState, files);
       roomClient?.syncLocalSelectionAwareness(appState);
     },
+    onLinkOpen: handleExcalidrawLinkOpen,
     onPointerUpdate: (payload) => {
       roomClient?.scheduleLocalPointerAwareness(payload);
     },
@@ -1199,6 +1251,9 @@ if (isTestMode) {
         .map((element) => element.id)
         .sort() ?? []
     ),
+    getSelectedElementIds: () => (
+      Object.keys(getMountedExcalidrawAPI()?.getAppState?.()?.selectedElementIds || {}).sort()
+    ),
     getElementStatus: (elementId) => (
       getMountedExcalidrawAPI()?.getSceneElementsIncludingDeleted?.()
         ?.find((entry) => entry.id === elementId && !entry.isDeleted)?.status ?? null
@@ -1939,6 +1994,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'open-comment-thread') {
     requestDiagramCommentFocus(message.threadId);
+    return;
+  }
+
+  if (message.type === 'focus-element') {
+    focusDiagramElement(message.elementId, message.elementType);
     return;
   }
 

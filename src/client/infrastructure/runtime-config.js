@@ -74,7 +74,7 @@ export function getHashRoute() {
   }
 
   if (params.has(HASH_ROUTE_KEYS.file)) {
-    return {
+    const route = {
       anchor: params.get('anchor') || null,
       column: params.has('column') ? Number(params.get('column')) || null : null,
       drawioMode: params.get('drawio') || null,
@@ -83,6 +83,12 @@ export function getHashRoute() {
       matchLength: params.has('matchLength') ? Number(params.get('matchLength')) || null : null,
       type: 'file',
     };
+    const elementId = params.get('element') || '';
+    if (elementId) {
+      route.elementId = elementId;
+      route.elementType = params.get('elementType') === 'group' ? 'group' : 'element';
+    }
+    return route;
   }
 
   return { type: 'empty' };
@@ -92,6 +98,8 @@ export function navigateToFile(filePath, {
   anchor = null,
   column = null,
   drawioMode = null,
+  elementId = null,
+  elementType = null,
   line = null,
   matchLength = null,
 } = {}) {
@@ -99,6 +107,8 @@ export function navigateToFile(filePath, {
     anchor,
     column,
     drawioMode,
+    elementId,
+    elementType,
     line,
     matchLength,
   });

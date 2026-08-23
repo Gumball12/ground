@@ -143,6 +143,13 @@ export class WorkspaceRouteController {
       return;
     }
     this.revealEditorMatch(route);
+    if (route.elementId) {
+      this.excalidrawEmbed?.openElement(
+        route.filePath,
+        route.elementId,
+        route.elementType,
+      );
+    }
     this.requestPreviewRouteAnchor?.(route.anchor ?? null, route.filePath);
   }
 

@@ -128,6 +128,98 @@ test('opens a queued Excalidraw comment thread in a ready iframe', () => {
   }
 });
 
+test('opens a queued Excalidraw element in a ready iframe', () => {
+  const originalWindow = globalThis.window;
+  const posts = [];
+  const entry = {
+    filePath: 'sample-excalidraw.excalidraw',
+    iframe: { contentWindow: {} },
+    isReady: true,
+    wrapper: {},
+  };
+
+  globalThis.window = {
+    location: { origin: 'http://localhost:4173' },
+  };
+
+  try {
+    const controller = {
+      embedEntries: new Map([['sample-excalidraw.excalidraw#file-preview', entry]]),
+      _findEntryByFilePath: ExcalidrawEmbedController.prototype._findEntryByFilePath,
+      _postMessageToEntry: (_entry, payload) => posts.push(payload),
+      _postPendingElement: ExcalidrawEmbedController.prototype._postPendingElement,
+    };
+
+    const didQueueElement = ExcalidrawEmbedController.prototype.openElement.call(
+      controller,
+      entry.filePath,
+      'node-42',
+      'group',
+    );
+
+    assert.equal(didQueueElement, true);
+    assert.deepEqual(posts, [{
+      elementId: 'node-42',
+      elementType: 'group',
+      source: 'collabmd-host',
+      type: 'focus-element',
+    }]);
+    assert.equal(entry.pendingElementFocus, null);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('forwards valid Excalidraw element links but ignores external links', () => {
+  const originalWindow = globalThis.window;
+  const iframeWindow = {};
+  const targets = [];
+
+  globalThis.window = {
+    location: {
+      origin: 'http://localhost:4173',
+    },
+  };
+
+  try {
+    const controller = {
+      embedEntries: new Map([['sample-excalidraw.excalidraw#0', {
+        filePath: 'sample-excalidraw.excalidraw',
+        iframe: { contentWindow: iframeWindow },
+      }]]),
+      _findEntryByContentWindow: ExcalidrawEmbedController.prototype._findEntryByContentWindow,
+      onOpenElement: (target) => targets.push(target),
+    };
+
+    ExcalidrawEmbedController.prototype._onMessage.call(controller, {
+      data: {
+        href: 'http://localhost:4173/#file=target.excalidraw&element=node-42',
+        source: 'excalidraw-editor',
+        type: 'open-element-link',
+      },
+      origin: 'http://localhost:4173',
+      source: iframeWindow,
+    });
+    ExcalidrawEmbedController.prototype._onMessage.call(controller, {
+      data: {
+        href: 'https://example.com/#file=target.excalidraw&element=node-42',
+        source: 'excalidraw-editor',
+        type: 'open-element-link',
+      },
+      origin: 'http://localhost:4173',
+      source: iframeWindow,
+    });
+
+    assert.deepEqual(targets, [{
+      elementId: 'node-42',
+      elementType: 'element',
+      filePath: 'target.excalidraw',
+    }]);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
 test('forwards Excalidraw shell requests from known same-origin iframe', () => {
   const originalWindow = globalThis.window;
   const iframeWindow = {};

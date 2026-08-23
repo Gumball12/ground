@@ -1,6 +1,7 @@
 import {
   expect,
   test,
+  waitForExcalidrawFrameHarness,
   waitForExcalidrawTestHarness,
   writeVaultFileAndResetCollab,
 } from './helpers/app-fixture.js';
@@ -144,6 +145,29 @@ test('@excalidraw-smoke pastes Mermaid text as Excalidraw elements', async ({ br
     expect(scene.elements.some((element) => element.type === 'arrow')).toBe(true);
     expect(scene.elements.some((element) => element.text === 'Start')).toBe(true);
     expect(scene.elements.some((element) => element.text === 'End')).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test('@excalidraw-smoke opens an Excalidraw element deep link', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const filePath = 'deep-link-target.e2e.excalidraw';
+
+  try {
+    await prepareFile(page, filePath, createScene([
+      createElement('target-node', { backgroundColor: '#dbeafe' }),
+    ]));
+    await page.goto(`/?test=1#file=${encodeURIComponent(filePath)}&element=target-node`);
+
+    const frame = await waitForExcalidrawFrameHarness(page);
+    await expect.poll(() => frame.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.isAuthoritativeReady()
+    ))).toBe(true);
+    await expect.poll(() => frame.evaluate(() => (
+      window.__COLLABMD_EXCALIDRAW_TEST__.getSelectedElementIds()
+    ))).toEqual(['target-node']);
   } finally {
     await context.close();
   }

@@ -38,6 +38,8 @@ export function createFileRouteHash(filePath, {
   anchor = null,
   column = null,
   drawioMode = null,
+  elementId = null,
+  elementType = null,
   line = null,
   matchLength = null,
 } = {}) {
@@ -50,6 +52,12 @@ export function createFileRouteHash(filePath, {
   }
   if (anchor) {
     params.set('anchor', String(anchor).trim());
+  }
+  if (elementId) {
+    params.set('element', String(elementId).trim());
+  }
+  if (elementType === 'group') {
+    params.set('elementType', 'group');
   }
   if (line != null) {
     params.set('line', String(Math.max(1, Math.round(Number(line) || 1))));
