@@ -260,6 +260,7 @@
     --color-text-muted: #9aa7b4;
     --color-text-faint: #687584;
     --color-text-inverse: #0b0f14;
+    --color-code-text: #abb2bf;
     --color-primary: #60a5fa;
     --color-primary-hover: #3b82f6;
     --color-primary-active: #2563eb;
@@ -270,6 +271,7 @@
     --color-comment-strong: rgba(96, 165, 250, 0.16);
     --color-comment-text: #bfdbfe;
     --color-error: #f87171;
+    --color-danger: #f87171;
     --color-error-highlight: #2a1a1a;
     --color-success: #4ade80;
     --color-success-highlight: #1a2a1a;

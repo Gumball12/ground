@@ -111,12 +111,27 @@
 .tab-lock-overlay {
   position: fixed;
   inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
   z-index: 1200;
-  display: grid;
   place-items: center;
   padding: var(--space-6);
+  border: none;
   background: oklch(from var(--color-bg) l c h / 0.86);
+  color: var(--color-text);
   backdrop-filter: blur(10px);
+}
+
+.tab-lock-overlay[open] {
+  display: grid;
+}
+
+.tab-lock-overlay::backdrop {
+  background: transparent;
 }
 
 .tab-lock-card {

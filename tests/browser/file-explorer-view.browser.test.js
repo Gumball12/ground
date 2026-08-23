@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { uiFeatureTabActivityMethods } from '../../src/client/application/app-shell/ui-feature-tab-activity.js';
 import { FileExplorerController } from '../../src/client/presentation/file-explorer-controller.js';
 import { FileExplorerView } from '../../src/client/presentation/file-explorer-view.js';
 
@@ -29,6 +30,107 @@ describe('FileExplorerView mobile interactions', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+  });
+
+  it('supports keyboard navigation and focus restoration in desktop file menus', () => {
+    const view = createView({ mobileBreakpointQuery: { matches: false } });
+    const trigger = document.getElementById('fileExplorerOptionsBtn');
+    trigger.focus();
+
+    view.showContextMenu({ clientX: 10, clientY: 10, currentTarget: trigger, target: trigger }, [
+      { label: 'Rename', onSelect: vi.fn() },
+      { label: 'Delete', onSelect: vi.fn() },
+    ]);
+
+    const menu = document.querySelector('[role="menu"]');
+    expect(document.activeElement).toHaveTextContent('Rename');
+    menu.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+    expect(document.activeElement).toHaveTextContent('Delete');
+    menu.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('closes desktop file menus on Tab without restoring trigger focus', () => {
+    const view = createView({ mobileBreakpointQuery: { matches: false } });
+    const trigger = document.getElementById('fileExplorerOptionsBtn');
+    trigger.focus();
+    view.showContextMenu({ clientX: 10, clientY: 10, currentTarget: trigger, target: trigger }, [
+      { label: 'Rename', onSelect: vi.fn() },
+    ]);
+
+    const menu = document.querySelector('[role="menu"]');
+    menu.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' }));
+
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it('does not install a stale outside-click listener after immediate Tab dismissal', () => {
+    vi.useFakeTimers();
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const view = createView({ mobileBreakpointQuery: { matches: false } });
+    const trigger = document.getElementById('fileExplorerOptionsBtn');
+
+    view.showContextMenu({ clientX: 10, clientY: 10, currentTarget: trigger, target: trigger }, [
+      { label: 'Rename', onSelect: vi.fn() },
+    ]);
+    document.querySelector('[role="menu"]').dispatchEvent(
+      new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' }),
+    );
+    vi.runAllTimers();
+
+    expect(addEventListener).not.toHaveBeenCalledWith('click', expect.any(Function));
+  });
+
+  it('restores the file-action trigger after a blocking tab lock closes', () => {
+    const view = createView();
+    const trigger = document.getElementById('fileExplorerOptionsBtn');
+    const workspace = document.createElement('main');
+    const overlay = document.createElement('dialog');
+    const takeover = document.createElement('button');
+    workspace.append(trigger);
+    overlay.append(takeover);
+    document.body.append(workspace, overlay);
+    trigger.focus();
+
+    view.showContextMenu({ currentTarget: trigger, target: trigger }, [
+      { label: 'Rename', onSelect: vi.fn() },
+    ]);
+
+    const context = {
+      elements: {
+        tabLockCopy: document.createElement('p'),
+        tabLockOverlay: overlay,
+        tabLockTakeoverButton: takeover,
+        tabLockTitle: document.createElement('h2'),
+      },
+    };
+    Object.assign(context, uiFeatureTabActivityMethods);
+    context.showTabLockOverlay({ reason: 'taken-over' });
+
+    expect(document.querySelector('.file-action-sheet')).toBeNull();
+    expect(document.activeElement).toBe(takeover);
+    context.hideTabLockOverlay();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('opens mobile file actions as a focused modal sheet and restores focus', () => {
+    const view = createView();
+    const trigger = document.getElementById('fileExplorerOptionsBtn');
+    trigger.focus();
+
+    view.showContextMenu({ currentTarget: trigger, target: trigger }, [
+      { label: 'Rename', onSelect: vi.fn() },
+    ]);
+
+    const sheet = document.querySelector('.file-action-sheet');
+    expect(sheet).toBeInstanceOf(HTMLDialogElement);
+    expect(sheet.open).toBe(true);
+    expect(document.activeElement).toHaveTextContent('Rename');
+    sheet.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(document.querySelector('.file-action-sheet')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('opens file actions after a mobile long press', () => {

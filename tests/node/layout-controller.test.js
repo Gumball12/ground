@@ -87,6 +87,9 @@ function withDom({ isMobile = false } = {}, run) {
   const previewPane = createElement({ width: 500 });
   const mobileToggleButton = createElement();
   const viewButtons = ['split', 'editor', 'preview'].map(createButton);
+  const unrelatedDiffButton = createButton(undefined);
+  unrelatedDiffButton.classList.add('active');
+  unrelatedDiffButton.setAttribute('aria-pressed', 'true');
 
   globalThis.document = {
     body: { style: {} },
@@ -100,7 +103,7 @@ function withDom({ isMobile = false } = {}, run) {
       return null;
     },
     querySelectorAll(selector) {
-      if (selector === '.view-btn') {
+      if (selector === '#toolbarViewToggle [data-view]') {
         return viewButtons;
       }
       return [];
@@ -114,6 +117,7 @@ function withDom({ isMobile = false } = {}, run) {
     return run({
       editorLayout,
       mobileToggleButton,
+      unrelatedDiffButton,
       viewButtons,
     });
   } finally {
@@ -137,6 +141,21 @@ test('LayoutController reset restores the last desktop view after a temporary pr
     assert.equal(editorLayout.getAttribute('data-view'), 'editor');
     assert.equal(viewButtons.find((button) => button.dataset.view === 'editor')?.getAttribute('aria-pressed'), 'true');
     assert.equal(viewButtons.find((button) => button.dataset.view === 'preview')?.getAttribute('aria-pressed'), 'false');
+  });
+});
+
+test('LayoutController leaves unrelated diff controls unchanged', () => {
+  withDom({ isMobile: false }, ({ unrelatedDiffButton, viewButtons }) => {
+    const controller = new LayoutController({
+      mobileBreakpointQuery: { matches: false },
+      onMeasureEditor: () => {},
+    });
+
+    controller.initialize();
+    viewButtons.find((button) => button.dataset.view === 'preview')?.click();
+
+    assert.equal(unrelatedDiffButton.classList.contains('active'), true);
+    assert.equal(unrelatedDiffButton.getAttribute('aria-pressed'), 'true');
   });
 });
 

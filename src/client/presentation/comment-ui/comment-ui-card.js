@@ -314,7 +314,8 @@ function createComposer() {
   textarea.className = inputClassNames({ extra: 'comment-card-input' });
   textarea.rows = 4;
   textarea.maxLength = COMMENT_BODY_MAX_LENGTH;
-  textarea.placeholder = 'Add context, feedback, or a question...';
+  textarea.setAttribute('aria-label', 'Add comment');
+  textarea.placeholder = 'Add context, feedback, or a question…';
   textarea.value = this.activeCard?.composerDraft?.value ?? '';
 
   const actions = document.createElement('div');
@@ -575,7 +576,8 @@ function createReplyComposer(thread) {
   textarea.className = inputClassNames({ extra: 'comment-card-input' });
   textarea.rows = 3;
   textarea.maxLength = COMMENT_BODY_MAX_LENGTH;
-  textarea.placeholder = 'Reply to thread...';
+  textarea.setAttribute('aria-label', 'Reply to thread');
+  textarea.placeholder = 'Reply to thread…';
   textarea.value = draft?.value ?? '';
 
   const actions = document.createElement('div');

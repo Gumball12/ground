@@ -76,6 +76,8 @@ export class ImageLightboxController {
     this.pinchStartCenter = { x: 0, y: 0 };
     this.didDrag = false;
     this.resetButton = null;
+    this.previouslyFocusedElement = null;
+    this.blockingModalHandler = () => this.close();
 
     this.handlePreviewClick = (event) => {
       const target = event.target;
@@ -99,12 +101,6 @@ export class ImageLightboxController {
 
     this.handleKeyDown = (event) => {
       if (!this.isOpen) {
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        this.close();
         return;
       }
 
@@ -161,15 +157,19 @@ export class ImageLightboxController {
     }
 
     this.ensureOverlayRoot();
+    this.previouslyFocusedElement = this.document.activeElement instanceof this.window.HTMLElement
+      ? this.document.activeElement
+      : null;
     this.resetView();
     this.titleElement.textContent = image.getAttribute('alt') || 'Image preview';
     this.imageElement.src = src;
     this.imageElement.alt = image.getAttribute('alt') || '';
-    this.overlayRoot.hidden = false;
+    this.overlayRoot.showModal();
     this.isOpen = true;
     this.document.body.classList.add('image-lightbox-open');
+    this.document.addEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
     this.syncTransform();
-    this.overlayRoot.focus?.();
+    this.overlayRoot.querySelector('button:not(:disabled)')?.focus();
     return true;
   }
 
@@ -184,11 +184,14 @@ export class ImageLightboxController {
     this.pinchStartDistance = 0;
     this.didDrag = false;
     this.viewport?.classList?.remove('is-dragging');
-    if (this.overlayRoot) {
-      this.overlayRoot.hidden = true;
+    if (this.overlayRoot?.open) {
+      this.overlayRoot.close();
     }
     this.isOpen = false;
     this.document.body.classList.remove('image-lightbox-open');
+    this.document.removeEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
+    this.previouslyFocusedElement?.focus?.();
+    this.previouslyFocusedElement = null;
   }
 
   resetView() {
@@ -442,11 +445,14 @@ export class ImageLightboxController {
       return this.overlayRoot;
     }
 
-    const overlayRoot = this.document.createElement('div');
+    const overlayRoot = this.document.createElement('dialog');
     overlayRoot.className = 'image-lightbox-root';
     overlayRoot.dataset.imageLightboxRoot = 'true';
-    overlayRoot.hidden = true;
-    overlayRoot.tabIndex = -1;
+    overlayRoot.setAttribute('aria-labelledby', 'imageLightboxTitle');
+    overlayRoot.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      this.close();
+    });
 
     const backdrop = this.document.createElement('button');
     backdrop.className = 'image-lightbox-backdrop';
@@ -460,9 +466,6 @@ export class ImageLightboxController {
 
     const shell = this.document.createElement('div');
     shell.className = 'image-lightbox-shell';
-    shell.setAttribute('role', 'dialog');
-    shell.setAttribute('aria-modal', 'true');
-    shell.setAttribute('aria-label', 'Image preview');
     shell.addEventListener('click', (event) => event.stopPropagation());
     shell.addEventListener('pointerdown', (event) => event.stopPropagation());
 
@@ -471,6 +474,7 @@ export class ImageLightboxController {
 
     const title = this.document.createElement('div');
     title.className = 'image-lightbox-title';
+    title.id = 'imageLightboxTitle';
     title.textContent = 'Image preview';
 
     const controls = this.document.createElement('div');

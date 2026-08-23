@@ -643,7 +643,7 @@ export class GitDiffViewController {
     this.excalidrawPreviewPayloads.clear();
     this.drawioPreviewPayloads.clear();
     this.requestScope = scope;
-    this.renderLoading('Loading diff summary...');
+    this.renderLoading('Loading diff summary…');
 
     try {
       const data = await this.gitApiClient.readDiff({
@@ -673,7 +673,7 @@ export class GitDiffViewController {
         source: 'workspace',
         summary: { additions: 0, deletions: 0, filesChanged: 0 },
       };
-      this.renderEmpty('Failed to load git diff');
+      this.renderEmpty('Failed to load git diff', { alert: true });
       return this.data;
     }
   }
@@ -696,7 +696,7 @@ export class GitDiffViewController {
     this.excalidrawPreviewPayloads.clear();
     this.drawioPreviewPayloads.clear();
     this.requestScope = 'all';
-    this.renderLoading('Loading commit summary...');
+    this.renderLoading('Loading commit summary…');
 
     try {
       const data = await this.gitApiClient.readCommit({
@@ -737,7 +737,7 @@ export class GitDiffViewController {
         summary: { additions: 0, deletions: 0, filesChanged: 0 },
       };
       this.commitMeta = null;
-      this.renderEmpty('Failed to load git commit');
+      this.renderEmpty('Failed to load git commit', { alert: true });
       return this.data;
     }
   }
@@ -786,27 +786,27 @@ export class GitDiffViewController {
     void this.loadCurrentFile();
   }
 
-  renderLoading(message = 'Loading git diff...') {
+  renderLoading(message = 'Loading git diff…') {
     if (!this.isActive) {
       return;
     }
     this.page?.classList.remove('hidden');
     if (this.content) {
       // pi-lens-ignore: ast-grep:no-inner-html-js
-      this.content.innerHTML = `<div class="diff-empty-state">${escapeHtml(message)}</div>`;
+      this.content.innerHTML = `<div class="diff-empty-state" role="status" aria-live="polite">${escapeHtml(message)}</div>`;
     }
     this.data = null;
     this.syncToolbar();
   }
 
-  renderEmpty(message) {
+  renderEmpty(message, { alert = false } = {}) {
     if (!this.isActive) {
       return;
     }
     this.page?.classList.remove('hidden');
     if (this.content) {
       // pi-lens-ignore: ast-grep:no-inner-html-js
-      this.content.innerHTML = `<div class="diff-empty-state">${escapeHtml(message)}</div>`;
+      this.content.innerHTML = `<div class="diff-empty-state"${alert ? ' role="alert"' : ''}>${escapeHtml(message)}</div>`;
     }
     this.syncToolbar();
   }
@@ -1341,7 +1341,7 @@ export class GitDiffViewController {
       return `
         <section class="diff-file-block">
           ${this.renderFileHeader(currentFile)}
-          <div class="diff-empty-state">Loading file diff...</div>
+          <div class="diff-empty-state" role="status" aria-live="polite">Loading file diff…</div>
         </section>
       `;
     }
@@ -1351,7 +1351,7 @@ export class GitDiffViewController {
       return `
         <section class="diff-file-block">
           ${this.renderFileHeader(currentFile)}
-          <div class="diff-empty-state">${escapeHtml(errorMessage)}</div>
+          <div class="diff-empty-state" role="alert">${escapeHtml(errorMessage)}</div>
         </section>
       `;
     }
@@ -1431,9 +1431,9 @@ export class GitDiffViewController {
     const bodyMarkup = isCollapsed
       ? ''
       : isLoading
-        ? '<div class="diff-empty-state">Loading file diff...</div>'
+        ? '<div class="diff-empty-state" role="status" aria-live="polite">Loading file diff…</div>'
         : errorMessage
-          ? `<div class="diff-empty-state">${escapeHtml(errorMessage)}</div>`
+          ? `<div class="diff-empty-state" role="alert">${escapeHtml(errorMessage)}</div>`
           : this.renderDiffDetail(detail, index, { includeHeader: false });
 
     return `
@@ -1873,11 +1873,15 @@ export class GitDiffViewController {
     }
 
     this.modeButtons.forEach((button) => {
+      const active = button.getAttribute('data-diff-mode') === this.mode;
       button.classList.remove('hidden');
-      button.classList.toggle('active', button.getAttribute('data-diff-mode') === this.mode);
+      button.classList.toggle('active', active);
+      button.setAttribute?.('aria-pressed', String(active));
     });
     this.layoutButtons.forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-diff-layout') === this.layoutMode);
+      const active = button.getAttribute('data-diff-layout') === this.layoutMode;
+      button.classList.toggle('active', active);
+      button.setAttribute?.('aria-pressed', String(active));
     });
 
     const hasCurrentFile = Boolean(this.getCurrentFile()?.path);
@@ -1902,8 +1906,8 @@ export class GitDiffViewController {
       this.primaryActionButton.classList.toggle('ui-button--primary', emphasizeInclude);
       this.primaryActionButton.classList.toggle('ui-button--secondary', !emphasizeInclude);
       this.primaryActionButton.classList.toggle('ui-button--surface', !emphasizeInclude);
-      this.primaryActionButton.textContent = this.pendingAction === primaryAction
-        ? 'Working...'
+      this.primaryActionButton.textContent = this.pendingAction && this.pendingAction === primaryAction
+        ? 'Working…'
         : primaryAction === 'unstage'
           ? 'Remove'
           : 'Include in commit';
@@ -1914,7 +1918,7 @@ export class GitDiffViewController {
     }
     if (this.commitButton) {
       this.commitButton.textContent = this.pendingAction === 'commit'
-        ? 'Working...'
+        ? 'Working…'
         : commitButtonLabel(includedFileCount);
     }
     this.commitButton?.classList.toggle(

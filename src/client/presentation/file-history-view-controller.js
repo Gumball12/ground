@@ -544,12 +544,14 @@ export class FileHistoryViewController {
     this.actionsDivider?.classList.add('hidden');
     this.editorActionsGroup?.classList.remove('hidden');
     this.modeButtons.forEach((button) => {
+      const active = button.getAttribute('data-diff-mode') === this.diffMode;
       button.classList.toggle('hidden', !hasSelection);
-      button.classList.toggle('active', button.getAttribute('data-diff-mode') === this.diffMode);
+      button.classList.toggle('active', active);
+      button.setAttribute?.('aria-pressed', String(active));
     });
     this.openEditorButton?.toggleAttribute('disabled', !this.currentFilePath);
     if (this.openEditorButton) {
-      this.openEditorButton.textContent = 'Open File';
+      this.openEditorButton.textContent = 'Open file';
     }
     this.primaryActionButton?.toggleAttribute('disabled', true);
     this.commitButton?.toggleAttribute('disabled', true);
@@ -562,13 +564,13 @@ export class FileHistoryViewController {
     this.page?.classList.remove('hidden');
     if (this.content) {
       this.content.classList.add('diff-content--history');
-      this.content.innerHTML = '<div class="git-panel-empty">Loading file history...</div>';
+      this.content.innerHTML = '<div class="git-panel-empty" role="status" aria-live="polite">Loading file history…</div>';
     }
     this.historyListElement = null;
     this.syncToolbar();
   }
 
-  renderEmpty(message) {
+  renderEmpty(message, { alert = false } = {}) {
     if (!this.isActive) {
       return;
     }
@@ -576,7 +578,7 @@ export class FileHistoryViewController {
     if (this.content) {
       this.content.classList.add('diff-content--history');
       // pi-lens-ignore: no-inner-html-js
-      this.content.innerHTML = `<div class="git-panel-empty">${escapeHtml(message)}</div>`;
+      this.content.innerHTML = `<div class="git-panel-empty"${alert ? ' role="alert"' : ''}>${escapeHtml(message)}</div>`;
     }
     this.historyListElement = null;
     this.syncToolbar();
@@ -691,7 +693,7 @@ export class FileHistoryViewController {
             type="button"
             data-file-history-open-selected-diff
           >
-            Open Standalone Diff
+            Open standalone diff
           </button>
           ${entry.type === 'commit' ? `
             <button
@@ -699,7 +701,7 @@ export class FileHistoryViewController {
               type="button"
               data-file-history-open-selected-preview
             >
-              Preview File
+              Preview file
             </button>
           ` : ''}
         </div>
@@ -719,7 +721,7 @@ export class FileHistoryViewController {
           <div class="diff-file-header">
             <span class="diff-file-path">${escapeHtml(entry.pathAtCommit || this.currentFilePath || '')}</span>
           </div>
-          <div class="diff-empty-state">Loading diff...</div>
+          <div class="diff-empty-state" role="status" aria-live="polite">Loading diff…</div>
         </section>
       `;
     }
@@ -728,7 +730,7 @@ export class FileHistoryViewController {
       return `
         <section class="diff-file-block file-history-diff-block">
           ${this.renderDiffFileHeader({ path: entry.pathAtCommit || this.currentFilePath || '' })}
-          <div class="diff-empty-state">${escapeHtml(selection.error)}</div>
+          <div class="diff-empty-state" role="alert">${escapeHtml(selection.error)}</div>
         </section>
       `;
     }
@@ -764,7 +766,7 @@ export class FileHistoryViewController {
 
     const hasRows = Boolean(this.localChanges) || (this.history.commits?.length ?? 0) > 0;
     if (!hasRows) {
-      this.renderEmpty(this.history.error || 'No history found for this file.');
+      this.renderEmpty(this.history.error || 'No history found for this file.', { alert: Boolean(this.history.error) });
       return;
     }
 
@@ -794,7 +796,7 @@ export class FileHistoryViewController {
                 data-file-history-load-more
                 ${this.history.loadingMore ? 'disabled' : ''}
               >
-                ${this.history.loadingMore ? 'Loading...' : 'Load More'}
+                ${this.history.loadingMore ? 'Loading…' : 'Load more'}
               </button>
             </div>
           ` : ''}

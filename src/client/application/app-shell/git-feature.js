@@ -132,7 +132,7 @@ export const gitFeature = {
 
     button.classList.remove('hidden');
     if (mode === 'history-preview') {
-      label.textContent = 'Back to History';
+      label.textContent = 'Back to history';
       button.setAttribute('aria-label', 'Back to file history');
       button.title = 'Back to file history';
       return;
@@ -613,7 +613,7 @@ export const gitFeature = {
     }
     this.elements.gitResetFileName.value = filePath;
     if (this.elements.gitResetSubmit) {
-      this.elements.gitResetSubmit.textContent = 'Reset File';
+      this.elements.gitResetSubmit.textContent = 'Reset file';
     }
     this.elements.gitResetSubmit?.toggleAttribute('disabled', false);
 
@@ -637,10 +637,10 @@ export const gitFeature = {
 
     submit?.toggleAttribute('disabled', true);
     if (submit) {
-      submit.textContent = 'Resetting...';
+      submit.textContent = 'Resetting…';
     }
     try {
-      await this.runGitActionWithStatus('Resetting file...', async () => {
+      await this.runGitActionWithStatus('Resetting file…', async () => {
         const result = await this.postGitAction('reset-file', { path: filePath });
         await this.finalizeGitAction({
           action: 'reset',
@@ -654,7 +654,7 @@ export const gitFeature = {
       this.toastController.show(error.message || 'Failed to reset file');
     } finally {
       if (submit) {
-        submit.textContent = 'Reset File';
+        submit.textContent = 'Reset file';
       }
       submit?.toggleAttribute('disabled', false);
     }

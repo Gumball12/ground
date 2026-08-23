@@ -21,6 +21,7 @@ export class WorkspaceCoordinator {
     createEditorSession,
     getDisplayName,
     getFileList,
+    getVaultFileList = getFileList,
     getLineWrappingEnabled,
     getVimModeEnabled,
     getLocalUser,
@@ -74,6 +75,7 @@ export class WorkspaceCoordinator {
     this.createEditorSession = createEditorSession;
     this.getDisplayName = getDisplayName;
     this.getFileList = getFileList;
+    this.getVaultFileList = getVaultFileList;
     this.getLineWrappingEnabled = getLineWrappingEnabled;
     this.getVimModeEnabled = getVimModeEnabled ?? (() => false);
     this.getLocalUser = getLocalUser;
@@ -208,7 +210,7 @@ export class WorkspaceCoordinator {
       return false;
     }
 
-    if (!filePath || !this.getFileList().includes(filePath)) {
+    if (!filePath || !this.getVaultFileList().includes(filePath)) {
       this.cleanupSession();
       this.stateStore.sessionLoadToken += 1;
       this.onFileOpenError({ code: 'not-found', filePath });

@@ -74,6 +74,7 @@ function createCoordinator(overrides = {}) {
       'vault/new-diagram.excalidraw',
       'views/board.base',
     ]),
+    getVaultFileList: overrides.getVaultFileList,
     getLineWrappingEnabled: () => true,
     getLocalUser: () => null,
     getStoredUserName: () => 'Tester',
@@ -359,6 +360,8 @@ test('WorkspaceCoordinator skips creating an editor session for image attachment
         destroy() {},
       };
     },
+    getFileList: () => ['README.md'],
+    getVaultFileList: () => ['README.assets/diagram.png', 'README.md'],
     isImageFile: (filePath) => filePath?.endsWith('.png'),
   });
 

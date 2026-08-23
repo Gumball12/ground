@@ -15,7 +15,7 @@ export class LayoutController {
     this.previewPane = document.getElementById('previewPane');
     this.mobileToggleButton = document.getElementById('mobileViewToggle');
     this.resizer = document.getElementById('resizer');
-    this.viewButtons = Array.from(document.querySelectorAll('.view-btn'));
+    this.viewButtons = Array.from(document.querySelectorAll('#toolbarViewToggle [data-view]'));
   }
 
   isMobileViewport() {
@@ -128,6 +128,8 @@ export class LayoutController {
     const previewIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     const editorIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="14" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>';
 
+    // Icons and labels are fixed application-owned markup.
+    // pi-lens-ignore: no-inner-html-js
     this.mobileToggleButton.innerHTML = `${label === 'Editor' ? editorIcon : previewIcon}<span class="ui-toolbar-button-label">${label}</span>`;
   }
 

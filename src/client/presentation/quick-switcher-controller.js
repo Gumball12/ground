@@ -105,11 +105,14 @@ export class QuickSwitcherController {
     this.textSearchRunner = new QuickSwitcherTextSearchRunner({
       debounceMs: this.searchDebounceMs,
     });
+    this.blockingModalHandler = () => this.close();
 
     this.bindEvents();
   }
 
   bindEvents() {
+    document.addEventListener?.('collabmd:close-custom-modals', this.blockingModalHandler);
+
     this.overlay?.addEventListener('mousedown', (e) => {
       if (e.target === this.overlay) this.close();
     });

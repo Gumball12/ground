@@ -265,7 +265,7 @@
   display: flex;
 }
 
-.toolbar-overflow-menu .ui-toolbar-button,
+.toolbar-overflow-menu .ui-button--toolbar,
 .toolbar-overflow-menu .toolbar-overflow-group-toggle {
   width: 100%;
 }
@@ -277,7 +277,7 @@
   text-align: left;
 }
 
-.toolbar-overflow-menu .ui-toolbar-button {
+.toolbar-overflow-menu .ui-button--toolbar {
   justify-content: flex-start;
   min-height: 36px;
   gap: 8px;

@@ -95,6 +95,10 @@ describe('uiFeature browser helpers', () => {
 
     expect(context.activeSidebarTab).toBe('git');
     expect(context.elements.gitSidebarTab.classList.contains('active')).toBe(true);
+    expect(context.elements.gitSidebarTab).toHaveAttribute('aria-selected', 'true');
+    expect(context.elements.gitSidebarTab).toHaveAttribute('tabindex', '0');
+    expect(context.elements.filesSidebarTab).toHaveAttribute('aria-selected', 'false');
+    expect(context.elements.filesSidebarTab).toHaveAttribute('tabindex', '-1');
     expect(document.getElementById('gitPanel').classList.contains('hidden')).toBe(false);
     expect(context.gitPanel.setActive).toHaveBeenCalledWith(true);
   });

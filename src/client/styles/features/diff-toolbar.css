@@ -62,7 +62,7 @@
   gap: var(--space-2);
 }
 
-.diff-file-nav .ui-action-icon:disabled {
+.diff-file-nav .ui-icon-button--action:disabled {
   opacity: 0.3;
 }
 

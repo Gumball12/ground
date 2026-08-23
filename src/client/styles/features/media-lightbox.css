@@ -3,10 +3,20 @@
 .image-lightbox-root {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   z-index: 220;
-  display: grid;
-  place-items: center;
   pointer-events: auto;
+}
+
+.image-lightbox-root::backdrop {
+  background: transparent;
 }
 
 .image-lightbox-root[hidden] {
@@ -67,7 +77,6 @@
 }
 
 .image-lightbox-btn {
-  min-width: 0;
   min-height: var(--control-target-min);
   min-width: var(--control-target-min);
   padding: var(--space-2) var(--space-3);

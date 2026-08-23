@@ -346,10 +346,10 @@ function renderSortPanel(result) {
       <div class="bases-panel-section">
         <div class="bases-panel-title">Group by</div>
         <div class="bases-sort-row">
-          <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-property' }))}" data-base-group-by-property>
+          <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-property' }))}" data-base-group-by-property aria-label="Group by property">
             ${createSelectOptions(result, { allowBlank: true, selected: viewConfig.groupBy?.property ?? '' })}
           </select>
-          <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-direction' }))}" data-base-group-by-direction${viewConfig.groupBy?.property ? '' : ' disabled'}>
+          <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-direction' }))}" data-base-group-by-direction aria-label="Group direction"${viewConfig.groupBy?.property ? '' : ' disabled'}>
             ${groupDirections.map((direction) => `<option value="${escapeHtml(direction.id)}"${direction.id === (viewConfig.groupBy?.direction ?? 'asc') ? ' selected' : ''}>${escapeHtml(direction.label)}</option>`).join('')}
           </select>
           <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-clear-group-by${viewConfig.groupBy?.property ? '' : ' disabled'}>Clear</button>
@@ -366,15 +366,15 @@ function renderSortPanel(result) {
     ];
     return `
               <div class="bases-sort-row">
-                <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-property' }))}" data-base-sort-property="${index}">
+                <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-property' }))}" data-base-sort-property="${index}" aria-label="Sort rule ${index + 1} property">
                   ${createSelectOptions(result, { selected: sortConfig.property })}
                 </select>
-                <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-direction' }))}" data-base-sort-direction="${index}">
+                <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-sort-direction' }))}" data-base-sort-direction="${index}" aria-label="Sort rule ${index + 1} direction">
                   ${directions.map((direction) => `<option value="${escapeHtml(direction.id)}"${direction.id === sortConfig.direction ? ' selected' : ''}>${escapeHtml(direction.label)}</option>`).join('')}
                 </select>
-                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-move="${index}:up"${index === 0 ? ' disabled' : ''}>↑</button>
-                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-move="${index}:down"${index === sorts.length - 1 ? ' disabled' : ''}>↓</button>
-                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-delete="${index}">Delete</button>
+                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-move="${index}:up" aria-label="Move sort rule ${index + 1} up"${index === 0 ? ' disabled' : ''}>↑</button>
+                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-move="${index}:down" aria-label="Move sort rule ${index + 1} down"${index === sorts.length - 1 ? ' disabled' : ''}>↓</button>
+                <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-sort-delete="${index}" aria-label="Delete sort rule ${index + 1}">Delete</button>
               </div>
             `;
   }).join('')}
@@ -387,6 +387,10 @@ function renderSortPanel(result) {
 
 function encodePath(path = []) {
   return path.join('.');
+}
+
+function formatFilterPath(path = []) {
+  return path.map((index) => index + 1).join('.');
 }
 
 function decodePath(value = '') {
@@ -773,9 +777,10 @@ function renderFilterSuggestionList(presentation, currentValue = '') {
 
 function renderFilterValueCombobox(result, rule, path, entry) {
   const presentation = buildFilterValuePresentation(result, rule, path, entry);
+  const filterLabel = `Filter ${formatFilterPath(path)}`;
   return `
     <div class="bases-filter-value-combobox${presentation.suggestionsEnabled ? ' has-suggestions' : ''}">
-      <input class="${escapeHtml(presentation.valueInputClasses)}" type="text" value="${escapeHtml(rule.value ?? '')}" data-base-filter-value="${escapeHtml(presentation.encodedPath)}"${presentation.suggestionsEnabled ? ` aria-controls="${presentation.suggestionListId}" aria-haspopup="listbox" aria-autocomplete="list" autocomplete="off"` : ''}${presentation.valueDisabled ? ' disabled' : ''}>
+      <input class="${escapeHtml(presentation.valueInputClasses)}" type="text" value="${escapeHtml(rule.value ?? '')}" data-base-filter-value="${escapeHtml(presentation.encodedPath)}" aria-label="${filterLabel} value"${presentation.suggestionsEnabled ? ` aria-controls="${presentation.suggestionListId}" aria-haspopup="listbox" aria-autocomplete="list" autocomplete="off"` : ''}${presentation.valueDisabled ? ' disabled' : ''}>
       ${renderFilterSuggestionList(presentation, rule.value ?? '')}
     </div>
   `;
@@ -783,17 +788,18 @@ function renderFilterValueCombobox(result, rule, path, entry) {
 
 function renderFilterRule(result, rule, path, entry) {
   const presentation = buildFilterValuePresentation(result, rule, path, entry);
+  const filterLabel = `Filter ${formatFilterPath(path)}`;
 
   return `
     <div class="bases-filter-row">
-      <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-property' }))}" data-base-filter-property="${escapeHtml(presentation.encodedPath)}">
+      <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-property' }))}" data-base-filter-property="${escapeHtml(presentation.encodedPath)}" aria-label="${filterLabel} property">
         ${getPropertyOptionsMarkup(result, rule.propertyId)}
       </select>
-      <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-operator' }))}" data-base-filter-operator="${escapeHtml(presentation.encodedPath)}">
+      <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-operator' }))}" data-base-filter-operator="${escapeHtml(presentation.encodedPath)}" aria-label="${filterLabel} operator">
         ${presentation.operators.map((operator) => `<option value="${escapeHtml(operator)}"${operator === rule.operator ? ' selected' : ''}>${escapeHtml(operator)}</option>`).join('')}
       </select>
       ${renderFilterValueCombobox(result, rule, path, entry)}
-      <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-remove="${escapeHtml(presentation.encodedPath)}">Delete</button>
+      <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-remove="${escapeHtml(presentation.encodedPath)}" aria-label="Delete ${filterLabel.toLowerCase()}">Delete</button>
     </div>
   `;
 }
@@ -819,6 +825,7 @@ function syncFilterValueCombobox(entry, result, path, { fallbackToFullRender = t
   combobox.classList.toggle('has-suggestions', presentation.suggestionsEnabled);
   input.className = presentation.valueInputClasses;
   input.disabled = presentation.valueDisabled;
+  input.setAttribute('aria-label', `Filter ${formatFilterPath(path)} value`);
   if (input.value !== String(rule.value ?? '')) {
     input.value = String(rule.value ?? '');
   }
@@ -861,17 +868,18 @@ function forEachFilterRule(node, callback, path = []) {
 
 function renderFilterGroup(result, group, path, entry, { isRoot = false } = {}) {
   const encodedPath = encodePath(path);
+  const groupLabel = isRoot ? 'Root filter group' : `Filter group ${formatFilterPath(path)}`;
   return `
     <div class="bases-filter-group"${isRoot ? ' data-base-filter-root' : ''}>
       <div class="bases-filter-group-header">
-        <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-conjunction' }))}" data-base-filter-conjunction="${escapeHtml(encodedPath)}">
+        <select class="${escapeHtml(inputClassNames({ extra: 'bases-select bases-filter-conjunction' }))}" data-base-filter-conjunction="${escapeHtml(encodedPath)}" aria-label="${groupLabel} condition">
           ${['and', 'or', 'not'].map((conjunction) => `<option value="${conjunction}"${group.conjunction === conjunction ? ' selected' : ''}>${escapeHtml({
     and: 'All the following are true',
     not: 'None of the following are true',
     or: 'Any of the following are true',
   }[conjunction])}</option>`).join('')}
         </select>
-        ${isRoot ? '' : `<button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-remove="${escapeHtml(encodedPath)}">Delete group</button>`}
+        ${isRoot ? '' : `<button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-remove="${escapeHtml(encodedPath)}" aria-label="Delete ${groupLabel.toLowerCase()}">Delete group</button>`}
       </div>
       <div class="bases-filter-children">
         ${(group.children ?? []).map((child, index) => (
@@ -881,8 +889,8 @@ function renderFilterGroup(result, group, path, entry, { isRoot = false } = {}) 
   )).join('')}
       </div>
       <div class="bases-filter-actions-row">
-        <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-add-rule="${escapeHtml(encodedPath)}">Add filter</button>
-        <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-add-group="${escapeHtml(encodedPath)}">Add filter group</button>
+        <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-add-rule="${escapeHtml(encodedPath)}" aria-label="Add filter to ${groupLabel.toLowerCase()}">Add filter</button>
+        <button type="button" class="${escapeHtml(buttonClassNames({ variant: 'secondary', size: 'compact' }))}" data-base-filter-add-group="${escapeHtml(encodedPath)}" aria-label="Add filter group to ${groupLabel.toLowerCase()}">Add filter group</button>
       </div>
     </div>
   `;
@@ -911,6 +919,7 @@ function renderFilterPanel(result, entry) {
       ${mode === 'advanced'
       ? `
         <label class="bases-filter-advanced-label">
+          <span class="bases-panel-title">Filter expression</span>
           <textarea class="${escapeHtml(inputClassNames({ extra: 'bases-filter-advanced' }))}" data-base-filter-advanced>${escapeHtml(rawText)}</textarea>
         </label>
         <div class="bases-filter-actions-row">
@@ -1687,7 +1696,7 @@ export class BasesPreviewController {
     entry.requestVersion = requestVersion;
     const hasShell = Boolean(findShellElement(entry));
     if (!hasShell) {
-      replaceChildrenFromHtml(entry.placeholder, '<div class="preview-shell">Loading base…</div>');
+      replaceChildrenFromHtml(entry.placeholder, '<div class="preview-shell" role="status" aria-live="polite">Loading base…</div>');
     }
     try {
       const response = await this.vaultApiClient.queryBase({
@@ -1711,11 +1720,11 @@ export class BasesPreviewController {
         const shell = findShellElement(entry);
         const content = shell?.querySelector?.('[data-base-content]') ?? null;
         if (content) {
-          replaceChildrenFromHtml(content, `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
+          replaceChildrenFromHtml(content, `<div class="preview-shell" role="alert">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
           return;
         }
       }
-      replaceChildrenFromHtml(entry.placeholder, `<div class="preview-shell">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
+      replaceChildrenFromHtml(entry.placeholder, `<div class="preview-shell" role="alert">Failed to load base: ${escapeHtml(error.message || 'Unknown error')}</div>`);
     }
   }
 

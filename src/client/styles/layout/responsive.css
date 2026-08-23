@@ -166,7 +166,7 @@
     display: flex;
   }
 
-  .toolbar-overflow-menu .ui-toolbar-button,
+  .toolbar-overflow-menu .ui-button--toolbar,
   .toolbar-overflow-menu .chat-container {
     width: 100%;
   }
@@ -186,7 +186,7 @@
     display: inline !important;
   }
 
-  .toolbar-overflow-menu .ui-toolbar-button {
+  .toolbar-overflow-menu .ui-button--toolbar {
     justify-content: flex-start;
     min-height: 36px;
     gap: 8px;

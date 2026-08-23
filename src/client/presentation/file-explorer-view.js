@@ -58,7 +58,10 @@ export class FileExplorerView {
     this.longPressContext = null;
     this.suppressedActivationTarget = null;
     this.contextMenuCloseHandler = null;
+    this.contextMenuCloseTimer = null;
+    this.contextMenuAnchor = null;
     this.actionSheetCloseHandler = null;
+    this.blockingModalHandler = () => this.removeContextMenu();
     this.dragSource = null;
     this.currentSearchQuery = '';
     this.activeDropTarget = null;
@@ -336,6 +339,8 @@ export class FileExplorerView {
     button.setAttribute('aria-expanded', String(isExpanded));
     button.dataset.path = node.path;
     button.dataset.entryType = 'directory';
+    // Dynamic labels are escaped and icons are application-owned markup.
+    // pi-lens-ignore: no-inner-html-js
     button.innerHTML = `
       <svg class="file-tree-chevron${isExpanded ? ' expanded' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
       <svg class="file-tree-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -502,6 +507,8 @@ export class FileExplorerView {
           ${parentPath ? `<span class="file-tree-search-path">${escapeHtml(parentPath)}</span>` : ''}
         </span>`
       : `<span class="file-tree-name">${escapeHtml(displayName)}</span>`;
+    // Dynamic labels are escaped and icons are application-owned markup.
+    // pi-lens-ignore: no-inner-html-js
     button.innerHTML = `
       ${getVaultFileIconSvg(filePath)}
       ${nameMarkup}
@@ -965,18 +972,23 @@ export class FileExplorerView {
       return;
     }
 
+    const contextAnchor = event.currentTarget instanceof Element ? event.currentTarget : event.target;
+    this.contextMenuAnchor = contextAnchor instanceof HTMLElement ? contextAnchor : null;
     if (this.isMobileViewport()) {
       this.showActionSheet(items);
       return;
     }
 
-    const contextAnchor = event.currentTarget instanceof Element ? event.currentTarget : event.target;
     const menu = document.createElement('div');
     menu.className = 'file-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'File actions');
 
     for (const item of items) {
       const button = document.createElement('button');
+      button.type = 'button';
       button.className = `file-context-item${item.danger ? ' file-context-danger' : ''}`;
+      button.setAttribute('role', 'menuitem');
       button.textContent = item.label;
       button.addEventListener('click', () => {
         this.removeContextMenu();
@@ -999,17 +1011,47 @@ export class FileExplorerView {
       }
     };
     this.contextMenuCloseHandler = close;
-    setTimeout(() => document.addEventListener('click', close), 0);
+    const handleKeydown = (keyEvent) => {
+      const buttons = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+      const index = Math.max(0, buttons.indexOf(document.activeElement));
+      if (keyEvent.key === 'Escape') {
+        keyEvent.preventDefault();
+        this.removeContextMenu();
+        return;
+      }
+      if (keyEvent.key === 'Tab') {
+        this.removeContextMenu({ restoreFocus: false });
+        return;
+      }
+      const nextIndex = keyEvent.key === 'Home'
+        ? 0
+        : keyEvent.key === 'End'
+          ? buttons.length - 1
+          : keyEvent.key === 'ArrowDown'
+            ? (index + 1) % buttons.length
+            : keyEvent.key === 'ArrowUp'
+              ? (index - 1 + buttons.length) % buttons.length
+              : -1;
+      if (nextIndex >= 0) {
+        keyEvent.preventDefault();
+        buttons[nextIndex]?.focus();
+      }
+    };
+    menu.addEventListener('keydown', handleKeydown);
+    document.addEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
+    this.contextMenuCloseTimer = setTimeout(() => {
+      this.contextMenuCloseTimer = null;
+      if (menu.isConnected && this.contextMenuCloseHandler === close) {
+        document.addEventListener('click', close);
+      }
+    }, 0);
+    menu.querySelector('[role="menuitem"]')?.focus();
   }
 
   showActionSheet(items) {
-    const backdrop = document.createElement('button');
-    backdrop.type = 'button';
-    backdrop.className = 'file-action-sheet-backdrop';
-    backdrop.setAttribute('aria-label', 'Close file actions');
-
-    const sheet = document.createElement('div');
+    const sheet = document.createElement('dialog');
     sheet.className = 'file-action-sheet';
+    sheet.setAttribute('aria-label', 'File actions');
 
     items.forEach((item) => {
       const button = document.createElement('button');
@@ -1038,26 +1080,42 @@ export class FileExplorerView {
     });
     sheet.appendChild(cancelButton);
 
-    backdrop.addEventListener('click', () => {
+    sheet.addEventListener('cancel', (event) => {
+      event.preventDefault();
       this.removeContextMenu();
     });
+    sheet.addEventListener('click', (event) => {
+      const bounds = sheet.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right
+        || event.clientY < bounds.top || event.clientY > bounds.bottom) this.removeContextMenu();
+    });
 
-    document.body.append(backdrop, sheet);
+    document.body.append(sheet);
+    document.addEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
     this.actionSheetCloseHandler = () => {
-      backdrop.remove();
+      if (sheet.open) sheet.close();
       sheet.remove();
       this.actionSheetCloseHandler = null;
     };
+    sheet.showModal();
+    sheet.querySelector('button:not(:disabled)')?.focus();
   }
 
-  removeContextMenu() {
+  removeContextMenu({ restoreFocus = true } = {}) {
     this.cancelLongPress();
     this.clearDragFeedback();
     document.querySelectorAll('.file-context-menu').forEach((menu) => menu.remove());
+    if (this.contextMenuCloseTimer !== null) {
+      clearTimeout(this.contextMenuCloseTimer);
+      this.contextMenuCloseTimer = null;
+    }
     if (this.contextMenuCloseHandler) {
       document.removeEventListener('click', this.contextMenuCloseHandler);
       this.contextMenuCloseHandler = null;
     }
+    document.removeEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
     this.actionSheetCloseHandler?.();
+    if (restoreFocus) this.contextMenuAnchor?.focus?.();
+    this.contextMenuAnchor = null;
   }
 }

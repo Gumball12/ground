@@ -10,7 +10,7 @@
  * @property {string | null} followedUserClientId
  * @property {string} followedCursorSignature
  * @property {{ status: string, unreachable: boolean }} connectionState
- * @property {{ displayNameDialog?: HTMLDialogElement | HTMLElement | null, tabLockOverlay?: HTMLElement | null, tabLockTitle?: HTMLElement | null, tabLockCopy?: HTMLElement | null }} elements
+ * @property {{ tabLockOverlay?: HTMLDialogElement | null, tabLockTitle?: HTMLElement | null, tabLockCopy?: HTMLElement | null }} elements
  * @property {{ connect(): void, disconnect(): void, provider?: unknown }} lobby
  * @property {{ connect(): void, disconnect(): void, provider?: unknown }} workspaceSync
  * @property {{ show(message: string): void }} toastController
@@ -65,9 +65,6 @@ async function handleTabBlocked({ reason } = {}) {
   );
 
   this.isTabActive = false;
-  if (this.elements.displayNameDialog?.open) {
-    this.elements.displayNameDialog.close();
-  }
   this.lobby.disconnect();
   this.workspaceSync.disconnect();
   this.globalUsers = [];
@@ -100,6 +97,11 @@ function showTabLockOverlay({ reason } = {}) {
   const copy = this.elements.tabLockCopy;
   if (!overlay) return;
 
+  document.dispatchEvent(new Event('collabmd:close-custom-modals'));
+  document.querySelectorAll('dialog[open]').forEach((dialog) => {
+    if (dialog !== overlay) dialog.close();
+  });
+
   if (title) {
     title.textContent = reason === 'taken-over'
       ? 'This tab is no longer active'
@@ -112,12 +114,20 @@ function showTabLockOverlay({ reason } = {}) {
       : 'To avoid duplicate presence and chat, only one tab can stay connected at a time. Use the other tab, or take over the session here.';
   }
 
-  overlay.classList.remove('hidden');
+  if (!overlay.open) {
+    this.tabLockPreviouslyFocusedElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    overlay.showModal();
+  }
+  this.elements.tabLockTakeoverButton?.focus();
 }
 
 /** @this {UiTabActivityContext} */
 function hideTabLockOverlay() {
-  this.elements.tabLockOverlay?.classList.add('hidden');
+  if (this.elements.tabLockOverlay?.open) this.elements.tabLockOverlay.close();
+  this.tabLockPreviouslyFocusedElement?.focus?.();
+  this.tabLockPreviouslyFocusedElement = null;
 }
 
 export const uiFeatureTabActivityMethods = {

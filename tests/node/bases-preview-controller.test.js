@@ -230,6 +230,8 @@ class FakeRenderedPlaceholder {
 
     input.value = this._innerHTML.match(/class="bases-search-input" type="search" value="([^"]*)"/u)?.[1] ?? '';
     meta.textContent = this._innerHTML.match(/data-base-meta>([^<]*)</u)?.[1] ?? '';
+    // Test-only fake DOM hydration from controller-owned markup.
+    // pi-lens-ignore: no-inner-html-js
     panelSlot.innerHTML = this._innerHTML.match(/<div class="bases-panels" data-base-panel-slot>([\s\S]*?)<\/div>\s*<div data-base-summary-slot>/u)?.[1] ?? '';
 
     shell.querySelectorMap.set('[data-base-tabs]', tabs);
@@ -684,6 +686,37 @@ test('BasesPreviewController renders inline base editing controls as read-only',
 
   assert.match(placeholder.innerHTML, /Inline base previews are read-only/);
   assert.match(placeholder.innerHTML, /data-base-panel="sort" disabled/);
+});
+
+test('BasesPreviewController names generated sort, group, and filter controls', async () => {
+  const result = createBaseResult();
+  result.meta.activeViewConfig.groupBy = { direction: 'asc', property: 'note.value' };
+  result.meta.activeViewConfig.sort = [{ direction: 'asc', property: 'note.value' }];
+  result.meta.activeViewConfig.filters = 'note.value == "Row"';
+  const controller = new BasesPreviewController({
+    vaultApiClient: { queryBase: async () => ({ result }) },
+  });
+  const placeholder = createPlaceholder();
+  const entry = {
+    key: 'accessible-controls',
+    payload: { path: 'views/tasks.base', search: '', sourcePath: 'views/tasks.base', view: '' },
+    placeholder,
+    requestVersion: 0,
+    ui: { filterMode: 'builder', openPanel: 'sort', propertySearch: '', rawFilterText: '' },
+  };
+
+  await controller.renderEntry(entry);
+  assert.match(placeholder.innerHTML, /aria-label="Group by property"/);
+  assert.match(placeholder.innerHTML, /aria-label="Sort rule 1 property"/);
+  assert.match(placeholder.innerHTML, /aria-label="Move sort rule 1 up"/);
+  assert.match(placeholder.innerHTML, /aria-label="Delete sort rule 1"/);
+
+  entry.ui.openPanel = 'filter';
+  await controller.renderEntry(entry);
+  assert.match(placeholder.innerHTML, /aria-label="Filter 1 property"/);
+  assert.match(placeholder.innerHTML, /aria-label="Filter 1 operator"/);
+  assert.match(placeholder.innerHTML, /aria-label="Filter 1 value"/);
+  assert.match(placeholder.innerHTML, /aria-label="Delete filter 1"/);
 });
 
 test('BasesPreviewController marks implicitly visible properties as checked in the properties panel', async () => {

@@ -1,7 +1,6 @@
 /* ===== COMPONENTS / NAVIGATION ===== */
 
-.ui-button--toolbar,
-.ui-toolbar-button {
+.ui-button--toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-1);

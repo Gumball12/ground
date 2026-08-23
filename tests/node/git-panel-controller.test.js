@@ -53,6 +53,112 @@ function createPanelHarness() {
   };
 }
 
+test('GitPanelController announces initial loading and uses normalized action copy', (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const controller = new GitPanelController();
+  controller.render();
+
+  assert.match(harness.panel.innerHTML, /role="status" aria-live="polite"/u);
+  assert.match(harness.panel.innerHTML, /Loading git status…/u);
+
+  controller.status = {
+    sections: [{ files: [{ path: 'README.md' }], key: 'unstaged', label: 'Changes' }],
+    summary: { changedFiles: 1, staged: 1 },
+  };
+  controller.pendingActionKey = 'commit-staged';
+  const changesMarkup = controller.renderChangesPanel();
+  assert.match(changesMarkup, /View full diff/u);
+  assert.match(changesMarkup, /Working…/u);
+
+  controller.history = {
+    commits: [{ hash: 'abc', shortHash: 'abc', subject: 'Existing commit' }],
+    hasMore: true,
+    loaded: true,
+    loading: false,
+    loadingMore: false,
+  };
+  assert.match(controller.renderHistoryPanel(), /Load more/u);
+  controller.history.loadingMore = true;
+  assert.match(controller.renderHistoryPanel(), /Loading…/u);
+});
+
+test('GitPanelController renders a successful Git status response', async (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const onRepoChange = [];
+  const status = {
+    branch: { name: 'main' },
+    isGitRepo: true,
+    sections: [],
+    summary: { changedFiles: 0 },
+  };
+  const controller = new GitPanelController({
+    gitApiClient: {
+      readPullBackups: async () => ({ backups: [] }),
+      readStatus: async () => status,
+    },
+    onRepoChange: (...args) => onRepoChange.push(args),
+  });
+
+  assert.equal(await controller.refreshStatus(), status);
+  assert.equal(controller.statusError, '');
+  assert.deepEqual(onRepoChange, [[true, status]]);
+  assert.match(harness.panel.innerHTML, /main/u);
+});
+
+test('GitPanelController keeps non-Git vault copy distinct', async (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const status = { isGitRepo: false, sections: [], summary: { changedFiles: 0 } };
+  const controller = new GitPanelController({
+    gitApiClient: { readStatus: async () => status },
+  });
+
+  await controller.refreshStatus();
+
+  assert.match(harness.panel.innerHTML, /Git is unavailable for this vault\./u);
+  assert.doesNotMatch(harness.panel.innerHTML, /role="alert"/u);
+});
+
+test('GitPanelController renders transient status failures as alerts without reporting a non-Git vault', async (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const previousConsoleError = console.error;
+  console.error = () => {};
+  t.after(() => { console.error = previousConsoleError; });
+  const repoChanges = [];
+  const controller = new GitPanelController({
+    gitApiClient: { readStatus: async () => { throw new Error('offline'); } },
+    onRepoChange: (...args) => repoChanges.push(args),
+  });
+  const previousStatus = { isGitRepo: true, sections: [], summary: { changedFiles: 0 } };
+  controller.status = previousStatus;
+
+  assert.equal(await controller.refreshStatus(), null);
+  assert.equal(controller.status, previousStatus);
+  assert.deepEqual(repoChanges, []);
+  assert.match(harness.panel.innerHTML, /role="alert"/u);
+  assert.match(harness.panel.innerHTML, /Failed to load Git status\. Try again\./u);
+  assert.doesNotMatch(harness.panel.innerHTML, /Git is unavailable for this vault\./u);
+});
+
+test('GitPanelController keeps the status alert rendered when history refresh starts with a status failure', async (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+  const previousConsoleError = console.error;
+  console.error = () => {};
+  t.after(() => { console.error = previousConsoleError; });
+  const controller = new GitPanelController({
+    gitApiClient: { readStatus: async () => { throw new Error('offline'); } },
+  });
+  controller.panelMode = 'history';
+
+  assert.equal(await controller.refresh(), null);
+  assert.match(harness.panel.innerHTML, /role="alert"/u);
+  assert.match(harness.panel.innerHTML, /Failed to load Git status\. Try again\./u);
+});
+
 test('GitPanelController distinguishes an empty filter from no local changes', (t) => {
   const harness = createPanelHarness();
   t.after(() => harness.restore());

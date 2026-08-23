@@ -7,6 +7,7 @@
   left: 0;
   display: flex;
   width: 100%;
+  /* Fallback first; runtime viewport measurements override it when available. */
   height: 100dvh;
   height: var(--app-viewport-height, 100dvh);
   overflow: hidden;

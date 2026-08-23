@@ -480,6 +480,7 @@ export class CollabMdAppShell {
       }),
       getDisplayName: (filePath) => this.getDisplayName(filePath),
       getFileList: () => this.fileExplorer.flatDocumentFiles,
+      getVaultFileList: () => this.fileExplorer.flatFiles,
       getLineWrappingEnabled: () => this.getStoredLineWrapping(),
       getVimModeEnabled: () => this.getStoredVimMode(),
       getLocalUser: () => this.lobby.getLocalUser(),

@@ -44,6 +44,8 @@ class FakeClassList {
 class FakeElement {
   constructor({ attributes = {}, html = '', queryMap = {} } = {}) {
     this.attributes = { ...attributes };
+    // Test-only fake DOM stores controller-owned markup for assertions.
+    // pi-lens-ignore: no-inner-html-js
     this.innerHTML = html;
     this.listeners = new Map();
     this.classList = new FakeClassList();
@@ -223,6 +225,55 @@ test('GitDiffViewController describes staged state as inclusion in the next comm
   const repoStatus = controller.repoStatus;
   controller.hide();
   assert.equal(controller.repoStatus, repoStatus);
+});
+
+test('GitDiffViewController does not show pending copy when both actions are null', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+  const controller = new GitDiffViewController();
+  controller.data = { files: [], summary: {} };
+
+  controller.syncToolbar();
+
+  assert.equal(controller.pendingAction, null);
+  assert.equal(controller.getPrimaryAction(), null);
+  assert.equal(harness.elements.diffPrimaryActionBtn.textContent, 'Include in commit');
+});
+
+test('GitDiffViewController shows pending copy for the active primary action', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+  const controller = new GitDiffViewController();
+  controller.data = {
+    files: [{ hasWorkingTreeChanges: true, path: 'README.md' }],
+    summary: {},
+  };
+  controller.pendingAction = 'stage';
+
+  controller.syncToolbar();
+
+  assert.equal(controller.getPrimaryAction(), 'stage');
+  assert.equal(harness.elements.diffPrimaryActionBtn.textContent, 'Working…');
+});
+
+test('GitDiffViewController marks focused and stacked per-file failures as alerts', (t) => {
+  const harness = createHarness();
+  t.after(() => harness.restore());
+  const controller = new GitDiffViewController();
+  controller.data = {
+    files: [
+      { path: 'README.md', status: 'modified', stats: {} },
+      { path: 'docs/guide.md', status: 'modified', stats: {} },
+    ],
+    summary: {},
+  };
+  controller.activeFilePath = 'README.md';
+  controller.currentIndex = 0;
+  controller.fileErrors.set('README.md', 'Failed to load file diff');
+  controller.fileErrors.set('docs/guide.md', 'Failed to load file diff');
+
+  assert.match(controller.renderFocusedFileBody(), /role="alert">Failed to load file diff/u);
+  assert.match(controller.renderStackedSection(controller.data.files[1], 1), /role="alert">Failed to load file diff/u);
 });
 
 test('GitDiffViewController keeps Open in editor available for an empty workspace diff', async (t) => {

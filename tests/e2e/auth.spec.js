@@ -137,7 +137,7 @@ test.describe('oidc auth', () => {
       });
     });
 
-    await page.goto('/#file=test.md');
+    await page.goto('/#file=README.md');
 
     await expect(page.locator('.auth-gate-card')).toBeVisible();
     await expect(page.locator('.auth-gate-secondary-button')).toHaveCount(0);
@@ -149,8 +149,8 @@ test.describe('oidc auth', () => {
     await page.locator('.auth-gate-button').click();
 
     await expect(page.locator('.cm-editor')).toBeVisible();
-    await expect(page).toHaveURL(/#file=test\.md$/);
-    await expect.poll(async () => observedReturnTo).toBe('/#file=test.md');
+    await expect(page).toHaveURL(/#file=README\.md$/);
+    await expect.poll(async () => observedReturnTo).toBe('/#file=README.md');
     await expect.poll(async () => (
       page.evaluate(() => window.localStorage.getItem('collabmd-user-name'))
     )).toBe('Google User');

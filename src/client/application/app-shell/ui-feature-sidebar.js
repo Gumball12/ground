@@ -154,6 +154,26 @@ function applySidebarVisibility(showSidebar) {
 }
 
 /** @this {UiSidebarContext} */
+function handleSidebarTabsKeydown(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+
+  const tabs = [
+    this.elements.filesSidebarTab,
+    this.elements.commentsSidebarTab,
+    this.elements.gitSidebarTab,
+  ].filter((tab) => tab && !tab.classList.contains('hidden'));
+  const currentIndex = Math.max(0, tabs.indexOf(event.target));
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? tabs.length - 1
+      : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+  event.preventDefault();
+  tabs[nextIndex]?.click();
+  tabs[nextIndex]?.focus();
+}
+
+/** @this {UiSidebarContext} */
 function setSidebarTab(tab) {
   const nextTab = tab === 'git' && this.gitRepoAvailable
     ? 'git'
@@ -162,15 +182,30 @@ function setSidebarTab(tab) {
       : 'files';
   this.activeSidebarTab = nextTab;
 
-  this.elements.filesSidebarTab?.classList.toggle('active', nextTab === 'files');
-  this.elements.commentsSidebarTab?.classList.toggle('active', nextTab === 'comments');
-  this.elements.gitSidebarTab?.classList.toggle('active', nextTab === 'git');
-  document.getElementById('fileTree')?.classList.toggle('hidden', nextTab !== 'files');
+  [
+    [this.elements.filesSidebarTab, 'files'],
+    [this.elements.commentsSidebarTab, 'comments'],
+    [this.elements.gitSidebarTab, 'git'],
+  ].forEach(([button, buttonTab]) => {
+    const selected = nextTab === buttonTab;
+    button?.classList.toggle('active', selected);
+    button?.setAttribute('aria-selected', String(selected));
+    button?.setAttribute('tabindex', selected ? '0' : '-1');
+  });
+  const filePanel = document.getElementById('fileTree');
+  const commentPanel = this.elements.commentOverviewPanel;
+  const gitPanelElement = document.getElementById('gitPanel');
+  [
+    [filePanel, nextTab === 'files'],
+    [commentPanel, nextTab === 'comments'],
+    [gitPanelElement, nextTab === 'git'],
+  ].forEach(([panel, selected]) => {
+    panel?.classList.toggle('hidden', !selected);
+    panel?.setAttribute('aria-hidden', String(!selected));
+  });
   this.elements.fileSearch?.classList.toggle('hidden', nextTab !== 'files');
-  this.elements.commentOverviewPanel?.classList.toggle('hidden', nextTab !== 'comments');
   this.elements.gitSearch?.classList.toggle('hidden', nextTab !== 'git');
-  document.getElementById('gitPanel')?.classList.toggle('active', nextTab === 'git');
-  document.getElementById('gitPanel')?.classList.toggle('hidden', nextTab !== 'git');
+  gitPanelElement?.classList.toggle('active', nextTab === 'git');
   this.gitPanel.setActive(nextTab === 'git');
   if (nextTab === 'comments') {
     this.refreshCommentOverviewForSidebarOpen?.();
@@ -180,6 +215,7 @@ function setSidebarTab(tab) {
 export const uiFeatureSidebarMethods = {
   applySidebarVisibility,
   closeSidebarOnMobile,
+  handleSidebarTabsKeydown,
   initializeSidebarResizer,
   isMobileViewport,
   restoreSidebarState,

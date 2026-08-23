@@ -122,6 +122,7 @@ export class GitPanelController {
     this.panel = document.getElementById('gitPanel');
     this.pullBackups = [];
     this.status = null;
+    this.statusError = '';
     this.active = false;
     this.refreshTimer = null;
     this.searchQuery = '';
@@ -392,7 +393,7 @@ export class GitPanelController {
 
   async refresh({ force = false, includeHistory = this.panelMode === 'history' } = {}) {
     const status = await this.refreshStatus({ force });
-    if (includeHistory && status.isGitRepo) {
+    if (includeHistory && status?.isGitRepo) {
       await this.refreshHistory({ force });
     }
     return status;
@@ -400,6 +401,7 @@ export class GitPanelController {
 
   async refreshStatus({ force = false } = {}) {
     if (!this.enabled) {
+      this.statusError = '';
       this.status = {
         isGitRepo: false,
         sections: [],
@@ -424,6 +426,7 @@ export class GitPanelController {
     try {
       const data = await this.gitApiClient.readStatus({ force });
       this.status = data;
+      this.statusError = '';
       this.pullBackups = [];
       if (data.isGitRepo) {
         try {
@@ -450,25 +453,9 @@ export class GitPanelController {
     } catch (error) {
       console.error('[git-panel] Failed to load git status:', error);
       this.toastController?.show('Failed to load git status');
-      this.status = {
-        isGitRepo: false,
-        sections: [],
-        summary: { changedFiles: 0 },
-      };
-      this.pullBackups = [];
-      this.history = {
-        ...this.history,
-        commits: [],
-        error: '',
-        hasMore: false,
-        loaded: false,
-        loading: false,
-        loadingMore: false,
-        offset: 0,
-      };
-      this.onRepoChange(false, this.status);
+      this.statusError = 'Failed to load Git status. Try again.';
       this.render();
-      return this.status;
+      return null;
     }
   }
 
@@ -866,11 +853,11 @@ export class GitPanelController {
     const commits = this.filterCommits(this.history.commits);
 
     if (this.history.loading && !this.history.loaded) {
-      return '<div class="git-panel-empty">Loading git history...</div>';
+      return '<div class="git-panel-empty" role="status" aria-live="polite">Loading git history…</div>';
     }
 
     if (this.history.error && !this.history.loaded) {
-      return `<div class="git-panel-empty">${escapeHtml(this.history.error)}</div>`;
+      return `<div class="git-panel-empty" role="alert">${escapeHtml(this.history.error)}</div>`;
     }
 
     if (this.history.loaded && commits.length === 0 && this.history.commits.length === 0) {
@@ -893,7 +880,7 @@ export class GitPanelController {
             data-git-history-load-more
             ${this.history.loadingMore ? 'disabled' : ''}
           >
-            ${this.history.loadingMore ? 'Loading...' : 'Load More'}
+            ${this.history.loadingMore ? 'Loading…' : 'Load more'}
           </button>
         </div>
       ` : ''}
@@ -940,7 +927,7 @@ export class GitPanelController {
             ` : ''}
             <button class="${buttonClassNames({ variant: 'secondary', size: 'compact', action: true, surface: true })}" type="button" data-git-view-all>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              View Full Diff
+              View full diff
             </button>
             <button
               class="${buttonClassNames({ variant: 'primary', action: true, wide: true, extra: 'git-footer-commit-btn' })}"
@@ -948,7 +935,7 @@ export class GitPanelController {
               data-git-commit-staged
               ${includedFileCount === 0 || isCommitPending ? 'disabled' : ''}
             >
-              ${isCommitPending ? 'Working...' : commitButtonLabel(includedFileCount)}
+              ${isCommitPending ? 'Working…' : commitButtonLabel(includedFileCount)}
             </button>
           </div>
         </div>
@@ -956,14 +943,19 @@ export class GitPanelController {
     `;
   }
 
-  renderEmpty(message) {
+  renderEmpty(message, { alert = false, status = false } = {}) {
     if (!this.panel) {
       return;
     }
 
+    const semantics = alert
+      ? ' role="alert"'
+      : status
+        ? ' role="status" aria-live="polite"'
+        : '';
     // pi-lens-ignore: ast-grep:no-inner-html-js
     this.panel.innerHTML = `
-      <div class="git-panel-empty ui-empty-state ui-empty-state--compact">
+      <div class="git-panel-empty ui-empty-state ui-empty-state--compact"${semantics}>
         <p class="ui-empty-state-copy">${escapeHtml(message)}</p>
       </div>
     `;
@@ -974,8 +966,13 @@ export class GitPanelController {
       return;
     }
 
+    if (this.statusError) {
+      this.renderEmpty(this.statusError, { alert: true });
+      return;
+    }
+
     if (!this.status) {
-      this.renderEmpty('Loading git status...');
+      this.renderEmpty('Loading git status…', { status: true });
       return;
     }
 

@@ -202,7 +202,9 @@ test('preserves PlantUML zoom and pan location across source edits', async ({ pa
     '```',
   ].join('\n'));
 
-  await expect(page.locator('#previewContent .plantuml-frame')).toContainText('plantuml-updated');
+  const updatedFrames = page.locator('#previewContent .plantuml-frame');
+  await expect(updatedFrames).toHaveCount(1);
+  await expect(updatedFrames).toContainText('plantuml-updated');
   const panMismatch = await page.evaluate(() => {
     window.__stopDiagramPanProbe = true;
     return window.__diagramPanMismatch;
@@ -487,8 +489,6 @@ test('fits embedded excalidraw content on first load', async ({ page }) => {
 });
 
 test('opens drawio files with a maximizable direct preview', async ({ page }) => {
-  await openHome(page);
-
   await writeVaultFileAndResetCollab(page, {
     path: 'sample-drawio.drawio',
     content: [
@@ -576,7 +576,6 @@ test('direct drawio preview ignores duplicate frame init events during resize', 
     });
   });
 
-  await openHome(page);
   await writeVaultFileAndResetCollab(page, {
     path: 'sample-drawio.drawio',
     content: [

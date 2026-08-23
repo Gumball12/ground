@@ -13,7 +13,7 @@ function getFocusableItems(container) {
     return [];
   }
 
-  return Array.from(container.querySelectorAll('.create-menu-item'));
+  return Array.from(container.querySelectorAll('.create-menu-item, .file-action-sheet-item:not(:disabled)'));
 }
 
 export class CreateMenuPresenter {
@@ -23,10 +23,10 @@ export class CreateMenuPresenter {
     this.mobileBreakpointQuery = mobileBreakpointQuery;
     this.activeAnchor = null;
     this.desktopMenu = null;
-    this.mobileBackdrop = null;
     this.mobileSheet = null;
     this.documentPointerDownHandler = null;
     this.windowResizeHandler = null;
+    this.blockingModalHandler = () => this.close();
     this.boundClose = () => this.close();
   }
 
@@ -71,15 +71,12 @@ export class CreateMenuPresenter {
       this.desktopMenu = null;
     }
 
-    if (this.mobileBackdrop) {
-      this.mobileBackdrop.remove();
-      this.mobileBackdrop = null;
-    }
-
     if (this.mobileSheet) {
+      if (this.mobileSheet.open) this.mobileSheet.close();
       this.mobileSheet.remove();
       this.mobileSheet = null;
     }
+    document.removeEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
 
     if (this.documentPointerDownHandler) {
       document.removeEventListener('pointerdown', this.documentPointerDownHandler);
@@ -136,13 +133,9 @@ export class CreateMenuPresenter {
   }
 
   openMobileSheet({ items, title }) {
-    const backdrop = document.createElement('button');
-    backdrop.type = 'button';
-    backdrop.className = 'file-action-sheet-backdrop';
-    backdrop.setAttribute('aria-label', `Close ${title.toLowerCase()} menu`);
-
-    const sheet = document.createElement('div');
+    const sheet = document.createElement('dialog');
     sheet.className = 'file-action-sheet create-action-sheet';
+    sheet.setAttribute('aria-label', title);
 
     const header = document.createElement('div');
     header.className = 'create-action-sheet-header';
@@ -163,13 +156,21 @@ export class CreateMenuPresenter {
     });
     sheet.appendChild(cancelButton);
 
-    backdrop.addEventListener('click', () => {
+    sheet.addEventListener('cancel', (event) => {
+      event.preventDefault();
       this.close();
     });
+    sheet.addEventListener('click', (event) => {
+      const bounds = sheet.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right
+        || event.clientY < bounds.top || event.clientY > bounds.bottom) this.close();
+    });
 
-    document.body.append(backdrop, sheet);
-    this.mobileBackdrop = backdrop;
+    document.body.append(sheet);
+    document.addEventListener('collabmd:close-custom-modals', this.blockingModalHandler);
     this.mobileSheet = sheet;
+    sheet.showModal();
+    getFocusableItems(sheet)[0]?.focus();
   }
 
   renderMenuItems(container, items, { mobile = false } = {}) {
@@ -198,6 +199,8 @@ export class CreateMenuPresenter {
       const icon = document.createElement('span');
       icon.className = 'create-menu-item-icon';
       icon.setAttribute('aria-hidden', 'true');
+      // Menu icons are fixed application-owned markup.
+      // pi-lens-ignore: no-inner-html-js
       icon.innerHTML = item.icon || '';
       button.appendChild(icon);
 

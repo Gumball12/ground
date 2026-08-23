@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { uiFeatureTabActivityMethods } from '../../src/client/application/app-shell/ui-feature-tab-activity.js';
 import { ImageLightboxController } from '../../src/client/presentation/image-lightbox-controller.js';
 
 function createController() {
@@ -23,7 +24,7 @@ function openLightbox({ controller, previewImage }) {
   }));
 
   expect(controller.isOpen).toBe(true);
-  expect(controller.overlayRoot.hidden).toBe(false);
+  expect(controller.overlayRoot.open).toBe(true);
 }
 
 function setViewportMetrics(controller, {
@@ -84,6 +85,47 @@ describe('ImageLightboxController browser behavior', () => {
     controller?.destroy();
     controller = null;
     document.body.innerHTML = '';
+  });
+
+  it('opens modally and restores focus after closing', () => {
+    const setup = createController();
+    controller = setup.controller;
+    setup.previewImage.tabIndex = 0;
+    setup.previewImage.focus();
+
+    openLightbox(setup);
+
+    const buttons = Array.from(controller.overlayRoot.querySelectorAll('button:not(:disabled)'));
+    expect(document.activeElement).toBe(buttons[0]);
+
+    controller.overlayRoot.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(controller.isOpen).toBe(false);
+    expect(document.activeElement).toBe(setup.previewImage);
+  });
+
+  it('yields inert ownership to the blocking tab lock', () => {
+    const setup = createController();
+    controller = setup.controller;
+    const overlay = document.createElement('dialog');
+    const takeover = document.createElement('button');
+    overlay.append(takeover);
+    document.body.append(overlay);
+    const context = {
+      elements: {
+        tabLockCopy: document.createElement('p'),
+        tabLockOverlay: overlay,
+        tabLockTakeoverButton: takeover,
+        tabLockTitle: document.createElement('h2'),
+      },
+    };
+    Object.assign(context, uiFeatureTabActivityMethods);
+
+    openLightbox(setup);
+    context.showTabLockOverlay({ reason: 'taken-over' });
+
+    expect(controller.isOpen).toBe(false);
+    expect(overlay.open).toBe(true);
+    expect(document.activeElement).toBe(takeover);
   });
 
   it('opens the lightbox and updates zoom through the toolbar buttons', () => {

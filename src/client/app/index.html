@@ -72,8 +72,8 @@
             </button>
           </div>
         </div>
-        <div class="ui-nav-tabs" id="sidebarTabs">
-          <button class="ui-nav-tab active" id="filesSidebarTab" type="button">
+        <div class="ui-nav-tabs" id="sidebarTabs" role="tablist" aria-label="Sidebar views">
+          <button class="ui-nav-tab active" id="filesSidebarTab" type="button" role="tab" aria-selected="true" aria-controls="fileTree" tabindex="0">
             <span class="ui-nav-tab-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -81,7 +81,7 @@
             </span>
             <span class="ui-nav-tab-label">Files</span>
           </button>
-          <button class="ui-nav-tab" id="commentsSidebarTab" type="button">
+          <button class="ui-nav-tab" id="commentsSidebarTab" type="button" role="tab" aria-selected="false" aria-controls="commentOverviewPanel" tabindex="-1">
             <span class="ui-nav-tab-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -89,7 +89,7 @@
             </span>
             <span class="ui-nav-tab-label">Comments</span>
           </button>
-          <button class="ui-nav-tab hidden" id="gitSidebarTab" type="button">
+          <button class="ui-nav-tab hidden" id="gitSidebarTab" type="button" role="tab" aria-selected="false" aria-controls="gitPanel" tabindex="-1">
             <span class="ui-nav-tab-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="18" cy="18" r="3"></circle>
@@ -125,9 +125,9 @@
             aria-label="Search changed files"
           >
         </div>
-        <nav id="fileTree" class="file-tree" aria-label="File explorer"></nav>
-        <section id="commentOverviewPanel" class="comment-overview-panel hidden" aria-label="Open comments"></section>
-        <div id="gitPanel" class="git-panel hidden" aria-label="Git changes"></div>
+        <nav id="fileTree" class="file-tree" role="tabpanel" aria-labelledby="filesSidebarTab"></nav>
+        <section id="commentOverviewPanel" class="comment-overview-panel hidden" role="tabpanel" aria-labelledby="commentsSidebarTab"></section>
+        <div id="gitPanel" class="git-panel hidden" role="tabpanel" aria-labelledby="gitSidebarTab"></div>
         <div
           class="sidebar-resizer"
           id="sidebarResizer"
@@ -460,7 +460,7 @@
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                Search Everything
+                Search everything
                 <kbd class="empty-state-kbd">⌘K</kbd>
               </button>
             </div>
@@ -509,7 +509,7 @@
               </div>
               <div id="markdownToolbar" class="markdown-toolbar hidden" role="toolbar" aria-label="Markdown formatting"></div>
               <div id="editorContainer" class="editor-container">
-                <div class="editor-loading" id="editorLoading">
+                <div class="editor-loading" id="editorLoading" role="status" aria-live="polite" aria-label="Loading file…">
                   <div class="skeleton-line skeleton-line--title skeleton-line--break"></div>
                   <div class="skeleton-line skeleton-line--full"></div>
                   <div class="skeleton-line skeleton-line--ninety"></div>
@@ -630,7 +630,7 @@
               </div>
               <div class="diff-toolbar-actions">
                 <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface hidden diff-back-btn" id="diffBackToHistoryBtn" type="button">
-                  Back to History
+                  Back to history
                 </button>
                 <div class="diff-toolbar-actions-group diff-toolbar-actions-group-git" id="diffGitActionsGroup" role="group" aria-label="Git file actions">
                   <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface" id="diffPrimaryActionBtn" type="button" disabled>
@@ -648,12 +648,12 @@
                 <span class="ui-stat-token ui-stat-token--del diff-stats-del">-0</span>
               </div>
               <div class="ui-segmented-control hidden diff-layout-toggle" id="diffLayoutToggle" role="group" aria-label="Commit diff layout">
-                <button class="ui-segmented-btn view-btn diff-layout-btn" data-diff-layout="stacked" type="button">Stacked</button>
-                <button class="ui-segmented-btn active view-btn diff-layout-btn" data-diff-layout="focused" type="button">Focused</button>
+                <button class="ui-segmented-btn diff-layout-btn" data-diff-layout="stacked" type="button" aria-pressed="false">Stacked</button>
+                <button class="ui-segmented-btn active diff-layout-btn" data-diff-layout="focused" type="button" aria-pressed="true">Focused</button>
               </div>
               <div class="ui-segmented-control diff-mode-toggle" role="group" aria-label="Diff view mode">
-                <button class="ui-segmented-btn active view-btn diff-mode-btn" data-diff-mode="unified" type="button">Unified</button>
-                <button class="ui-segmented-btn view-btn diff-mode-btn" data-diff-mode="split" type="button">Split</button>
+                <button class="ui-segmented-btn active diff-mode-btn" data-diff-mode="unified" type="button" aria-pressed="true">Unified</button>
+                <button class="ui-segmented-btn diff-mode-btn" data-diff-mode="split" type="button" aria-pressed="false">Split</button>
               </div>
               <span class="diff-toolbar-actions-divider" id="diffToolbarDivider" aria-hidden="true"></span>
               <div class="diff-toolbar-actions-group" id="diffEditorActionsGroup" role="group" aria-label="Navigation actions">
@@ -670,7 +670,7 @@
       </main>
     </div>
 
-    <dialog class="app-dialog" id="displayNameDialog">
+    <dialog class="app-dialog" id="displayNameDialog" aria-labelledby="displayNameTitle">
       <form class="app-dialog-form" id="displayNameForm" method="dialog">
         <div class="app-dialog-header">
           <h2 class="app-dialog-title" id="displayNameTitle">Update display name</h2>
@@ -687,7 +687,7 @@
       </form>
     </dialog>
 
-    <dialog class="app-dialog" id="fileActionDialog">
+    <dialog class="app-dialog" id="fileActionDialog" aria-labelledby="fileActionTitle">
       <form class="app-dialog-form" id="fileActionForm" method="dialog">
         <div class="app-dialog-header">
           <h2 class="app-dialog-title" id="fileActionTitle">Create file</h2>
@@ -706,7 +706,7 @@
       </form>
     </dialog>
 
-    <dialog class="app-dialog" id="gitCommitDialog">
+    <dialog class="app-dialog" id="gitCommitDialog" aria-labelledby="gitCommitTitle">
       <form class="app-dialog-form" id="gitCommitForm" method="dialog">
         <div class="app-dialog-header">
           <h2 class="app-dialog-title" id="gitCommitTitle">Commit included files</h2>
@@ -724,7 +724,7 @@
       </form>
     </dialog>
 
-    <dialog class="app-dialog" id="gitResetDialog">
+    <dialog class="app-dialog" id="gitResetDialog" aria-labelledby="gitResetTitle">
       <form class="app-dialog-form" method="dialog">
         <div class="app-dialog-header">
           <h2 class="app-dialog-title" id="gitResetTitle">Reset file</h2>
@@ -739,12 +739,12 @@
         </div>
         <div class="app-dialog-actions">
           <button class="ui-button ui-button--secondary" id="gitResetCancel" type="button">Cancel</button>
-          <button class="ui-button ui-button--danger" id="gitResetSubmit" type="button">Reset File</button>
+          <button class="ui-button ui-button--danger" id="gitResetSubmit" type="button">Reset file</button>
         </div>
       </form>
     </dialog>
 
-    <div class="tab-lock-overlay hidden" id="tabLockOverlay" role="dialog" aria-modal="true" aria-labelledby="tabLockTitle">
+    <dialog class="tab-lock-overlay" id="tabLockOverlay" aria-labelledby="tabLockTitle">
       <div class="tab-lock-card">
         <span class="tab-lock-kicker">Single active tab</span>
         <h2 class="tab-lock-title" id="tabLockTitle">This vault is active in another tab</h2>
@@ -753,7 +753,7 @@
           <button type="button" class="ui-button ui-button--primary ui-button--lg" id="tabLockTakeoverBtn">Take over here</button>
         </div>
       </div>
-    </div>
+    </dialog>
 
     <div class="toast-container" id="toastContainer"></div>
 

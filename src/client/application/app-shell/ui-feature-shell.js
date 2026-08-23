@@ -247,7 +247,7 @@ function bindDialogEvents() {
       this.elements.gitResetFileName.value = '';
     }
     if (this.elements.gitResetSubmit) {
-      this.elements.gitResetSubmit.textContent = 'Reset File';
+      this.elements.gitResetSubmit.textContent = 'Reset file';
     }
   });
 
@@ -397,6 +397,10 @@ function bindEvents() {
 
   this.elements.commentsSidebarTab?.addEventListener('click', () => {
     this.setSidebarTab('comments');
+  });
+
+  this.elements.sidebarTabs?.addEventListener('keydown', (event) => {
+    this.handleSidebarTabsKeydown(event);
   });
 
   document.addEventListener('pointerdown', (event) => {
@@ -1049,9 +1053,12 @@ function showEditorLoading() {
   if (!this.elements.editorContainer) return;
   this.elements.editorContainer.classList.add('is-loading-editor');
   this.elements.editorContainer.innerHTML = `
-      <div class="editor-loading" id="editorLoading">
-        <div class="loading-spinner"></div>
-        <span class="loading-text">Loading file...</span>
+      <div class="editor-loading" id="editorLoading" role="status" aria-live="polite" aria-label="Loading file…">
+        <div class="skeleton-line skeleton-line--title skeleton-line--break"></div>
+        <div class="skeleton-line skeleton-line--full"></div>
+        <div class="skeleton-line skeleton-line--ninety"></div>
+        <div class="skeleton-line skeleton-line--ninety-five"></div>
+        <div class="skeleton-line skeleton-line--eighty"></div>
       </div>`;
 }
 

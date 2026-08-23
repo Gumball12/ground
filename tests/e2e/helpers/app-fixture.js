@@ -148,6 +148,7 @@ test.beforeEach(async ({ browser, page }) => {
 test.afterEach(async ({ page }) => {
   try {
     await page.goto('about:blank');
+    await page.request.post('/api/test/reset-state');
   } catch {
     // Ignore teardown navigation failures when the page is already closed.
   }
@@ -277,6 +278,7 @@ export async function setHydrateDelay(page, delayMs = 0) {
 }
 
 export async function writeVaultFileAndResetCollab(page, { path, content }) {
+  lateStatePrimePending = false;
   const resetResponseBeforeWrite = await page.request.post('/api/test/reset-state');
   if (!resetResponseBeforeWrite.ok()) {
     throw new Error(`reset-state failed before write: ${resetResponseBeforeWrite.status()} ${await resetResponseBeforeWrite.text()}`);

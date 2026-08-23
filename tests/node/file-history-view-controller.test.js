@@ -254,7 +254,7 @@ test('FileHistoryViewController renders local changes and commit actions', async
 
   await controller.selectEntry(controller.getEntries()[1]);
 
-  assert.match(harness.elements.diffContent.innerHTML, /Preview File/);
+  assert.match(harness.elements.diffContent.innerHTML, /Preview file/);
 
   const commitDiffButton = new FakeElement();
   commitDiffButton.closestMap = {

@@ -500,7 +500,7 @@ test('export pdf uses the export page and prints the rendered snapshot html', as
   await page.locator('#exportMenuGroup > summary').click();
   await page.locator('#exportPdfBtn').click();
   const popup = await popupPromise;
-  await popup.waitForLoadState('domcontentloaded');
+  await popup.waitForURL(/\/export-document\.html$/);
 
   await expect.poll(() => popup.evaluate(() => window.__collabmdPrinted)).toBe(true);
   await expect(popup.locator('#exportContent')).toContainText('My Vault');
@@ -883,7 +883,7 @@ test('quick switcher text search opens a grouped match at the matching line', as
       path: 'search/global-search-beta.md',
     },
     {
-      content: '{"type":"excalidraw","elements":[{"text":"Needle-E2E appears in the sketch."}]}\n',
+      content: '{"type":"excalidraw","elements":[{"type":"text","text":"Needle-E2E appears in the sketch."}]}\n',
       path: 'search/global-search-sketch.excalidraw',
     },
   ];
@@ -892,6 +892,8 @@ test('quick switcher text search opens a grouped match at the matching line', as
     const response = await page.request.put('/api/file', { data: file });
     expect(response.ok()).toBe(true);
   }
+  const resetResponse = await page.request.post('/api/test/reset-state');
+  expect(resetResponse.ok()).toBe(true);
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
   await expect(page.locator('#quickSwitcher')).toHaveClass(/visible/);
@@ -974,21 +976,21 @@ test('creates draw.io diagrams from the sidebar create picker', async ({ page })
 test('creates files inside a folder from the tree context menu', async ({ page }) => {
   await openHome(page);
 
-  const dailyFolder = page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first();
-  await dailyFolder.click({ button: 'right' });
+  const projectsFolder = page.locator('#fileTree .file-tree-dir', { hasText: 'projects' }).first();
+  await projectsFolder.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
-  await page.locator('.file-context-menu').getByRole('button', { name: 'New…' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'New…' }).click();
   await page.locator('.create-menu').getByRole('menuitem', { name: /Markdown note/i }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
-  await expect(page.locator('#fileActionNote')).toContainText('Parent folder: daily');
-  await page.locator('#fileActionInput').fill('meeting-notes');
+  await expect(page.locator('#fileActionNote')).toContainText('Parent folder: projects');
+  await page.locator('#fileActionInput').fill('context-menu-note');
   await page.locator('#fileActionSubmit').click();
 
   await waitForEditor(page);
-  await expect(page.locator('#activeFileName')).toContainText('meeting-notes');
-  await expect(page.locator('#fileTree')).toContainText('daily');
-  await expect(page.locator('#fileTree')).toContainText('meeting-notes');
+  await expect(page.locator('#activeFileName')).toContainText('context-menu-note');
+  await expect(page.locator('#fileTree')).toContainText('projects');
+  await expect(page.locator('#fileTree')).toContainText('context-menu-note');
 });
 
 test('creates root files from empty tree space context menu', async ({ page }) => {
@@ -999,7 +1001,7 @@ test('creates root files from empty tree space context menu', async ({ page }) =
 
   await page.locator('#fileTree').click({ button: 'right', position: { x: 24, y: 24 } });
   await expect(page.locator('.file-context-menu')).toBeVisible();
-  await page.locator('.file-context-menu').getByRole('button', { name: 'New PlantUML diagram' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'New PlantUML diagram' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionNote')).toHaveAttribute('hidden', '');
@@ -1025,7 +1027,7 @@ test('moves and deletes files from the sidebar with the custom dialog', async ({
   const scratchpadItem = page.locator('#fileTree .file-tree-item', { hasText: 'scratchpad' }).first();
   await scratchpadItem.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Rename / move' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Rename / move' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionLabel')).toHaveText('Path');
@@ -1040,7 +1042,7 @@ test('moves and deletes files from the sidebar with the custom dialog', async ({
   const renamedItem = page.locator('#fileTree .file-tree-item', { hasText: 'release-notes' }).first();
   await renamedItem.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Delete' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionField')).toHaveAttribute('hidden', '');
@@ -1215,7 +1217,7 @@ test('renames folders from the sidebar context menu', async ({ page }) => {
 
   const folderItem = page.locator('#fileTree .file-tree-dir', { hasText: 'drafts-old' }).first();
   await folderItem.click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Rename / move' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Rename / move' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionTitle')).toHaveText('Rename or move folder');
@@ -1232,13 +1234,13 @@ test('downloads files and directories from the sidebar context menu', async ({ p
 
   const fileDownloadPromise = page.waitForEvent('download');
   await page.locator('#fileTree .file-tree-file', { hasText: 'README' }).first().click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Download' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Download' }).click();
   const fileDownload = await fileDownloadPromise;
   expect(fileDownload.suggestedFilename()).toBe('README.md');
 
   const directoryDownloadPromise = page.waitForEvent('download');
   await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Download source ZIP' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Download source ZIP' }).click();
   const directoryDownload = await directoryDownloadPromise;
   expect(directoryDownload.suggestedFilename()).toBe('daily.zip');
 });
@@ -1251,7 +1253,7 @@ test('exports a folder as one self-contained HTML document', async ({ page, cont
     popup,
   }));
   await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Export HTML' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Export HTML' }).click();
   const { download, popup } = await popupDownloadPromise;
   const chunks = [];
   for await (const chunk of await download.createReadStream()) {
@@ -1276,9 +1278,9 @@ test('prints all markdown notes in a folder as one PDF document', async ({ page,
 
   const popupPromise = context.waitForEvent('page');
   await page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first().click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Print / save PDF' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Print / save PDF' }).click();
   const popup = await popupPromise;
-  await popup.waitForLoadState('domcontentloaded');
+  await popup.waitForURL(/\/export-document\.html$/);
 
   await expect.poll(() => popup.evaluate(() => window.__collabmdPrinted)).toBe(true);
   await expect(popup.locator('#exportContent')).toContainText('daily/2026-03-05.md');
@@ -1295,7 +1297,7 @@ test('deletes empty folders from the sidebar context menu', async ({ page }) => 
 
   const folderItem = page.locator('#fileTree .file-tree-dir', { hasText: 'scratch-empty' }).first();
   await folderItem.click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Delete' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionTitle')).toHaveText('Delete folder');
@@ -1309,7 +1311,7 @@ test('deletes non-empty folders with an explicit recursive confirmation', async 
 
   const dailyFolder = page.locator('#fileTree .file-tree-dir', { hasText: 'daily' }).first();
   await dailyFolder.click({ button: 'right' });
-  await page.locator('.file-context-menu').getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.file-context-menu').getByRole('menuitem', { name: 'Delete' }).click();
 
   await expect(page.locator('#fileActionDialog')).toBeVisible();
   await expect(page.locator('#fileActionTitle')).toHaveText('Delete folder and contents');

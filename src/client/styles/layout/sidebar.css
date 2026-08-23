@@ -362,18 +362,21 @@ body.is-file-tree-dragging * {
   /* Children indentation handled by paddingLeft on items */
 }
 
-.file-action-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 130;
+.file-action-sheet::backdrop {
   background: oklch(from var(--color-bg) l c h / 0.44);
+  backdrop-filter: blur(12px);
 }
 
 .file-action-sheet {
   position: fixed;
+  top: auto;
   right: var(--space-3);
   bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   left: var(--space-3);
+  width: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
   z-index: 131;
   display: flex;
   flex-direction: column;
