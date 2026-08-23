@@ -14,7 +14,7 @@ feature code small and easy to move without changing public behavior.
 
 Allowed imports should flow inward:
 
-- `presentation` -> `application`, `domain`
+- `presentation` -> `domain` (application behavior is injected)
 - `application` -> `domain`
 - `infrastructure` -> `application`, `domain`
 - `domain` -> `domain`

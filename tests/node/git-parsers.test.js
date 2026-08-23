@@ -18,9 +18,11 @@ test('parseStatusOutput groups staged, working tree, and untracked files', () =>
     '## main...origin/main [ahead 1]',
     'A  staged.md',
     ' M tracked.md',
-    'R  old name.md -> new name.md',
-    '?? scratch.md',
-  ].join('\n');
+    'R  new -> name.md',
+    'old name.md',
+    '?? scratch\nnotes.md',
+    '',
+  ].join('\0');
 
   const parsed = parseStatusOutput(output);
 
@@ -31,7 +33,7 @@ test('parseStatusOutput groups staged, working tree, and untracked files', () =>
     parsed.sections.staged.map((file) => ({ oldPath: file.oldPath, path: file.path, status: file.status })),
     [
       { oldPath: null, path: 'staged.md', status: 'added' },
-      { oldPath: 'old name.md', path: 'new name.md', status: 'renamed' },
+      { oldPath: 'old name.md', path: 'new -> name.md', status: 'renamed' },
     ],
   );
   assert.deepEqual(
@@ -43,7 +45,7 @@ test('parseStatusOutput groups staged, working tree, and untracked files', () =>
   assert.deepEqual(
     parsed.sections.untracked.map((file) => ({ path: file.path, status: file.status })),
     [
-      { path: 'scratch.md', status: 'untracked' },
+      { path: 'scratch\nnotes.md', status: 'untracked' },
     ],
   );
 });

@@ -34,22 +34,6 @@ export function normalizeRelativeGitPath(pathValue) {
   return normalized.join('/');
 }
 
-export function parseRenamePath(rawPath) {
-  const decodedPath = decodeQuotedPath(rawPath);
-  const separator = ' -> ';
-  const separatorIndex = decodedPath.indexOf(separator);
-  if (separatorIndex === -1) {
-    return {
-      oldPath: null,
-      path: decodedPath,
-    };
-  }
-
-  return {
-    oldPath: decodedPath.slice(0, separatorIndex),
-    path: decodedPath.slice(separatorIndex + separator.length),
-  };
-}
 
 export function stripDiffPrefix(pathValue) {
   const normalizedPath = String(pathValue ?? '').replace(/\s+$/u, '');

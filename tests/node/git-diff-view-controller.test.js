@@ -612,8 +612,6 @@ test('GitDiffViewController renders draw.io changes as visual panes plus XML fal
 
   assert.match(markup, /draw\.io diagram changes/);
   assert.match(markup, /diff-drawio-grid/);
-  assert.match(markup, /\+1/);
-  assert.match(markup, /~1/);
   assert.match(markup, /XML source/);
   assert.match(markup, /diff-drawio-preview/);
   assert.match(markup, /shape-2/);

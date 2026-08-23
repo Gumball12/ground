@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 
 import { getVaultFileKind, isImageAttachmentFilePath } from '../../../domain/file-kind.js';
 import { mapWithConcurrency } from '../../shared/async-utils.js';
@@ -13,29 +14,19 @@ async function countFileLines(filePath) {
     return 0;
   }
 
-  return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath, { encoding: 'utf8' });
-    let lineCount = 0;
-    let sawData = false;
-    let lastCharacter = '\n';
-
-    stream.on('data', (chunk) => {
-      if (!chunk) {
-        return;
-      }
-
-      sawData = true;
-      lastCharacter = chunk[chunk.length - 1];
-      lineCount += chunk.match(/\n/gu)?.length ?? 0;
-    });
-    stream.on('error', reject);
-    stream.on('end', () => {
-      if (sawData && lastCharacter !== '\n') {
-        lineCount += 1;
-      }
-      resolve(lineCount);
-    });
+  const lines = createInterface({
+    crlfDelay: Infinity,
+    input: createReadStream(filePath, { encoding: 'utf8' }),
   });
+  let lineCount = 0;
+
+  for await (const line of lines) {
+    if (typeof line === 'string') {
+      lineCount += 1;
+    }
+  }
+
+  return lineCount;
 }
 
 function buildSyntheticAddedFileDiff(pathValue, content) {

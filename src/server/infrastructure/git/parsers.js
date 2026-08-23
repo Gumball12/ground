@@ -1,4 +1,4 @@
-import { decodeQuotedPath, parseRenamePath, stripDiffPrefix } from './path-utils.js';
+import { decodeQuotedPath, stripDiffPrefix } from './path-utils.js';
 import { createEmptyBranchStatus, createStatusInfo } from './responses.js';
 
 function parseBranchLine(line) {
@@ -91,11 +91,8 @@ export function splitContentLines(content) {
 }
 
 export function parseStatusOutput(output) {
-  const lines = String(output ?? '')
-    .split(/\r?\n/u)
-    .filter(Boolean);
-  const [branchLine = '', ...statusLines] = lines;
-  const branch = parseBranchLine(branchLine);
+  const records = String(output ?? '').split('\0');
+  const branch = parseBranchLine(records.shift() || '');
   const sections = {
     staged: [],
     'working-tree': [],
@@ -103,14 +100,15 @@ export function parseStatusOutput(output) {
   };
   const uniquePaths = new Set();
 
-  for (const line of statusLines) {
-    if (line.length < 3) {
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.length < 3) {
       continue;
     }
 
-    const indexStatus = line[0];
-    const workTreeStatus = line[1];
-    const rawPath = line.slice(3);
+    const indexStatus = record[0];
+    const workTreeStatus = record[1];
+    const path = record.slice(3);
 
     if (indexStatus === '!' && workTreeStatus === '!') {
       continue;
@@ -120,7 +118,7 @@ export function parseStatusOutput(output) {
       const file = {
         ...createStatusInfo('?'),
         oldPath: null,
-        path: decodeQuotedPath(rawPath),
+        path,
         scope: 'untracked',
       };
       sections.untracked.push(file);
@@ -128,13 +126,17 @@ export function parseStatusOutput(output) {
       continue;
     }
 
-    const parsedPath = parseRenamePath(rawPath);
+    const hasSourcePath = ['R', 'C'].includes(indexStatus) || ['R', 'C'].includes(workTreeStatus);
+    const oldPath = hasSourcePath ? records[index + 1] || null : null;
+    if (hasSourcePath) {
+      index += 1;
+    }
 
     if (indexStatus !== ' ') {
       const file = {
         ...createStatusInfo(indexStatus),
-        oldPath: parsedPath.oldPath,
-        path: parsedPath.path,
+        oldPath,
+        path,
         scope: 'staged',
       };
       sections.staged.push(file);
@@ -144,8 +146,8 @@ export function parseStatusOutput(output) {
     if (workTreeStatus !== ' ') {
       const file = {
         ...createStatusInfo(workTreeStatus),
-        oldPath: parsedPath.oldPath,
-        path: parsedPath.path,
+        oldPath,
+        path,
         scope: 'working-tree',
       };
       sections['working-tree'].push(file);

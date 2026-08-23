@@ -42,7 +42,7 @@ export class GitStatusService {
 
     const statusPromise = (async () => {
       const parsed = parseStatusOutput(
-        await this.commandRunner.execGit(['status', '--porcelain=v1', '--branch', '--untracked-files=all']),
+        await this.commandRunner.execGit(['status', '--porcelain=v1', '-z', '--branch', '--untracked-files=all']),
       );
       const sections = [
         { files: parsed.sections.staged, key: 'staged', label: 'Staged Changes' },

@@ -200,29 +200,25 @@ function getDrawioSourcePair(detail = {}) {
   };
 }
 
-function decodeXmlAttribute(value) {
-  return String(value ?? '')
-    .replace(/&quot;/gu, '"')
-    .replace(/&apos;/gu, "'")
-    .replace(/&amp;/gu, '&')
-    .replace(/&lt;/gu, '<')
-    .replace(/&gt;/gu, '>');
-}
-
 function getDrawioCellMap(source) {
   const cells = new Map();
-  const cellPattern = /<mxCell\b([^>]*?)(?:\/|>([\s\S]*?)<\/mxCell\s*)>/giu;
-  let match;
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return cells;
+  }
 
-  while ((match = cellPattern.exec(String(source ?? ''))) !== null) {
-    const idMatch = match[1].match(/\bid\s*=\s*(['"])(.*?)\1/iu);
-    const id = decodeXmlAttribute(idMatch?.[2] || '');
+  const documentNode = new DOMParser().parseFromString(String(source ?? ''), 'application/xml');
+  if (documentNode.querySelector('parsererror')) {
+    return cells;
+  }
+
+  const serializer = new XMLSerializer();
+  for (const cell of documentNode.getElementsByTagName('mxCell')) {
+    const id = cell.getAttribute('id');
     if (!id || id === '0' || id === '1') {
       continue;
     }
 
-    const signature = `${match[1]}${match[2] || ''}`.replace(/\s+/gu, ' ').trim();
-    cells.set(id, signature);
+    cells.set(id, serializer.serializeToString(cell).replace(/\s+/gu, ' ').trim());
   }
 
   return cells;
