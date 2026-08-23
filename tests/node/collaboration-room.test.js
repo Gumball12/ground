@@ -387,7 +387,7 @@ test('CollaborationRoom rejects an incompatible Excalidraw snapshot schema and r
   await room.destroy();
 });
 
-test('CollaborationRoom reloads live room content from disk without scheduling a persist', async () => {
+test('CollaborationRoom reloads live room content from disk without scheduling a persist', async (t) => {
   let readCount = 0;
   const writes = [];
   const room = new CollaborationRoom({
@@ -411,6 +411,7 @@ test('CollaborationRoom reloads live room content from disk without scheduling a
     },
   });
 
+  t.after(() => room.destroy());
   await room.hydrate();
   assert.equal(room.doc.getText('codemirror').toString(), '# Before\n');
 
@@ -418,6 +419,44 @@ test('CollaborationRoom reloads live room content from disk without scheduling a
 
   assert.equal(room.doc.getText('codemirror').toString(), '# After\n');
   assert.deepEqual(writes, []);
+});
+
+test('CollaborationRoom preserves pending edits when external content changes elsewhere', async (t) => {
+  const initial = '## A\nalpha\n\n## B\nbravo\n\n## C\ncharlie\n';
+  let diskContent = initial;
+  const writes = [];
+  const room = new CollaborationRoom({
+    maxBufferedAmountBytes: 1024,
+    name: 'concurrent.md',
+    onEmpty: () => {},
+    vaultFileStore: {
+      async readCollaborationSnapshot() {
+        return null;
+      },
+      async readCommentThreads() {
+        return [];
+      },
+      async readEditableVaultContent() {
+        return diskContent;
+      },
+      async persistCollaborationState(_path, state) {
+        writes.push(state);
+      },
+    },
+  });
+
+  t.after(() => room.destroy());
+  await room.hydrate();
+  const ytext = room.doc.getText('codemirror');
+  ytext.insert(ytext.toString().indexOf('alpha') + 'alpha'.length, ' HUMAN');
+  diskContent = initial.replace('charlie', 'charlie EXTERNAL');
+
+  await room.reloadFromDisk();
+  await room.persist();
+
+  assert.equal(ytext.toString(), '## A\nalpha HUMAN\n\n## B\nbravo\n\n## C\ncharlie EXTERNAL\n');
+  assert.equal(writes.at(-1).includeContent, true);
+  assert.equal(writes.at(-1).content, ytext.toString());
 });
 
 test('CollaborationRoom reuses cached initial sync payload until the document changes', async () => {

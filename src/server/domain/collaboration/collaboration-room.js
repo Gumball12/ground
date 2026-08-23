@@ -171,6 +171,34 @@ function computeTextReplacement(currentContent, nextContent) {
   };
 }
 
+function reconcileTextContent(baselineContent, currentContent, externalContent) {
+  const localReplacement = computeTextReplacement(baselineContent, currentContent);
+  const externalReplacement = computeTextReplacement(baselineContent, externalContent);
+  if (!externalReplacement) {
+    return { content: currentContent, preservesPendingChanges: true };
+  }
+
+  const localEnd = localReplacement.start + localReplacement.deleteCount;
+  const externalEnd = externalReplacement.start + externalReplacement.deleteCount;
+  let externalStart;
+  if (localEnd <= externalReplacement.start) {
+    externalStart = externalReplacement.start
+      + localReplacement.insertText.length
+      - localReplacement.deleteCount;
+  } else if (externalEnd <= localReplacement.start) {
+    externalStart = externalReplacement.start;
+  } else {
+    return { content: externalContent, preservesPendingChanges: false };
+  }
+
+  return {
+    content: currentContent.slice(0, externalStart)
+      + externalReplacement.insertText
+      + currentContent.slice(externalStart + externalReplacement.deleteCount),
+    preservesPendingChanges: true,
+  };
+}
+
 export class CollaborationRoom {
   constructor({
     documentStore = null,
@@ -568,29 +596,37 @@ export class CollaborationRoom {
     }
 
     const ytext = this.doc.getText('codemirror');
+    const currentContent = ytext.toString();
     const normalizedContent = normalizeEditableText(content);
-    const replacement = computeTextReplacement(ytext.toString(), normalizedContent);
-    if (!replacement && !replaceCommentThreads) {
-      this.resetContentBaseline();
-      return { highlightRange: null, ok: true, skipped: true };
+    const reconciliation = this.refreshContentDirty() && this.persistedContentBaseline !== null
+      ? reconcileTextContent(this.persistedContentBaseline, currentContent, normalizedContent)
+      : { content: normalizedContent, preservesPendingChanges: false };
+    const replacement = computeTextReplacement(currentContent, reconciliation.content);
+    const skipped = !replacement && !replaceCommentThreads;
+    if (!skipped) {
+      this.doc.transact(() => {
+        if (replacement?.deleteCount) {
+          ytext.delete(replacement.start, replacement.deleteCount);
+        }
+        if (replacement?.insertText) {
+          ytext.insert(replacement.start, replacement.insertText);
+        }
+        if (replaceCommentThreads) {
+          if (comments.length > 0) {
+            comments.delete(0, comments.length);
+          }
+          populateCommentThreads(comments, commentThreads);
+        }
+      }, 'workspace-reconcile');
     }
 
-    this.doc.transact(() => {
-      if (replacement?.deleteCount) {
-        ytext.delete(replacement.start, replacement.deleteCount);
-      }
-      if (replacement?.insertText) {
-        ytext.insert(replacement.start, replacement.insertText);
-      }
-      if (replaceCommentThreads) {
-        if (comments.length > 0) {
-          comments.delete(0, comments.length);
-        }
-        populateCommentThreads(comments, commentThreads);
-      }
-    }, 'workspace-reconcile');
-
-    this.resetContentBaseline();
+    if (reconciliation.preservesPendingChanges) {
+      this.persistedContentBaseline = normalizedContent;
+      this.refreshContentDirty();
+      this.schedulePersist();
+    } else {
+      this.resetContentBaseline();
+    }
     return {
       highlightRange: replacement
         ? {
@@ -599,6 +635,7 @@ export class CollaborationRoom {
         }
         : null,
       ok: true,
+      ...(skipped && { skipped: true }),
     };
   }
 
