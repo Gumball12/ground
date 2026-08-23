@@ -146,13 +146,31 @@ export class GitService {
     };
   }
 
+  async stageAll() {
+    await this.commandRunner.execGit(['add', '-A', '--']);
+    this.invalidateStatusCache();
+    return {
+      ok: true,
+      workspaceChange: createEmptyWorkspaceChange(),
+    };
+  }
+
   async unstageFile(path) {
     const normalizedPath = normalizeRelativeGitPath(path);
-    await this.commandRunner.execGit(['reset', 'HEAD', '--', normalizedPath]);
+    await this.commandRunner.execGit(['reset', '--', normalizedPath]);
     this.invalidateStatusCache();
     return {
       ok: true,
       path: normalizedPath,
+      workspaceChange: createEmptyWorkspaceChange(),
+    };
+  }
+
+  async unstageAll() {
+    await this.commandRunner.execGit(['reset', '--']);
+    this.invalidateStatusCache();
+    return {
+      ok: true,
       workspaceChange: createEmptyWorkspaceChange(),
     };
   }

@@ -789,6 +789,18 @@ test('HTTP server exposes git status and diff endpoints for git-backed vaults', 
   assert.equal(stageResponse.statusCode, 200);
   assert.match(stageResponse.body, /"ok":true/);
 
+  const unstageAllResponse = await httpRequest(`${app.baseUrl}/api/git/unstage-all`, {
+    method: 'POST',
+  });
+  assert.equal(unstageAllResponse.statusCode, 200);
+  assert.match(unstageAllResponse.body, /"ok":true/);
+
+  const stageAllResponse = await httpRequest(`${app.baseUrl}/api/git/stage-all`, {
+    method: 'POST',
+  });
+  assert.equal(stageAllResponse.statusCode, 200);
+  assert.match(stageAllResponse.body, /"ok":true/);
+
   const commitResponse = await httpRequest(`${app.baseUrl}/api/git/commit`, {
     body: JSON.stringify({ message: 'Commit staged changes' }),
     headers: {

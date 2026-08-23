@@ -202,6 +202,36 @@ test('GitPanelController uses plain-language commit inclusion labels', (t) => {
   assert.match(markup, /Commit 1 file/u);
 });
 
+test('GitPanelController renders and handles bulk staging actions', async (t) => {
+  const harness = createPanelHarness();
+  t.after(() => harness.restore());
+
+  const actions = [];
+  const controller = new GitPanelController({
+    onStageAll: () => actions.push('stage-all'),
+    onUnstageAll: () => actions.push('unstage-all'),
+  });
+  controller.initialize();
+  controller.status = {
+    branch: { name: 'main' },
+    isGitRepo: true,
+    sections: [],
+    summary: { changedFiles: 3, staged: 1, untracked: 1, workingTree: 1 },
+  };
+  controller.render();
+
+  assert.match(harness.panel.innerHTML, /Include all changes/u);
+  assert.match(harness.panel.innerHTML, /Remove all from commit/u);
+
+  for (const action of ['stage-all', 'unstage-all']) {
+    const button = new FakeElement({ 'data-git-bulk-action': action });
+    harness.triggerClick(new FakeElement({}, { '[data-git-bulk-action]': button }));
+    await Promise.resolve();
+  }
+
+  assert.deepEqual(actions, ['stage-all', 'unstage-all']);
+});
+
 test('GitPanelController exposes the full file path as a hover title for trimmed file rows', async (t) => {
   const harness = createPanelHarness();
   t.after(() => harness.restore());

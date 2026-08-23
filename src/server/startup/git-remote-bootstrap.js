@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
+import { ensureCollabMetadataGitExclude } from '../infrastructure/git/local-exclude.js';
+
 const execFile = promisify(execFileCallback);
 const GIT_TIMEOUT_MS = 20_000;
 const GIT_MAX_BUFFER_BYTES = 5 * 1024 * 1024;
@@ -148,36 +150,6 @@ async function cloneIntoVault(vaultDir, repoUrl, options = {}) {
     ...options,
     cwd: vaultDir,
   });
-}
-
-async function ensureLocalGitIgnore(vaultDir) {
-  const excludeFilePath = join(vaultDir, '.git', 'info', 'exclude');
-  let existingContent = '';
-
-  try {
-    existingContent = await readFile(excludeFilePath, 'utf8');
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      throw error;
-    }
-  }
-
-  const lines = existingContent
-    .split(/\r?\n/u)
-    .map((line) => line.trim());
-
-  if (lines.includes('.collabmd') || lines.includes('.collabmd/')) {
-    return;
-  }
-
-  const prefix = existingContent.length > 0 && !existingContent.endsWith('\n')
-    ? '\n'
-    : '';
-  await writeFile(
-    excludeFilePath,
-    `${existingContent}${prefix}.collabmd/\n`,
-    'utf8',
-  );
 }
 
 async function updateExistingCheckout(vaultDir, repoUrl, options = {}) {
@@ -384,7 +356,7 @@ export async function prepareConfigForStartup(config, options = {}) {
           ...options,
           commandEnv: config.git.commandEnv,
         });
-        await ensureLocalGitIgnore(config.vaultDir);
+        await ensureCollabMetadataGitExclude(config.vaultDir);
         await ensureRepositoryIdentity(config.vaultDir, config.git, {
           ...options,
           commandEnv: config.git.commandEnv,
@@ -404,7 +376,7 @@ export async function prepareConfigForStartup(config, options = {}) {
           ...options,
           commandEnv: config.git.commandEnv,
         });
-        await ensureLocalGitIgnore(config.vaultDir);
+        await ensureCollabMetadataGitExclude(config.vaultDir);
         await ensureRepositoryIdentity(config.vaultDir, config.git, {
           ...options,
           commandEnv: config.git.commandEnv,
@@ -422,7 +394,7 @@ export async function prepareConfigForStartup(config, options = {}) {
       ...options,
       commandEnv: config.git.commandEnv,
     });
-    await ensureLocalGitIgnore(config.vaultDir);
+    await ensureCollabMetadataGitExclude(config.vaultDir);
     await ensureRepositoryIdentity(config.vaultDir, config.git, {
       ...options,
       commandEnv: config.git.commandEnv,

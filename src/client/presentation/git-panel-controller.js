@@ -94,7 +94,9 @@ export class GitPanelController {
     onResetFile = () => {},
     onSelectCommit = () => {},
     onSelectDiff = () => {},
+    onStageAll = () => {},
     onStageFile = () => {},
+    onUnstageAll = () => {},
     onUnstageFile = () => {},
     onViewAllDiff = () => {},
     searchInput = null,
@@ -110,7 +112,9 @@ export class GitPanelController {
     this.onResetFile = onResetFile;
     this.onSelectCommit = onSelectCommit;
     this.onSelectDiff = onSelectDiff;
+    this.onStageAll = onStageAll;
     this.onStageFile = onStageFile;
+    this.onUnstageAll = onUnstageAll;
     this.onUnstageFile = onUnstageFile;
     this.onViewAllDiff = onViewAllDiff;
     this.searchInput = searchInput;
@@ -235,6 +239,17 @@ export class GitPanelController {
     }
 
     if (this._handleFileActionClick(event)) return;
+
+    const bulkActionButton = event.target instanceof Element
+      ? event.target.closest('[data-git-bulk-action]')
+      : null;
+    if (bulkActionButton) {
+      const action = bulkActionButton.getAttribute('data-git-bulk-action');
+      if (action === 'stage-all' || action === 'unstage-all') {
+        void this.handleBulkAction(action);
+      }
+      return;
+    }
 
     if (event.target instanceof Element && event.target.closest('[data-git-view-all]')) {
       this.onViewAllDiff();
@@ -615,6 +630,22 @@ export class GitPanelController {
     }
   }
 
+  async handleBulkAction(action) {
+    if (this.pendingActionKey) {
+      return;
+    }
+
+    this.pendingActionKey = action;
+    this.render();
+
+    try {
+      await (action === 'stage-all' ? this.onStageAll() : this.onUnstageAll());
+    } finally {
+      this.pendingActionKey = null;
+      this.render();
+    }
+  }
+
   async handleCommitStaged() {
     const actionKey = 'commit-staged';
     if (this.pendingActionKey === actionKey) {
@@ -877,6 +908,8 @@ export class GitPanelController {
       .join('');
     const hasChanges = Boolean(this.status.summary?.changedFiles);
     const includedFileCount = Number(this.status.summary?.staged || 0);
+    const excludedFileCount = Number(this.status.summary?.workingTree || 0)
+      + Number(this.status.summary?.untracked || 0);
     const isCommitPending = this.pendingActionKey === 'commit-staged';
 
     return `
@@ -885,6 +918,26 @@ export class GitPanelController {
       ${hasChanges ? `
         <div class="git-panel-footer">
           <div class="git-panel-footer-actions">
+            ${excludedFileCount > 0 ? `
+              <button
+                class="${buttonClassNames({ variant: 'secondary', size: 'compact', action: true, surface: true })}"
+                type="button"
+                data-git-bulk-action="stage-all"
+                ${this.pendingActionKey ? 'disabled' : ''}
+              >
+                ${this.pendingActionKey === 'stage-all' ? 'Working...' : 'Include all changes'}
+              </button>
+            ` : ''}
+            ${includedFileCount > 0 ? `
+              <button
+                class="${buttonClassNames({ variant: 'secondary', size: 'compact', action: true, surface: true })}"
+                type="button"
+                data-git-bulk-action="unstage-all"
+                ${this.pendingActionKey ? 'disabled' : ''}
+              >
+                ${this.pendingActionKey === 'unstage-all' ? 'Working...' : 'Remove all from commit'}
+              </button>
+            ` : ''}
             <button class="${buttonClassNames({ variant: 'secondary', size: 'compact', action: true, surface: true })}" type="button" data-git-view-all>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               View Full Diff

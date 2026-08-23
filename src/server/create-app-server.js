@@ -10,6 +10,7 @@ import { CollaborationDocumentStore } from './domain/collaboration/collaboration
 import { CollaborationRoom } from './domain/collaboration/collaboration-room.js';
 import { renderDocx } from './domain/docx-exporter.js';
 import { GitService } from './infrastructure/git/git-service.js';
+import { ensureCollabMetadataGitExclude } from './infrastructure/git/local-exclude.js';
 import { GitHubAppClient } from './infrastructure/github/github-app-client.js';
 import { GitHubSetupFlow } from './infrastructure/github/github-setup-flow.js';
 import { HostedWorkspaceService } from './domain/hosted-workspace.js';
@@ -194,6 +195,9 @@ export function createAppServer(config = loadConfig()) {
   async function listen() {
     const startupStartedAt = Date.now();
 
+    if (await gitService.isGitRepo()) {
+      await ensureCollabMetadataGitExclude(config.vaultDir);
+    }
     await hostedWorkspaceService.initialize();
 
     const searchCapabilityStartedAt = Date.now();

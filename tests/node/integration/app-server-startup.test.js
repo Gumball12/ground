@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -99,6 +99,30 @@ test('createAppServer rescans before workspace init and watcher startup', async 
   assert.ok(perfLogs.some((line) => line.includes('[perf][startup]') && line.includes('phase=workspace-scan')));
   assert.ok(perfLogs.some((line) => line.includes('[perf][startup]') && line.includes('phase=workspace-rescan')));
   assert.ok(perfLogs.some((line) => line.includes('[perf][startup-total]')));
+});
+
+test('createAppServer excludes CollabMD metadata from git on startup', async (t) => {
+  const vaultDir = await createVault(t, { 'README.md': '# Test\n' });
+  await mkdir(join(vaultDir, '.git/info'), { recursive: true });
+  await writeFile(join(vaultDir, '.git/info/exclude'), '# local excludes\n', 'utf8');
+
+  const server = createAppServer({
+    ...loadConfig({ vaultDir }),
+    fileWatcherEnabled: false,
+    host: '127.0.0.1',
+    nodeEnv: 'test',
+    port: 0,
+    wsRoomIdleGraceMs: 0,
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  await server.listen();
+  assert.equal(
+    await readFile(join(vaultDir, '.git/info/exclude'), 'utf8'),
+    '# local excludes\n.collabmd/\n',
+  );
 });
 
 test('createAppServer rebuilds backlinks if the workspace changes during startup', async (t) => {

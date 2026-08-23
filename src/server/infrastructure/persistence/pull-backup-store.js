@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
+import { ensureCollabMetadataGitExclude } from '../git/local-exclude.js';
 import { sanitizeVaultPath } from './path-utils.js';
 
 const PULL_BACKUP_STORAGE_ROOT = '.collabmd/pull-backups';
@@ -98,32 +99,6 @@ function formatSummary({
   ].join('\n');
 }
 
-async function ensureLocalGitExclude(vaultDir) {
-  const excludePath = resolve(vaultDir, '.git/info/exclude');
-  let existingContent = '';
-
-  try {
-    existingContent = await readFile(excludePath, 'utf8');
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      throw error;
-    }
-  }
-
-  const lines = existingContent
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.includes('.collabmd') || lines.includes('.collabmd/')) {
-    return;
-  }
-
-  const prefix = existingContent.length > 0 && !existingContent.endsWith('\n')
-    ? '\n'
-    : '';
-  await writeFile(excludePath, `${existingContent}${prefix}.collabmd/\n`, 'utf8');
-}
-
 export class PullBackupStore {
   constructor({ vaultDir }) {
     this.vaultDir = resolve(vaultDir);
@@ -148,7 +123,7 @@ export class PullBackupStore {
     headRef = null,
     targetRef = null,
   } = {}) {
-    await ensureLocalGitExclude(this.vaultDir);
+    await ensureCollabMetadataGitExclude(this.vaultDir);
 
     const backupId = createBackupId(headRef, createdAt);
     const backupDir = this.getBackupPath(backupId);

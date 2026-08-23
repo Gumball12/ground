@@ -326,6 +326,10 @@ export const gitFeature = {
           return await this.gitApiClient.stageFile({ path: payload.path, requestId });
         case 'unstage':
           return await this.gitApiClient.unstageFile({ path: payload.path, requestId });
+        case 'stage-all':
+          return await this.gitApiClient.stageAll({ requestId });
+        case 'unstage-all':
+          return await this.gitApiClient.unstageAll({ requestId });
         case 'push':
           return await this.gitApiClient.pushBranch({ requestId });
         case 'pull':
@@ -531,6 +535,20 @@ export const gitFeature = {
         preferredScope: scope === 'all' ? 'all' : 'working-tree',
         result,
       });
+    });
+  },
+
+  async stageAllGitFiles() {
+    await this.runGitActionWithStatus('Staging all changes...', async () => {
+      const result = await this.postGitAction('stage-all', {});
+      await this.finalizeGitAction({ action: 'stage-all', preferredScope: 'staged', result });
+    });
+  },
+
+  async unstageAllGitFiles() {
+    await this.runGitActionWithStatus('Unstaging all changes...', async () => {
+      const result = await this.postGitAction('unstage-all', {});
+      await this.finalizeGitAction({ action: 'unstage-all', preferredScope: 'working-tree', result });
     });
   },
 

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { GitService } from '../../../src/server/infrastructure/git/git-service.js';
+import { ensureCollabMetadataGitExclude } from '../../../src/server/infrastructure/git/local-exclude.js';
 
 const execFile = promisify(execFileCallback);
 
@@ -397,6 +398,41 @@ test('GitService stages, unstages, and commits all staged changes', async (t) =>
   status = await gitService.getStatus({ force: true });
   assert.equal((status.sections.find((section) => section.key === 'staged')?.files ?? []).length, 0);
   assert.equal((status.sections.find((section) => section.key === 'working-tree')?.files ?? []).length, 0);
+});
+
+test('GitService stages and unstages all local changes', async (t) => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'collabmd-git-service-stage-all-'));
+  t.after(async () => {
+    await rm(repoDir, { force: true, recursive: true });
+  });
+
+  await runGit(repoDir, ['init']);
+  await writeFile(join(repoDir, 'a.md'), '# A\n', 'utf8');
+  await writeFile(join(repoDir, 'deleted.md'), '# Deleted\n', 'utf8');
+  await runGit(repoDir, ['add', '-A']);
+  await runGit(repoDir, ['commit', '-m', 'Initial commit']);
+
+  await writeFile(join(repoDir, 'a.md'), '# A\nupdated\n', 'utf8');
+  await rm(join(repoDir, 'deleted.md'));
+  await writeFile(join(repoDir, 'new.md'), '# New\n', 'utf8');
+  await mkdir(join(repoDir, '.collabmd/comments'), { recursive: true });
+  await writeFile(join(repoDir, '.collabmd/comments/a.md.json'), '{}\n', 'utf8');
+
+  const gitService = new GitService({ vaultDir: repoDir });
+  await ensureCollabMetadataGitExclude(repoDir);
+  await gitService.stageAll();
+
+  let status = await gitService.getStatus({ force: true });
+  assert.deepEqual(
+    status.sections.find((section) => section.key === 'staged')?.files.map((file) => file.path).sort(),
+    ['a.md', 'deleted.md', 'new.md'],
+  );
+
+  await gitService.unstageAll();
+  status = await gitService.getStatus({ force: true });
+  assert.equal(status.summary.staged, 0);
+  assert.equal(status.summary.workingTree, 2);
+  assert.equal(status.summary.untracked, 1);
 });
 
 test('GitService can commit staged changes when identity is provided through command env', async (t) => {

@@ -84,6 +84,38 @@ export function createGitApiCommandHandler({
       return true;
     }
 
+    if (requestUrl.pathname === '/api/git/stage-all' && req.method === 'POST') {
+      try {
+        jsonResponse(req, res, 200, await applyWorkspaceMutationEffects({
+          action: 'stage-all',
+          req,
+          responsePayload: await workspaceMutationCoordinator.runManagedWorkspaceMutation(
+            () => gitService.stageAll(),
+          ),
+          workspaceMutationCoordinator,
+        }));
+      } catch (error) {
+        handleApiError(req, res, error, '[api] Failed to stage all git changes:', 'Failed to stage all git changes');
+      }
+      return true;
+    }
+
+    if (requestUrl.pathname === '/api/git/unstage-all' && req.method === 'POST') {
+      try {
+        jsonResponse(req, res, 200, await applyWorkspaceMutationEffects({
+          action: 'unstage-all',
+          req,
+          responsePayload: await workspaceMutationCoordinator.runManagedWorkspaceMutation(
+            () => gitService.unstageAll(),
+          ),
+          workspaceMutationCoordinator,
+        }));
+      } catch (error) {
+        handleApiError(req, res, error, '[api] Failed to unstage all git changes:', 'Failed to unstage all git changes');
+      }
+      return true;
+    }
+
     if (requestUrl.pathname === '/api/git/commit' && req.method === 'POST') {
       try {
         const body = await parseRequiredBody(req, res, 'message');

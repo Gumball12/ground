@@ -87,6 +87,14 @@ export class GitApiClient {
     return this.#postJson('/git/unstage', { path }, { requestId, fallbackError: 'Failed to unstage file' });
   }
 
+  async stageAll({ requestId = null } = {}) {
+    return this.#postJson('/git/stage-all', {}, { requestId, fallbackError: 'Failed to stage all changes' });
+  }
+
+  async unstageAll({ requestId = null } = {}) {
+    return this.#postJson('/git/unstage-all', {}, { requestId, fallbackError: 'Failed to unstage all changes' });
+  }
+
   async pushBranch({ requestId = null } = {}) {
     return this.#postJson('/git/push', {}, { requestId, fallbackError: 'Failed to push branch' });
   }

@@ -452,7 +452,7 @@ For a full local and Docker test walkthrough, including key generation and deplo
 
 When `COLLABMD_GIT_REPO_URL` is set, CollabMD clones into `COLLABMD_VAULT_DIR` on first boot, then reuses that checkout on later starts. If the checkout already exists, startup validates that `origin` matches. Clean checkouts are fast-forwarded to the remote default branch; dirty checkouts are reused as-is and startup skips the sync.
 
-After bootstrap, CollabMD adds `.collabmd/` to the checkout's local git exclude file at `.git/info/exclude` so runtime metadata stays out of git status without modifying the repo's tracked `.gitignore`.
+On every startup, CollabMD adds `.collabmd/` to the vault's local git exclude file at `.git/info/exclude` so runtime metadata stays out of git status and bulk staging without modifying the repository's tracked `.gitignore`.
 
 File-based secrets are also supported and take precedence over base64 input:
 
