@@ -80,7 +80,7 @@ async function createRemotePullFixture(t) {
   await runGit(seedDir, ['add', 'tracked.md']);
   await runGit(seedDir, ['commit', '-m', 'Initial commit']);
   await runGit(seedDir, ['remote', 'add', 'origin', remoteDir]);
-  await runGit(seedDir, ['push', '-u', 'origin', 'master']);
+  await runGit(seedDir, ['push', '-u', 'origin', 'HEAD']);
 
   await runGit(tmpdir(), ['clone', remoteDir, localDir]);
   await runGit(localDir, ['config', 'user.email', 'tests@example.com']);
@@ -525,7 +525,7 @@ test('GitService pushes and pulls against an upstream branch', async (t) => {
   await runGit(seedDir, ['add', 'test.md']);
   await runGit(seedDir, ['commit', '-m', 'Initial commit']);
   await runGit(seedDir, ['remote', 'add', 'origin', remoteDir]);
-  await runGit(seedDir, ['push', '-u', 'origin', 'master']);
+  await runGit(seedDir, ['push', '-u', 'origin', 'HEAD']);
 
   await runGit(tmpdir(), ['clone', remoteDir, localDir]);
   await runGit(localDir, ['config', 'user.email', 'tests@example.com']);
@@ -723,7 +723,7 @@ test('GitService pull handles ahead-only and non-conflicting diverged history wi
   assert.equal(await runGitOutput(localDir, ['show', '-s', '--format=%an <%ae>', 'HEAD']), 'Pulling User <puller@example.com>');
   assert.equal(await readFile(join(localDir, 'local.md'), 'utf8'), '# Local commit\nlocal dirty change\n');
   assert.equal(await readFile(join(localDir, 'remote.md'), 'utf8'), '# Remote commit\n');
-  assert.equal(await runGitOutput(localDir, ['rev-list', '--count', 'origin/master..HEAD']), '0');
+  assert.equal(await runGitOutput(localDir, ['rev-list', '--count', '@{upstream}..HEAD']), '0');
 });
 
 test('GitService pull rejects conflicting commits before mutating the worktree', async (t) => {

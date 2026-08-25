@@ -45,7 +45,7 @@ async function createBareRemoteFixture(t, {
   await runGit(seedDir, ['add', 'test.md']);
   await runGit(seedDir, ['commit', '-m', 'Initial commit']);
   await runGit(seedDir, ['remote', 'add', 'origin', remoteDir]);
-  await runGit(seedDir, ['push', '-u', 'origin', 'master']);
+  await runGit(seedDir, ['push', '-u', 'origin', 'HEAD']);
 
   return {
     remoteDir,

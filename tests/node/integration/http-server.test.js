@@ -841,7 +841,7 @@ test('HTTP server exposes git push and pull endpoints for repos with an upstream
   await execFile('git', ['commit', '-m', 'Initial commit'], { cwd: app.vaultDir, env: gitEnv });
   await execFile('git', ['init', '--bare', remoteDir], { env: gitEnv });
   await execFile('git', ['remote', 'add', 'origin', remoteDir], { cwd: app.vaultDir, env: gitEnv });
-  await execFile('git', ['push', '-u', 'origin', 'master'], { cwd: app.vaultDir, env: gitEnv });
+  await execFile('git', ['push', '-u', 'origin', 'HEAD'], { cwd: app.vaultDir, env: gitEnv });
 
   await writeFile(join(app.vaultDir, 'test.md'), '# Test\n\nLocal push change.\n', 'utf8');
   await execFile('git', ['add', 'test.md'], { cwd: app.vaultDir, env: gitEnv });
@@ -903,7 +903,7 @@ test('HTTP server returns pull backup metadata and lists saved pull backups', as
   await execFile('git', ['commit', '-m', 'Initial commit'], { cwd: app.vaultDir, env: gitEnv });
   await execFile('git', ['init', '--bare', remoteDir], { env: gitEnv });
   await execFile('git', ['remote', 'add', 'origin', remoteDir], { cwd: app.vaultDir, env: gitEnv });
-  await execFile('git', ['push', '-u', 'origin', 'master'], { cwd: app.vaultDir, env: gitEnv });
+  await execFile('git', ['push', '-u', 'origin', 'HEAD'], { cwd: app.vaultDir, env: gitEnv });
 
   await execFile('git', ['clone', remoteDir, peerDir], { env: gitEnv });
   await execFile('git', ['config', 'user.email', 'tests@example.com'], { cwd: peerDir, env: gitEnv });
@@ -965,7 +965,7 @@ test('HTTP server returns a typed error code when pulled commits conflict', asyn
   await execFile('git', ['commit', '-m', 'Initial commit'], { cwd: app.vaultDir, env: gitEnv });
   await execFile('git', ['init', '--bare', remoteDir], { env: gitEnv });
   await execFile('git', ['remote', 'add', 'origin', remoteDir], { cwd: app.vaultDir, env: gitEnv });
-  await execFile('git', ['push', '-u', 'origin', 'master'], { cwd: app.vaultDir, env: gitEnv });
+  await execFile('git', ['push', '-u', 'origin', 'HEAD'], { cwd: app.vaultDir, env: gitEnv });
 
   await writeFile(join(app.vaultDir, 'test.md'), '# Test\n\nLocal commit.\n', 'utf8');
   await execFile('git', ['add', 'test.md'], { cwd: app.vaultDir, env: gitEnv });
