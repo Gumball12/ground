@@ -852,6 +852,31 @@ test('GitService returns file history entries that follow renames', async (t) =>
   assert.equal(history.commits[1].pathAtCommit, 'before.md');
 });
 
+test('GitService does not include a low-similarity deleted file in another file history', async (t) => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'collabmd-git-file-history-unrelated-'));
+  t.after(async () => {
+    await rm(repoDir, { force: true, recursive: true });
+  });
+
+  await runGit(repoDir, ['init']);
+  await runGit(repoDir, ['config', 'user.email', 'tests@example.com']);
+  await runGit(repoDir, ['config', 'user.name', 'CollabMD Tests']);
+  await writeFile(join(repoDir, 'other.md'), 'common one\ncommon two\nold alpha\nold beta\nold gamma\nold delta\n', 'utf8');
+  await runGit(repoDir, ['add', 'other.md']);
+  await runGit(repoDir, ['commit', '-m', 'Add other file']);
+  await runGit(repoDir, ['rm', 'other.md']);
+  await writeFile(join(repoDir, 'opened.md'), 'common one\ncommon two\nnew alpha\nnew beta\nnew gamma\nnew delta\n', 'utf8');
+  await runGit(repoDir, ['add', 'opened.md']);
+  await runGit(repoDir, ['commit', '-m', 'Replace with opened file']);
+
+  const gitService = new GitService({ vaultDir: repoDir });
+  const history = await gitService.getFileHistory({ limit: 10, offset: 0, path: 'opened.md' });
+
+  assert.deepEqual(history.commits.map((commit) => commit.subject), ['Replace with opened file']);
+  assert.equal(history.commits[0].pathAtCommit, 'opened.md');
+  assert.equal(history.commits[0].status, 'added');
+});
+
 test('GitService returns root commit metadata and file-scoped commit diffs', async (t) => {
   const repoDir = await mkdtemp(join(tmpdir(), 'collabmd-git-commit-detail-'));
   t.after(async () => {

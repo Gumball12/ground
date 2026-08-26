@@ -233,7 +233,7 @@ export class GitHistoryService {
         '-n',
         String(normalizedLimit + 1),
         '--follow',
-        '--find-renames=20%',
+        '--find-renames',
         '--date=iso-strict',
         '--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%aI%x1f%P',
         '--',
