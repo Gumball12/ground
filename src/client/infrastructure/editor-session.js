@@ -290,6 +290,13 @@ export class EditorSession {
     return this.viewAdapter.insertText(text);
   }
 
+  applyTextReplacements(replacements) {
+    if (!this.collaborationClient.initialSyncComplete) {
+      throw new Error('The collaborative document is not synchronized');
+    }
+    return this.viewAdapter.applyTextReplacements(replacements);
+  }
+
   replaceText(text) {
     return this.viewAdapter.replaceText(text);
   }
@@ -304,6 +311,10 @@ export class EditorSession {
 
   flashExternalUpdate(range) {
     return this.viewAdapter.flashRemoteRange(range);
+  }
+
+  isInitialSyncComplete() {
+    return this.collaborationClient.initialSyncComplete;
   }
 
   waitForInitialSync(timeoutMs = 1500) {

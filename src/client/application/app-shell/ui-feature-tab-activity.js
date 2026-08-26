@@ -15,6 +15,7 @@
  * @property {{ connect(): void, disconnect(): void, provider?: unknown }} workspaceSync
  * @property {{ show(message: string): void }} toastController
  * @property {{ tryActivate(options?: { takeover?: boolean }): void }} tabActivityLock
+ * @property {{ refresh(): Promise<boolean> }} webMcpTools
  * @property {{ prepareFileDisconnect(filePath: string): Promise<void> }} excalidrawEmbed
  * @property {{ handleHashChange(): Promise<void> }} workspaceRouteController
  * @property {() => boolean} isExcalidrawFile
@@ -35,6 +36,7 @@ function handleTabActivated({ takeover = false } = {}) {
   const wasInactive = !this.isTabActive;
   this.isTabActive = true;
   this.hideTabLockOverlay();
+  void this.webMcpTools?.refresh();
 
   if (!this.lobby.provider) {
     this.lobby.connect();
@@ -65,6 +67,7 @@ async function handleTabBlocked({ reason } = {}) {
   );
 
   this.isTabActive = false;
+  void this.webMcpTools?.refresh();
   this.lobby.disconnect();
   this.workspaceSync.disconnect();
   this.globalUsers = [];

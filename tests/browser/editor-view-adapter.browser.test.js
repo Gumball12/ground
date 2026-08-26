@@ -84,6 +84,41 @@ describe('EditorViewAdapter collaboration history', () => {
     undoManager.destroy();
     ydoc.destroy();
   });
+
+  it('applies exact text replacements as one undoable collaborative edit', () => {
+    document.body.innerHTML = '<div id="editor"></div>';
+    const adapter = new EditorViewAdapter({
+      editorContainer: document.getElementById('editor'),
+      initialTheme: 'light',
+      lineInfoElement: null,
+    });
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    ytext.insert(0, '# Title\n\nHello world\n');
+    const undoManager = new Y.UndoManager(ytext);
+
+    adapter.initialize({ awareness: null, filePath: 'README.md', undoManager, ytext });
+
+    expect(adapter.applyTextReplacements([
+      { newText: '# Updated', oldText: '# Title' },
+      { newText: 'Hello agent', oldText: 'Hello world' },
+    ])).toBe(2);
+    expect(adapter.getText()).toBe('# Updated\n\nHello agent\n');
+    expect(adapter.runEditorCommand('undo')).toBe(true);
+    expect(adapter.getText()).toBe('# Title\n\nHello world\n');
+    expect(() => adapter.applyTextReplacements([
+      { newText: 'Greeting', oldText: 'Hello' },
+      { newText: 'Message', oldText: 'Hello world' },
+    ])).toThrow(/overlap/);
+    adapter.replaceText('aaa');
+    expect(() => adapter.applyTextReplacements([
+      { newText: 'b', oldText: 'aa' },
+    ])).toThrow(/not unique/);
+
+    adapter.destroy();
+    undoManager.destroy();
+    ydoc.destroy();
+  });
 });
 
 describe('EditorViewAdapter document formatting', () => {

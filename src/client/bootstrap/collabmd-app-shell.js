@@ -35,6 +35,7 @@ import {
 } from '../infrastructure/runtime-config.js';
 import { TabActivityLock } from '../infrastructure/tab-activity-lock.js';
 import { vaultApiClient } from '../infrastructure/vault-api-client.js';
+import { WebMcpToolRegistry } from '../infrastructure/webmcp-tool-registry.js';
 import { WorkspaceSyncClient } from '../infrastructure/workspace-sync-client.js';
 import { BacklinksPanel } from '../presentation/backlinks-panel.js';
 import { CommentOverviewController } from '../presentation/comment-overview-controller.js';
@@ -166,6 +167,14 @@ export class CollabMdAppShell {
 
     this.toastController = new ToastController(this.elements.toastContainer);
     this.chatToastController = new ToastController(this.elements.chatToastContainer);
+    this.webMcpTools = new WebMcpToolRegistry({
+      getActiveFilePath: () => this.currentFilePath,
+      getIsTabActive: () => this.isTabActive,
+      getSession: () => this.session,
+      onDidEdit: ({ replacementCount }) => {
+        this.toastController.show(`Agent-assisted edit applied (${replacementCount} replacement${replacementCount === 1 ? '' : 's'}). Review it before committing.`);
+      },
+    });
     this.fileExplorer = new FileExplorerController({
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onDirectoryExport: (directoryPath, format) => this.handleDirectoryExportRequest(directoryPath, format),
@@ -515,6 +524,7 @@ export class CollabMdAppShell {
       },
       onConnectionChange: (state) => this.handleConnectionChange(state),
       onContentChange: ({ isBase, isHtml, isMermaid, isPlantUml, isStructurizrWorkspace }) => {
+        void this.webMcpTools.refresh();
         this.handleCommentEditorContentChange();
         if (isHtml) {
           this.workspacePreviewController.renderHtmlFilePreview({
@@ -650,7 +660,10 @@ export class CollabMdAppShell {
   }
 
   get session() { return this._session; }
-  set session(value) { this._session = value; }
+  set session(value) {
+    this._session = value;
+    void this.webMcpTools?.refresh();
+  }
 
   publishFileOpenPerf() {
     if (typeof window === 'undefined') {
