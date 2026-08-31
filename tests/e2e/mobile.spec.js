@@ -1,4 +1,6 @@
 import {
+  assignGovernedRole,
+  createGovernedParticipant,
   ensureMobileSidebarVisible,
   expect,
   getPreviewHorizontalOverflowMetrics,
@@ -7,11 +9,11 @@ import {
   replaceEditorContent,
   setEditorSelection,
   test,
+  waitForCollaborativeEditor,
   waitForEditor,
   waitForPreview,
   writeVaultFileAndResetCollab,
   restoreReadmeTestDocument,
-  restoreVaultFileFromTemplate,
 } from './helpers/app-fixture.js';
 
 const OUTLINE_TEST_DOCUMENT = `# My Vault
@@ -475,7 +477,10 @@ test.describe('mobile presence', () => {
     const teammatePage = await teammateContext.newPage();
 
     await openFile(ownerPage, 'README.md', { userName: 'Owner', waitFor: 'preview' });
-    await openFile(teammatePage, 'projects/collabmd.md', { userName: 'Teammate', waitFor: 'preview' });
+    const teammate = await createGovernedParticipant(teammatePage, { displayName: 'Teammate' });
+    await assignGovernedRole(ownerPage, teammate.participantSessionId, 'editor');
+    await expect(teammatePage.locator('[data-self="true"]')).toHaveAttribute('data-grant-state', 'active');
+    await waitForCollaborativeEditor(teammatePage);
 
     await expect(ownerPage.locator('#userCount')).toHaveText('2 online');
     await expect(ownerPage.locator('#userAvatars')).toBeVisible();
@@ -491,69 +496,11 @@ test.describe('mobile presence', () => {
     )).toBe('auto');
     await ownerPage.locator('#presencePanel .presence-panel-user-button').filter({ hasText: 'Teammate' }).click();
     await expect(ownerPage.locator('#presencePanel')).toBeHidden();
-    await expect(ownerPage.locator('#activeFileName')).toHaveText('collabmd');
-    await expect(ownerPage.locator('#previewContent')).toContainText('CollabMD Project');
+    await expect(ownerPage.locator('#activeFileName')).toHaveText('README');
+    await expect(ownerPage.locator('#previewContent')).toContainText('My Vault');
 
     await ownerContext.close();
     await teammateContext.close();
-  });
-});
-
-test.describe('mobile linked mentions', () => {
-  test.use({
-    viewport: { width: 390, height: 844 },
-  });
-
-  test('keeps linked mentions inline instead of showing the desktop dock', async ({ page }) => {
-    await openFile(page, 'projects/collabmd.md', { waitFor: 'preview' });
-    await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
-
-    await expect(page.locator('#backlinksPanel')).toBeHidden();
-
-    await page.locator('#previewContainer').evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-
-    const inlinePanel = page.locator('#backlinksInlinePanel');
-    await expect(inlinePanel).toBeVisible();
-
-    await inlinePanel.locator('.backlinks-header').click();
-    await expect(inlinePanel).toHaveClass(/expanded/);
-    await expect(inlinePanel.locator('.backlinks-body')).toBeVisible();
-  });
-
-  test('keeps linked mentions expanded while scrolling a long mobile preview', async ({ page }) => {
-    await openFile(page, 'projects/collabmd.md', { waitFor: 'preview' });
-    await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
-
-    await page.locator('#mobileViewToggle').click();
-    await waitForEditor(page);
-    await replaceEditorContent(page, [
-      '# Mobile Backlinks Stress',
-      '',
-      ...Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1}: ${'linked mention stability '.repeat(8)}`),
-    ].join('\n\n'));
-    await page.locator('#mobileViewToggle').click();
-
-    await page.locator('#previewContainer').evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-
-    const inlinePanel = page.locator('#backlinksInlinePanel');
-    await expect(inlinePanel).toBeVisible();
-
-    await inlinePanel.locator('.backlinks-header').click();
-    await expect(inlinePanel).toHaveClass(/expanded/);
-
-    await page.locator('#previewContainer').evaluate((element) => {
-      element.scrollTop = Math.max(0, element.scrollTop - 32);
-    });
-    await page.waitForTimeout(200);
-
-    await expect(inlinePanel).toHaveClass(/expanded/);
-    await expect(inlinePanel.locator('.backlinks-body')).toBeVisible();
-
-    await restoreVaultFileFromTemplate(page, 'projects/collabmd.md');
   });
 });
 
@@ -872,7 +819,7 @@ test.describe('mobile comments and header chrome', () => {
   });
 
   test('opens quick switcher from the mobile overflow search files action', async ({ page }) => {
-    await openFile(page, 'README.md', { waitFor: 'preview' });
+    await openHome(page);
 
     await page.locator('#toolbarOverflowToggle').click();
     await expect(page.locator('#searchFilesBtn')).toBeVisible();

@@ -20,6 +20,10 @@ test.describe('password auth', () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    const governanceReset = await page.request.post(`${app.baseUrl}/api/test/reset-governance-state`);
+    if (!governanceReset.ok()) {
+      throw new Error(`reset-governance-state failed: ${governanceReset.status()} ${await governanceReset.text()}`);
+    }
     await page.addInitScript(() => {
       window.localStorage.setItem('collabmd-user-name', 'Playwright User');
     });

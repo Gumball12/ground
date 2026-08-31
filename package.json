@@ -14,6 +14,7 @@
   "files": [
     "README.md",
     "bin/",
+    "collabmd.governance.json",
     "dist/",
     "docker-compose.yml",
     "scripts/cloudflare-tunnel.mjs",
@@ -45,6 +46,8 @@
     "test:browser": "vitest run --config vitest.config.mjs --browser=chromium",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
+    "test:e2e:evidence": "npm run build && playwright test --config=playwright.evidence.config.js",
+    "test:e2e:governance:prebuilt": "playwright test tests/e2e/governance.spec.js",
     "test:e2e:prebuilt": "playwright test",
     "test:excalidraw:stress": "node scripts/run-excalidraw-reliability-stress.mjs",
     "test:guardrails": "node --test tests/node/guardrails/*.test.js",

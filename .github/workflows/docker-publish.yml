@@ -37,6 +37,9 @@ jobs:
       - name: Run project validation
         run: npm run check
 
+      - name: Run governed collaboration E2E
+        run: npm run test:e2e:governance:prebuilt
+
   docker:
     needs: validate
     runs-on: ubuntu-latest

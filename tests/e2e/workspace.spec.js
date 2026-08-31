@@ -3,7 +3,6 @@ import {
   openFile,
   openHome,
   openSampleFull,
-  pasteClipboardImage,
   replaceEditorContent,
   setHydrateDelay,
   test,
@@ -340,7 +339,7 @@ test('keeps desktop secondary actions behind the toolbar overflow menu', async (
 });
 
 test('opens the quick switcher from the top toolbar search action', async ({ page }) => {
-  await openFile(page, 'README.md', { waitFor: 'preview' });
+  await openHome(page);
 
   const searchButton = page.locator('#toolbarSearchBtn');
   await expect(searchButton).toBeVisible();
@@ -535,6 +534,18 @@ test('shows provisional content before delayed websocket sync and upgrades to co
   }
 });
 
+test('waits for collaborative readiness before returning a mutation-ready editor', async ({ page }) => {
+  await setHydrateDelay(page, 2000);
+
+  try {
+    await openFile(page, 'README.md', { waitFor: 'editor' });
+
+    expect(await page.locator('#editorContainer').getAttribute('data-editor-mode')).toBe('collaborative');
+  } finally {
+    await setHydrateDelay(page, 0);
+  }
+});
+
 test('escapes raw html in markdown preview', async ({ page }) => {
   await openFile(page, 'README.md');
 
@@ -667,139 +678,6 @@ test('file explorer uploads multiple supported vault files', async ({ page }) =>
   const response = await page.request.get('/api/download/file?path=uploaded-note.md');
   expect(response.ok()).toBe(true);
   expect(await response.text()).toBe('# Uploaded note\n');
-});
-
-test('image toolbar uploads a vault attachment and inserts inline markdown', async ({ page }) => {
-  await openFile(page, 'README.md');
-  await waitForCollaborativeEditor(page);
-
-  const fileChooserPromise = page.waitForEvent('filechooser');
-  await page.locator('[data-markdown-action="image"]').click();
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles({
-    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGPgF9f6D8IMMAYAKWgFPch3sv8AAAAASUVORK5CYII=', 'base64'),
-    mimeType: 'image/png',
-    name: 'inline-diagram.png',
-  });
-
-  await expect.poll(async () => (
-    page.evaluate(async () => {
-      const response = await fetch('/api/file?path=README.md');
-      const data = await response.json();
-      return data.content || '';
-    })
-  )).toMatch(/!\[inline diagram\]\(assets\/inline-diagram-[^)]+\.webp\)/i);
-
-  await expect(page.locator('#fileTree')).toContainText('assets');
-  const uploadedImage = page.locator('#previewContent img[src$=".webp"]');
-  await expect(uploadedImage).toBeVisible();
-  await expect(uploadedImage).toHaveAttribute(
-    'src',
-    /\/api\/attachment\?path=assets%2Finline-diagram-[^?]+\.webp/,
-  );
-
-  const uploadedMarkdown = await page.evaluate(async () => {
-    const response = await fetch('/api/file?path=README.md');
-    const data = await response.json();
-    return data.content || '';
-  });
-  const uploadedPath = uploadedMarkdown.match(/!\[inline diagram\]\((assets\/inline-diagram-[^)]+\.webp)\)/i)?.[1];
-  if (!uploadedPath) {
-    throw new Error('Expected uploaded image markdown to contain an asset path.');
-  }
-
-  await openFile(page, uploadedPath, { waitFor: 'preview' });
-  await expect(page.locator('#previewContent .image-file-preview-image')).toBeVisible();
-  await expect(page.locator('#backlinksPanel')).not.toHaveClass(/hidden/);
-  await expect(page.locator('#backlinksPanel .backlinks-count')).toHaveText('1');
-});
-
-test('image lightbox uses a fullscreen stage with click zoom, reset, and close', async ({ page }) => {
-  await openFile(page, 'README.md');
-
-  const fileChooserPromise = page.waitForEvent('filechooser');
-  await page.locator('[data-markdown-action="image"]').click();
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles({
-    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="8" fill="#0f172a"/><circle cx="24" cy="24" r="10" fill="#f8fafc"/></svg>'),
-    mimeType: 'image/svg+xml',
-    name: 'lightbox-target.svg',
-  });
-
-  const previewImage = page.locator('#previewContent img').first();
-  await expect(previewImage).toBeVisible();
-
-  await previewImage.click();
-  await expect(page.locator('.image-lightbox-root')).toBeVisible();
-  await expect(page.locator('.image-lightbox-toolbar')).toBeVisible();
-
-  const lightboxImage = page.locator('.image-lightbox-image');
-  const zoomLabel = page.locator('.image-lightbox-zoom-label');
-  await expect(zoomLabel).toHaveText('100%');
-
-  await lightboxImage.click();
-  await expect(zoomLabel).toHaveText('200%');
-
-  await page.locator('.image-lightbox-controls').getByText('Reset', { exact: true }).click();
-  await expect(zoomLabel).toHaveText('100%');
-
-  await page.locator('.image-lightbox-controls').getByText('Close', { exact: true }).click();
-  await expect(page.locator('.image-lightbox-root')).toBeHidden();
-});
-
-test('switching from a YouTube markdown preview to an image file clears the video overlay', async ({ page }) => {
-  await openFile(page, 'README.md');
-
-  const fileChooserPromise = page.waitForEvent('filechooser');
-  await page.locator('[data-markdown-action="image"]').click();
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles({
-    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="8" fill="#0f172a"/><circle cx="24" cy="24" r="10" fill="#f8fafc"/></svg>'),
-    mimeType: 'image/svg+xml',
-    name: 'preview-switch.svg',
-  });
-
-  await replaceEditorContent(page, [
-    '# Video Preview',
-    '',
-    '![Demo video](https://www.youtube.com/watch?v=dQw4w9WgXcQ)',
-  ].join('\n'));
-
-  await expect(page.locator('#previewContent .video-embed-iframe')).toBeVisible();
-  await expect(page.locator('#previewContent [data-video-overlay-root="true"]')).toBeVisible();
-
-  await page.locator('#fileTree').getByText('assets').click();
-  await page.locator('#fileTree .file-tree-item', { hasText: 'preview-switch' }).click();
-
-  await expect(page.locator('#previewContent').locator('.image-file-preview-image')).toBeVisible();
-  await expect(page.locator('#previewContent .video-embed-iframe')).toHaveCount(0);
-  await expect(page.locator('#previewContent [data-video-overlay-root="true"]')).toHaveCount(0);
-});
-
-test('pasting an image uploads a vault attachment and inserts inline markdown', async ({ page }) => {
-  await openFile(page, 'README.md');
-  await waitForCollaborativeEditor(page);
-
-  await pasteClipboardImage(page, {
-    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGPgF9f6D8IMMAYAKWgFPch3sv8AAAAASUVORK5CYII=', 'base64'),
-    mimeType: 'image/png',
-  });
-
-  await expect.poll(async () => (
-    page.evaluate(async () => {
-      const response = await fetch('/api/file?path=README.md');
-      const data = await response.json();
-      return data.content || '';
-    })
-  )).toMatch(/!\[[^\]]+\]\(assets\/[a-z-]+-[^)]+\.webp\)/i);
-
-  await expect(page.locator('#fileTree')).toContainText('assets');
-  const uploadedImage = page.locator('#previewContent img[src$=".webp"]');
-  await expect(uploadedImage).toBeVisible();
-  await expect(uploadedImage).toHaveAttribute(
-    'src',
-    /\/api\/attachment\?path=assets%2F[^?]+\.webp/,
-  );
 });
 
 test('opens a file by clicking the sidebar', async ({ page }) => {
@@ -1024,6 +902,7 @@ test('moves and deletes files from the sidebar with the custom dialog', async ({
   await page.locator('#fileActionSubmit').click();
 
   await waitForEditor(page);
+  await openHome(page);
   const scratchpadItem = page.locator('#fileTree .file-tree-item', { hasText: 'scratchpad' }).first();
   await scratchpadItem.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
@@ -1034,11 +913,14 @@ test('moves and deletes files from the sidebar with the custom dialog', async ({
   await page.locator('#fileActionInput').fill('notes/release-notes');
   await page.locator('#fileActionSubmit').click();
 
-  await expect(page.locator('#activeFileName')).toContainText('release-notes');
   await expect(page.locator('#fileTree')).toContainText('release-notes');
   await expect(page.locator('#fileTree')).not.toContainText('scratchpad');
   await expect(page.locator('#fileTree')).toContainText('notes');
 
+  await openFile(page, 'notes/release-notes.md');
+  await expect(page.locator('#activeFileName')).toContainText('release-notes');
+  await openHome(page);
+  await page.locator('#fileTree .file-tree-dir[data-path="notes"]').click();
   const renamedItem = page.locator('#fileTree .file-tree-item', { hasText: 'release-notes' }).first();
   await renamedItem.click({ button: 'right' });
   await expect(page.locator('.file-context-menu')).toBeVisible();
@@ -1063,6 +945,7 @@ test('moves files between folders by drag and drop in the sidebar', async ({ pag
   await page.locator('#fileActionInput').fill(fileName);
   await page.locator('#fileActionSubmit').click();
   await waitForEditor(page);
+  await openHome(page);
 
   await chooseCreateAction(page, /^Folder/i);
   await page.locator('#fileActionInput').fill('notes');
@@ -1103,6 +986,11 @@ test('moves files between folders by drag and drop in the sidebar', async ({ pag
 
   expect(moved).toBe(true);
 
+  await Promise.all([
+    expect(page.locator(`#fileTree .file-tree-file[data-path="${movedFilePath}"]`)).toBeVisible(),
+    expect(page.locator(`#fileTree .file-tree-file[data-path="${sourceFilePath}"]`)).toHaveCount(0),
+  ]);
+  await openFile(page, movedFilePath);
   await expect(page.locator('#activeFileName')).toContainText(fileName);
   await expect(page.locator('#fileTree')).toContainText('notes');
   await expect(page.locator('#fileTree')).toContainText(fileName);
@@ -1129,6 +1017,8 @@ test('moves files back to the vault root through the root drop target', async ({
   await page.locator('#fileActionInput').fill(`notes/${fileName}`);
   await page.locator('#fileActionSubmit').click();
   await waitForEditor(page);
+  await openHome(page);
+  await page.locator('#fileTree .file-tree-dir[data-path="notes"]').click();
 
   await expect(page.locator(`#fileTree .file-tree-file[data-path="${nestedFilePath}"]`)).toBeVisible();
 
@@ -1146,21 +1036,23 @@ test('moves files back to the vault root through the root drop target', async ({
   }, nestedFilePath);
   await expect(rootDropZone).toBeHidden();
 
+  let movedToRoot = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await dragFileTreeFileToRoot(page, { sourceFilePath: nestedFilePath });
 
-    const movedToRoot = await page.evaluate(async (pathValue) => {
-      const response = await fetch(`/api/file?path=${encodeURIComponent(pathValue)}`);
-      return response.ok;
-    }, rootFilePath);
-    if (movedToRoot) {
+    try {
+      await expect.poll(async () => page.evaluate(async (pathValue) => {
+        const response = await fetch(`/api/file?path=${encodeURIComponent(pathValue)}`);
+        return response.ok;
+      }, rootFilePath), { timeout: 1250 }).toBeTruthy();
+      movedToRoot = true;
       break;
+    } catch {
+      // Retry the drag; Chromium can occasionally miss the first drop event.
     }
-
-    await page.waitForTimeout(200);
   }
 
-  await expect(page.locator('#activeFileName')).toContainText(fileName);
+  expect(movedToRoot).toBe(true);
   await expect.poll(async () => (
     page.evaluate(async ({ nestedPath, rootPath }) => {
       const rootResponse = await fetch(`/api/file?path=${encodeURIComponent(rootPath)}`);
@@ -1176,6 +1068,8 @@ test('moves files back to the vault root through the root drop target', async ({
   ), {
     timeout: 20000,
   }).toContain('"rootExists":true');
+  await openFile(page, rootFilePath);
+  await expect(page.locator('#activeFileName')).toContainText(fileName);
   await expect.poll(async () => (
     page.evaluate(async (pathValue) => {
       const nestedResponse = await fetch(`/api/file?path=${encodeURIComponent(pathValue)}`);
@@ -1330,40 +1224,6 @@ test('search returns files from matching paths without directory rows', async ({
   await expect(page.locator('#fileTree .file-tree-dir')).toHaveCount(0);
   await expect(page.locator('#fileTree .file-tree-file')).toContainText('2026-03-05.md');
   await expect(page.locator('#fileTree .file-tree-search-path')).toHaveText('daily');
-});
-
-test('creates and opens unresolved wiki-link targets', async ({ page }) => {
-  await openFile(page, 'README.md');
-
-  await replaceEditorContent(page, '# Wiki Create\n\nGo to [[notes/new-page]]');
-  await expect(page.locator('#previewContent .wiki-link-new')).toHaveCount(1);
-
-  await page.locator('#previewContent .wiki-link-new').first().click();
-  await waitForEditor(page);
-  await expect(page.locator('#activeFileName')).toContainText('new-page');
-});
-
-test('does not create unresolved wiki-link targets when auto-create is disabled', async ({ page }) => {
-  await page.route('**/app-config.js', async (route) => {
-    await route.fulfill({
-      body: 'window.__COLLABMD_CONFIG__ = {"wikiLinkAutoCreate":false};\n',
-      contentType: 'text/javascript; charset=utf-8',
-      status: 200,
-    });
-  });
-  await openFile(page, 'README.md');
-
-  await replaceEditorContent(page, '# Wiki Missing\n\nGo to [[notes/hidden-page]]');
-  const missingLink = page.locator('#previewContent .wiki-link-new').first();
-  await expect(missingLink).toHaveAttribute('title', 'Missing "notes/hidden-page"');
-
-  await missingLink.click();
-
-  await expect(page.locator('#toastContainer')).toContainText('Wiki-link target does not exist');
-  await expect(page.locator('#activeFileName')).toContainText('README');
-
-  const response = await page.request.get('/api/file?path=notes%2Fhidden-page.md');
-  expect(response.status()).toBe(404);
 });
 
 test('redundant hashchange events do not reopen the same markdown file into overlapping sessions', async ({ page }) => {

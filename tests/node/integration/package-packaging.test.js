@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile as execFileCallback } from 'node:child_process';
-import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { execFile as execFileCallback, spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
 import { extractAssetPath } from '../helpers/asset-path.js';
+import { waitForCondition } from '../helpers/test-server.js';
 
 const execFile = promisify(execFileCallback);
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -97,6 +99,70 @@ async function packProject() {
   };
 }
 
+async function reservePort() {
+  const server = createServer();
+  await new Promise((resolveListen, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolveListen);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  await new Promise((resolveClose, reject) => server.close((error) => (
+    error ? reject(error) : resolveClose()
+  )));
+  return port;
+}
+
+async function startPackagedCli({ cwd, packageRoot, vaultDir }) {
+  const port = await reservePort();
+  const child = spawn(process.execPath, [
+    resolve(packageRoot, 'bin/collabmd.js'),
+    vaultDir,
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(port),
+    '--no-tunnel',
+  ], {
+    cwd,
+    env: {
+      ...process.env,
+      AUTH_STRATEGY: 'none',
+      COLLABMD_GIT_ENABLED: 'false',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+
+  try {
+    await waitForCondition(async () => {
+      if (child.exitCode !== null) {
+        throw new Error(`Packed CLI exited before startup: ${stderr.trim()}`);
+      }
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/health`)).ok;
+      } catch {
+        return false;
+      }
+    });
+  } catch (error) {
+    child.kill('SIGTERM');
+    throw error;
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: async () => {
+      if (child.exitCode !== null) {
+        return;
+      }
+      child.kill('SIGTERM');
+      await new Promise((resolveExit) => child.once('exit', resolveExit));
+    },
+  };
+}
+
 test('npm pack includes built public assets and runtime helper scripts required by the packaged install', async () => {
   const artifact = await packProject();
 
@@ -126,6 +192,7 @@ test('npm pack includes built public assets and runtime helper scripts required 
       'expected packaged build to include the light highlight theme asset',
     );
     assert.ok(packagedPaths.has('docker-compose.yml'));
+    assert.ok(packagedPaths.has('collabmd.governance.json'));
     assert.ok(packagedPaths.has('scripts/cloudflare-tunnel.mjs'));
     assert.ok(packagedPaths.has('scripts/local-plantuml-compose.mjs'));
   } finally {
@@ -164,6 +231,63 @@ test('packed tarball can run the CLI help path and includes valid runtime helper
     await execFile(process.execPath, ['--check', cloudflareTunnelScriptPath], {
       cwd: packageRoot,
     });
+  } finally {
+    await artifact.cleanup();
+  }
+});
+
+test('packed CLI starts without a CWD manifest and still prefers a CWD override', async () => {
+  const artifact = await packProject();
+
+  try {
+    const launcherDir = resolve(dirname(artifact.packageRoot), 'launcher');
+    const vaultDir = resolve(dirname(artifact.packageRoot), 'vault');
+    await mkdir(launcherDir, { recursive: true });
+    await mkdir(vaultDir, { recursive: true });
+    await writeFile(resolve(vaultDir, 'README.md'), '# Packed CLI\n', 'utf8');
+    await symlink(resolve(rootDir, 'node_modules'), resolve(artifact.packageRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+
+    const defaultServer = await startPackagedCli({
+      cwd: launcherDir,
+      packageRoot: artifact.packageRoot,
+      vaultDir,
+    });
+    assert.equal((await fetch(`${defaultServer.baseUrl}/health`)).status, 200);
+    await defaultServer.close();
+
+    await writeFile(resolve(launcherDir, 'collabmd.governance.json'), JSON.stringify({
+      defaultGrantMinutes: 60,
+      roles: {
+        observer: ['document.read'],
+        owner: [
+          'document.read',
+          'document.comment',
+          'document.suggest',
+          'document.edit',
+          'conflict.resolve',
+          'grant.manage',
+        ],
+      },
+    }), 'utf8');
+    const customServer = await startPackagedCli({
+      cwd: launcherDir,
+      packageRoot: artifact.packageRoot,
+      vaultDir,
+    });
+    try {
+      const sessionResponse = await fetch(`${customServer.baseUrl}/api/governance/session`, {
+        body: JSON.stringify({ displayName: 'Owner', documentPath: 'README.md', kind: 'human' }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const session = await sessionResponse.json();
+      const rolesResponse = await fetch(`${customServer.baseUrl}/api/governance/roles`, {
+        headers: { Authorization: `Bearer ${session.credential}` },
+      });
+      assert.deepEqual((await rolesResponse.json()).roles.observer, ['document.read']);
+    } finally {
+      await customServer.close();
+    }
   } finally {
     await artifact.cleanup();
   }

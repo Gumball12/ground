@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { getRuntimeVaultDir, resetE2EVaultSnapshot, templateVaultDir } from './vault-snapshot.js';
 
 export const E2E_USER_NAME = 'E2E User';
+export const GOVERNANCE_SESSION_STORAGE_KEY = 'collabmd-governance-session';
 export const ACTIVE_MAXIMIZED_DRAWIO_SELECTOR = '.drawio-embed.is-maximized[data-drawio-maximized="true"]';
 export const ACTIVE_MAXIMIZED_EXCALIDRAW_SELECTOR = '.excalidraw-embed.is-maximized[data-excalidraw-maximized="true"]';
 export const ACTIVE_MAXIMIZED_MERMAID_SELECTOR = '[data-mermaid-maximized-root="true"] .mermaid-shell.is-maximized';
@@ -75,6 +76,30 @@ export const test = base.extend({
     runtimeVaultDir = e2eServer.vaultDir;
     await use(page);
   },
+  e2eBoundary: [async ({ browser, e2eServer, page }, use) => {
+    const currentContext = page.context();
+    await Promise.all(
+      browser.contexts()
+        .filter((context) => context !== currentContext)
+        .map((context) => context.close().catch(() => {})),
+    );
+    const governanceReset = await page.request.post(`${e2eServer.baseURL}/api/test/reset-governance-state`);
+    if (!governanceReset.ok()) {
+      throw new Error(`reset-governance-state failed: ${governanceReset.status()} ${await governanceReset.text()}`);
+    }
+    await resetE2EAppState(page);
+    lateStatePrimePending = true;
+    await seedStoredUserName(page);
+
+    await use();
+
+    try {
+      await page.goto('about:blank');
+      await page.request.post('/api/test/reset-state');
+    } catch {
+      // Ignore teardown navigation failures when the page is already closed.
+    }
+  }, { auto: true }],
 });
 
 async function getAvailablePort() {
@@ -132,27 +157,6 @@ async function stopServerProcess(serverProcess) {
     serverProcess.kill('SIGKILL');
   }
 }
-
-test.beforeEach(async ({ browser, page }) => {
-  const currentContext = page.context();
-  await Promise.all(
-    browser.contexts()
-      .filter((context) => context !== currentContext)
-      .map((context) => context.close().catch(() => {})),
-  );
-  await resetE2EAppState(page);
-  lateStatePrimePending = true;
-  await seedStoredUserName(page);
-});
-
-test.afterEach(async ({ page }) => {
-  try {
-    await page.goto('about:blank');
-    await page.request.post('/api/test/reset-state');
-  } catch {
-    // Ignore teardown navigation failures when the page is already closed.
-  }
-});
 
 export { expect };
 
@@ -219,8 +223,188 @@ export async function seedStoredUserName(page, name = E2E_USER_NAME) {
   }, name);
 }
 
+export async function createGovernedParticipant(page, { displayName, kind = 'human' }) {
+  await ensureLateStatePrime(page);
+  await seedStoredUserName(page, displayName);
+  const participantSearch = kind === 'ai' ? '?participantKind=ai' : '';
+  await page.goto(`/${participantSearch}#file=README.md`);
+  const self = page.locator('[data-self="true"]');
+  await expect(self).toBeVisible({ timeout: 15000 });
+  const participantSessionId = await self.getAttribute('data-participant-session-id');
+  if (!participantSessionId) {
+    throw new Error('Governed participant did not expose a session id.');
+  }
+
+  return { participantSessionId };
+}
+
+export async function copyGovernedParticipantSession(sourcePage, targetPage) {
+  const session = await sourcePage.evaluate((key) => window.sessionStorage.getItem(key), GOVERNANCE_SESSION_STORAGE_KEY);
+  if (!session) {
+    throw new Error('Source page has no governed session to copy.');
+  }
+
+  await targetPage.addInitScript(({ key, value }) => {
+    window.sessionStorage.setItem(key, value);
+  }, { key: GOVERNANCE_SESSION_STORAGE_KEY, value: session });
+}
+
+export async function installModelContextHarness(page) {
+  await page.addInitScript(() => {
+    window.__COLLABMD_MODEL_CONTEXT__ ??= {
+      cached: {},
+      registered: {},
+    };
+    const state = window.__COLLABMD_MODEL_CONTEXT__;
+    Object.defineProperty(document, 'modelContext', {
+      configurable: true,
+      value: {
+        async registerTool(tool, { signal } = {}) {
+          state.registered[tool.name] = tool;
+          state.cached[tool.name] = tool;
+          signal?.addEventListener('abort', () => {
+            if (state.registered[tool.name] === tool) {
+              delete state.registered[tool.name];
+            }
+          }, { once: true });
+        },
+      },
+    });
+  });
+}
+
+export async function executeRegisteredTool(page, name, input = {}) {
+  return page.evaluate(async ({ toolInput, toolName }) => {
+    const tool = window.__COLLABMD_MODEL_CONTEXT__?.registered?.[toolName];
+    if (!tool) {
+      throw new Error(`Missing registered tool: ${toolName}`);
+    }
+    return tool.execute(toolInput);
+  }, {
+    toolInput: input,
+    toolName: name,
+  });
+}
+
+export async function executeCachedTool(page, name, input = {}) {
+  return page.evaluate(async ({ toolInput, toolName }) => {
+    const tool = window.__COLLABMD_MODEL_CONTEXT__?.cached?.[toolName];
+    if (!tool) {
+      throw new Error(`Missing cached tool: ${toolName}`);
+    }
+    return tool.execute(toolInput);
+  }, {
+    toolInput: input,
+    toolName: name,
+  });
+}
+
+export async function getEditorText(page) {
+  return page.evaluate(() => {
+    const findView = (root) => {
+      const seen = new Set();
+      const queue = [root];
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || typeof current !== 'object' || seen.has(current)) {
+          continue;
+        }
+        seen.add(current);
+
+        if (current.state?.doc && typeof current.dispatch === 'function') {
+          return current;
+        }
+
+        for (const key of Object.getOwnPropertyNames(current)) {
+          try {
+            const value = current[key];
+            if (!value || typeof value !== 'object' || seen.has(value)) {
+              continue;
+            }
+            queue.push(value);
+          } catch {
+            // Ignore inaccessible DOM properties while probing for the editor view.
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const view = findView(document.querySelector('.cm-editor')) || findView(document.querySelector('.cm-content'));
+    if (!view) {
+      throw new Error('Missing CodeMirror editor view');
+    }
+
+    return view.state.doc.toString();
+  });
+}
+
+export async function pasteClipboardText(page, text) {
+  const editor = page.locator('.cm-content').first();
+  await editor.click();
+  await page.evaluate((value) => {
+    const target = document.querySelector('.cm-content');
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Missing editor content element');
+    }
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      configurable: true,
+      value: {
+        files: [],
+        getData(type) {
+          return type === 'text/plain' ? value : '';
+        },
+        items: [{
+          getAsFile() {
+            return null;
+          },
+          getAsString(callback) {
+            callback(value);
+          },
+          kind: 'string',
+          type: 'text/plain',
+        }],
+        types: ['text/plain'],
+      },
+    });
+    target.dispatchEvent(event);
+  }, text);
+}
+
+export async function assignGovernedRole(ownerPage, participantSessionId, roleId, expiresInMinutes = 60) {
+  const dialog = ownerPage.locator('#manageAccessDialog');
+  if (!await dialog.evaluate((element) => element.open)) {
+    await ownerPage.locator('#manageAccessBtn').click();
+  }
+  const row = ownerPage.locator(
+    `[data-manage-access-list] [data-participant-session-id="${participantSessionId}"]`,
+  );
+  await expect(row).toBeVisible();
+  await row.locator('[data-expiry-control]').fill(String(expiresInMinutes));
+  await row.locator('[data-role-control]').selectOption(roleId);
+  await dialog.locator('[data-manage-access-close]').click();
+}
+
+export async function revokeGovernedRole(ownerPage, participantSessionId) {
+  const dialog = ownerPage.locator('#manageAccessDialog');
+  if (!await dialog.evaluate((element) => element.open)) {
+    await ownerPage.locator('#manageAccessBtn').click();
+  }
+  const row = ownerPage.locator(
+    `[data-manage-access-list] [data-participant-session-id="${participantSessionId}"]`,
+  );
+  await expect(row).toBeVisible();
+  await row.locator('[data-revoke-control]').click();
+  await dialog.locator('[data-manage-access-close]').click();
+}
+
 export async function waitForEditor(page) {
   await expect(page.locator('.cm-editor')).toBeVisible({ timeout: 15000 });
+  await waitForCollaborativeEditor(page);
 }
 
 export async function waitForCollaborativeEditor(page) {
@@ -230,6 +414,7 @@ export async function waitForCollaborativeEditor(page) {
 }
 
 export async function waitForPreview(page) {
+  await expect(page.locator('#editor-page')).not.toHaveClass(/\bhidden\b/u, { timeout: 15000 });
   await expect(page.locator('#previewPane')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#previewContent')).toBeVisible({ timeout: 15000 });
 }
@@ -420,7 +605,7 @@ export async function appendEditorContent(page, content) {
 export async function replaceEditorContent(page, content) {
   const editor = page.locator('.cm-content').first();
   await editor.click();
-  await page.keyboard.press('Meta+A');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   await page.keyboard.insertText(content);
 }
 

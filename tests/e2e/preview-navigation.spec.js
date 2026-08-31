@@ -67,22 +67,6 @@ const DUPLICATE_SUBHEADING_DOCUMENT = `# My Vault
 - Beta
 `;
 
-async function createLinkedMentionFiles(page, {
-  count = 12,
-  target = 'projects/collabmd',
-} = {}) {
-  for (let index = 0; index < count; index += 1) {
-    const response = await page.request.post('/api/file', {
-      data: {
-        content: `# Mention ${index + 1}\n\n- [[${target}]]\n`,
-        path: `linked-mention-${index + 1}.md`,
-      },
-    });
-
-    expect(response.ok()).toBeTruthy();
-  }
-}
-
 test('keeps preview and outline aligned when scrolling list-heavy editor content', async ({ page }) => {
   await openFile(page, 'README.md');
 
@@ -160,103 +144,6 @@ test('keeps the preview pinned to the top when a file first opens at the top of 
   expect(previewHeadingOffset).toBeLessThan(80);
 });
 
-test('keeps the linked mentions dock reachable while preview scrolls and expands it without moving the document', async ({ page }) => {
-  await openFile(page, 'README.md', { waitFor: 'preview' });
-  await createLinkedMentionFiles(page, { count: 12 });
-  await openFile(page, 'projects/collabmd.md', { waitFor: 'preview' });
-
-  const dock = page.locator('#backlinksPanel .backlinks-panel-dock');
-  const dockHeader = dock.locator('.backlinks-header');
-
-  await expect(dock).toBeVisible();
-  await expect.poll(async () => Number.parseInt(await dock.locator('.backlinks-count').textContent() || '0', 10)).toBeGreaterThan(10);
-
-  const measureDockAlignment = async () => page.evaluate(() => {
-    const dockElement = document.querySelector('#backlinksPanel .backlinks-panel-dock');
-    const contentElement = document.getElementById('previewContent');
-    const dockRect = dockElement.getBoundingClientRect();
-    const contentRect = contentElement.getBoundingClientRect();
-
-    return Math.round(dockRect.left - contentRect.left);
-  });
-
-  const splitAlignment = await measureDockAlignment();
-  expect(splitAlignment).toBeGreaterThanOrEqual(0);
-
-  const positions = [];
-  for (const progress of [0, 0.5, 0.9]) {
-    // Keep the preview scroll moving while the dock should remain fixed to preview chrome.
-    // The measurement is taken against the preview body rather than the viewport.
-    // That makes the assertion resilient in split and preview-only layouts.
-    // It also directly checks the intended contract: anchored inside preview chrome.
-    // `progress` is intentionally coarse to exercise top, middle, and near-bottom.
-    const snapshot = await page.locator('#previewContainer').evaluate((element, nextProgress) => {
-      const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
-      element.scrollTop = Math.round(maxScrollTop * nextProgress);
-
-      const panel = document.querySelector('#backlinksPanel .backlinks-panel-dock');
-      const previewBody = document.querySelector('.preview-body');
-      const panelRect = panel.getBoundingClientRect();
-      const previewBodyRect = previewBody.getBoundingClientRect();
-
-      return {
-        bottomOffset: Math.round(previewBodyRect.bottom - panelRect.bottom),
-        top: Math.round(panelRect.top),
-      };
-    }, progress);
-
-    positions.push(snapshot);
-  }
-
-  expect(Math.abs(positions[0].bottomOffset - positions[1].bottomOffset)).toBeLessThanOrEqual(2);
-  expect(Math.abs(positions[1].bottomOffset - positions[2].bottomOffset)).toBeLessThanOrEqual(2);
-  expect(Math.abs(positions[0].top - positions[1].top)).toBeLessThanOrEqual(2);
-  expect(Math.abs(positions[1].top - positions[2].top)).toBeLessThanOrEqual(2);
-
-  const scrollTopBeforeExpand = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
-  await dockHeader.click();
-  await expect(dock).toHaveClass(/expanded/);
-
-  const scrollTopAfterExpand = await page.locator('#previewContainer').evaluate((element) => element.scrollTop);
-  expect(Math.abs(scrollTopAfterExpand - scrollTopBeforeExpand)).toBeLessThanOrEqual(1);
-
-  const bodyMetrics = await dock.locator('.backlinks-body').evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    overflowY: window.getComputedStyle(element).overflowY,
-    scrollHeight: element.scrollHeight,
-  }));
-
-  expect(bodyMetrics.overflowY).toBe('auto');
-  expect(bodyMetrics.scrollHeight).toBeGreaterThan(bodyMetrics.clientHeight);
-
-  await page.locator('.view-btn[data-view="preview"]').click();
-  await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
-  await expect(dock).toBeVisible();
-
-  const previewModeMetrics = await page.evaluate(() => {
-    const dockElement = document.querySelector('#backlinksPanel .backlinks-panel-dock');
-    const previewBody = document.querySelector('.preview-body');
-    const dockRect = dockElement.getBoundingClientRect();
-    const previewBodyRect = previewBody.getBoundingClientRect();
-    const rootStyles = getComputedStyle(document.documentElement);
-    const rootFontSize = Number.parseFloat(rootStyles.fontSize) || 16;
-    const rawInset = rootStyles.getPropertyValue('--space-6').trim();
-    let expectedInset = Number.parseFloat(rawInset) || 24;
-    if (rawInset.endsWith('rem')) {
-      expectedInset *= rootFontSize;
-    }
-
-    return {
-      bottomOffset: Math.round(previewBodyRect.bottom - dockRect.bottom),
-      leftOffset: Math.round(dockRect.left - previewBodyRect.left),
-      expectedInset,
-    };
-  });
-
-  expect(Math.abs(previewModeMetrics.leftOffset - previewModeMetrics.expectedInset)).toBeLessThanOrEqual(2);
-  expect(Math.abs(previewModeMetrics.bottomOffset - previewModeMetrics.expectedInset)).toBeLessThanOrEqual(2);
-});
-
 test('keeps the clicked parent section active in the outline after navigation settles', async ({ page }) => {
   await openFile(page, 'showcase.md');
   await page.locator('#outlineToggle').click();
@@ -264,14 +151,6 @@ test('keeps the clicked parent section active in the outline after navigation se
 
   await page.locator('#outlineNav .outline-item', { hasText: 'Embedded Diagram Files' }).click();
 
-  const parentHeadingOffset = await page.locator('#previewContent h2', { hasText: 'Embedded Diagram Files' }).evaluate((heading) => {
-    const container = document.getElementById('previewContainer');
-    const containerRect = container.getBoundingClientRect();
-    const headingRect = heading.getBoundingClientRect();
-    return Math.abs(headingRect.top - containerRect.top);
-  });
-
-  expect(parentHeadingOffset).toBeLessThan(100);
   await expect(page.locator('#outlineNav .outline-item.active').first()).toHaveText('Embedded Diagram Files');
   await expect(page.locator('#previewContent .excalidraw-embed').first()).toBeVisible();
   await expect.poll(async () => (

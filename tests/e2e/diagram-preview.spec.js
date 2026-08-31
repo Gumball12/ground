@@ -18,6 +18,7 @@ import {
   test,
   waitForExcalidrawFrameHarness,
   waitForHeavyPreviewContent,
+  waitForPreview,
   writeVaultFileAndResetCollab,
 } from './helpers/app-fixture.js';
 
@@ -1033,7 +1034,9 @@ test('opening an embedded excalidraw file directly promotes the same iframe into
 
   const firstInstanceId = await embeddedIframe.getAttribute('data-instance-id');
 
-  await page.locator('#fileTree .file-tree-item', { hasText: 'sample-excalidraw' }).first().click();
+  await page.evaluate(() => {
+    window.location.hash = 'file=sample-excalidraw.excalidraw';
+  });
   await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
 
   const directIframe = page.locator('#previewContent .excalidraw-embed iframe').first();
@@ -1225,7 +1228,10 @@ test('switching away from a direct excalidraw preview hides stale iframe overlay
   await expect(page.locator('#previewContent .excalidraw-embed iframe').first()).toBeHidden();
   await expect(page.locator('#previewContent')).toContainText('My Vault');
 
-  await page.locator('#fileTree .file-tree-item', { hasText: 'sample-plantuml' }).first().click();
+  await page.evaluate(() => {
+    window.location.hash = 'file=sample-plantuml.puml';
+  });
+  await expect(page).toHaveURL(/#file=sample-plantuml\.puml/);
   await expect(page.locator('#previewContent .excalidraw-embed iframe').first()).toBeHidden();
   await expect(page.locator('#previewContent .plantuml-frame')).toContainText('switch-puml');
 });
@@ -1325,6 +1331,42 @@ test('embedded excalidraw maximize preserves layout and modal sizing', async ({ 
       return iframe?.contentWindow?.__collabmdMaximizeProbe || '';
     })
   ), { timeout: 60000 }).toBe('alive');
+});
+
+test('waits for initialized preview routes before using view controls', async ({ page }) => {
+  let markEntryBlocked;
+  let releaseStartup;
+  const entryBlocked = new Promise((resolve) => {
+    markEntryBlocked = resolve;
+  });
+  const startupGate = new Promise((resolve) => {
+    releaseStartup = resolve;
+  });
+  await page.route(/\/assets\/index-[^/]+\.js$/u, async (route) => {
+    markEntryBlocked();
+    await startupGate;
+    await route.continue();
+  });
+  await seedStoredUserName(page);
+  await page.goto('/#file=sample-full.md', { waitUntil: 'commit' });
+  await entryBlocked;
+  await expect(page.locator('#editor-page')).toHaveClass(/\bhidden\b/u);
+  await expect(page.locator('#previewPane')).toBeVisible();
+  await expect(page.locator('#previewContent')).toBeVisible();
+
+  let previewReady = false;
+  const previewReadyPromise = waitForPreview(page).then(() => {
+    previewReady = true;
+  });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  expect(previewReady).toBe(false);
+
+  releaseStartup();
+  await previewReadyPromise;
+  await page.locator('.view-btn[data-view="preview"]').click();
+  await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
 });
 
 test('embedded excalidraw matches mermaid width in preview-only view', async ({ page }) => {

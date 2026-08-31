@@ -1,22 +1,31 @@
 import {
+  createGovernedParticipant,
   expect,
   openFile,
+  openHome,
+  restoreReadmeTestDocument,
   test,
+  waitForCollaborativeEditor,
   writeVaultFileAndResetCollab,
 } from './helpers/app-fixture.js';
 import { startTestServer } from '../node/helpers/test-server.js';
 
 test.describe('ui visual regression', () => {
-  test('matches the steady-state desktop workspace shell', async ({ page }) => {
+  test('matches the steady-state governed desktop workspace shell', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => {
       window.localStorage.setItem('collabmd-theme', 'light');
-      window.localStorage.setItem('collabmd-user-name', 'Audit User');
+      window.localStorage.setItem('collabmd-user-name', 'Audit Owner');
     });
 
-    await openFile(page, 'README.md', { userName: 'Audit User', waitFor: 'preview' });
+    await restoreReadmeTestDocument(page);
+    await createGovernedParticipant(page, { displayName: 'Audit Owner', kind: 'human' });
+    await waitForCollaborativeEditor(page);
     await expect(page.locator('#previewContent')).toContainText('My Vault');
     await expect(page.locator('#activeFileName')).toHaveText('README');
+    await expect(page.locator('#participantBar [data-self="true"]')).toContainText('Audit Owner');
+    await expect(page.locator('#governanceRail')).toBeVisible();
+    await expect(page.locator('#roleCapabilityMatrix')).toContainText('Manage grants');
 
     await expect(page).toHaveScreenshot('desktop-workspace-shell.png', {
       animations: 'disabled',
@@ -26,16 +35,20 @@ test.describe('ui visual regression', () => {
     });
   });
 
-  test('matches the steady-state mobile preview shell', async ({ page }) => {
+  test('matches the steady-state governed mobile preview shell', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
       window.localStorage.setItem('collabmd-theme', 'light');
       window.localStorage.setItem('collabmd-user-name', 'Audit User');
     });
 
-    await openFile(page, 'README.md', { userName: 'Audit User', waitFor: 'preview' });
+    await restoreReadmeTestDocument(page);
+    await createGovernedParticipant(page, { displayName: 'Audit User', kind: 'human' });
+    await waitForCollaborativeEditor(page);
     await expect(page.locator('#editorLayout')).toHaveAttribute('data-view', 'preview');
     await expect(page.locator('#previewContent')).toContainText('My Vault');
+    await expect(page.locator('#participantBar [data-self="true"]')).toContainText('Audit User');
+    await expect(page.locator('#governanceRail')).toBeVisible();
 
     await expect(page).toHaveScreenshot('mobile-preview-shell.png', {
       animations: 'disabled',
@@ -51,7 +64,7 @@ test.describe('ui visual regression', () => {
       window.localStorage.setItem('collabmd-theme', 'dark');
       window.localStorage.setItem('collabmd-user-name', 'Audit User');
     });
-    await openFile(page, 'README.md', { userName: 'Audit User', waitFor: 'preview' });
+    await openHome(page, { userName: 'Audit User' });
 
     await page.locator('#sidebarCreateBtn').click();
     await expect(page.locator('.create-menu')).toBeVisible();
@@ -69,7 +82,7 @@ test.describe('ui visual regression', () => {
       window.localStorage.setItem('collabmd-theme', 'light');
       window.localStorage.setItem('collabmd-user-name', 'Audit User');
     });
-    await openFile(page, 'README.md', { userName: 'Audit User', waitFor: 'preview' });
+    await openHome(page, { userName: 'Audit User' });
 
     await page.locator('#sidebarToggle').click();
     await page.locator('#sidebarCreateBtn').click();

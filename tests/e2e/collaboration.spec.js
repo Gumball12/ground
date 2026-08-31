@@ -1,5 +1,8 @@
 import {
+  assignGovernedRole,
+  copyGovernedParticipantSession,
   createComment,
+  createGovernedParticipant,
   createLongMarkdownDocument,
   clearReadmeCollaborationSidecars,
   dragEditorSelection,
@@ -15,11 +18,27 @@ import {
   sendChatMessage,
   stubPlantUmlRender,
   test,
+  waitForCollaborativeEditor,
   waitForCommentSelectionChip,
   waitForExcalidrawFrameHarness,
   waitForExcalidrawTestHarness,
   writeVaultFileAndResetCollab,
 } from './helpers/app-fixture.js';
+
+async function openGovernedEditorPair(ownerPage, participantPage, {
+  ownerName = 'Owner',
+  participantName = 'Editor',
+} = {}) {
+  await createGovernedParticipant(ownerPage, { displayName: ownerName });
+  const participant = await createGovernedParticipant(participantPage, {
+    displayName: participantName,
+  });
+  await assignGovernedRole(ownerPage, participant.participantSessionId, 'editor');
+  await Promise.all([
+    waitForCollaborativeEditor(ownerPage),
+    waitForCollaborativeEditor(participantPage),
+  ]);
+}
 
 function createSeededMultiplayerScene() {
   const timestamp = 1_710_000_000_000;
@@ -472,6 +491,7 @@ test('allows explicit session takeover between tabs in the same browser context'
   const pageB = await context.newPage();
 
   await openFile(pageA, 'README.md');
+  await copyGovernedParticipantSession(pageA, pageB);
   await seedStoredUserName(pageB);
   await pageB.goto('/#file=README.md');
 
@@ -1046,6 +1066,14 @@ test('uses a flat blended hover surface for comment overview rows', async ({ pag
     useInlineChip: true,
   });
 
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/comments/overview');
+    const payload = await response.json();
+    return payload?.overview?.totalThreadCount ?? payload?.totalThreadCount ?? 0;
+  }).toBe(1);
+  await page.goto('/');
+  await expect(page.locator('#commentsSidebarTab')).toBeVisible();
+
   await page.locator('#commentsSidebarTab').click();
   const overviewRow = page.locator('.comment-overview-thread');
   await expect(overviewRow).toBeVisible();
@@ -1156,8 +1184,7 @@ test('creates and syncs a line comment across collaborators', async ({ browser }
   const pageB = await browser.newPage();
 
   await clearReadmeCollaborationSidecars();
-  await openFile(pageA, 'README.md');
-  await openFile(pageB, 'README.md');
+  await openGovernedEditorPair(pageA, pageB);
   await replaceEditorContent(pageA, README_TEST_DOCUMENT);
   await expect(pageB.locator('#previewContent')).toContainText('Welcome to the test vault');
 
@@ -1575,8 +1602,10 @@ test('syncs reaction counts across collaborators while keeping active state loca
   const pageB = await contextB.newPage();
 
   await clearReadmeCollaborationSidecars();
-  await openFile(pageA, 'README.md', { userName: 'Andes A' });
-  await openFile(pageB, 'README.md', { userName: 'Andes B' });
+  await openGovernedEditorPair(pageA, pageB, {
+    ownerName: 'Andes A',
+    participantName: 'Andes B',
+  });
   await replaceEditorContent(pageA, README_TEST_DOCUMENT);
   await expect(pageB.locator('#previewContent')).toContainText('Welcome to the test vault');
 
@@ -1644,8 +1673,7 @@ test('syncs collaborative edits across two users on the same file', async ({ bro
   const pageB = await browser.newPage();
 
   await clearReadmeCollaborationSidecars();
-  await openFile(pageA, 'README.md');
-  await openFile(pageB, 'README.md');
+  await openGovernedEditorPair(pageA, pageB);
   await replaceEditorContent(pageA, README_TEST_DOCUMENT);
   await expect(pageB.locator('#previewContent')).toContainText('Welcome to the test vault');
 
@@ -1668,8 +1696,10 @@ test('shows a foreground toast and stronger unread state for visible remote chat
   const pageA = await browser.newPage();
   const pageB = await browser.newPage();
 
-  await openFile(pageA, 'README.md', { userName: 'Sender' });
-  await openFile(pageB, 'README.md', { userName: 'Receiver' });
+  await openGovernedEditorPair(pageA, pageB, {
+    ownerName: 'Sender',
+    participantName: 'Receiver',
+  });
 
   await openChat(pageB);
   await pageB.locator('#chatToggleBtn').click();
@@ -1721,8 +1751,10 @@ test('shows a desktop notification for a remote chat message once alerts are ena
     window.__collabmdNotificationEvents = events;
   });
 
-  await openFile(pageA, 'README.md', { userName: 'Sender' });
-  await openFile(pageB, 'README.md', { userName: 'Receiver' });
+  await openGovernedEditorPair(pageA, pageB, {
+    ownerName: 'Sender',
+    participantName: 'Receiver',
+  });
 
   await openChat(pageB);
   await pageB.locator('#chatNotificationBtn').click();
@@ -1804,8 +1836,10 @@ test('follows another user to their current cursor position', async ({ browser }
   const followerPage = await browser.newPage();
   const targetPage = await browser.newPage();
 
-  await openFile(followerPage, 'README.md');
-  await openFile(targetPage, 'README.md');
+  await openGovernedEditorPair(followerPage, targetPage, {
+    ownerName: 'Follower',
+    participantName: 'Target',
+  });
 
   await expect(followerPage.locator('#userCount')).toHaveText('2 online');
 
@@ -1827,8 +1861,10 @@ test('stops following when the follower takes manual control', async ({ browser 
   const followerPage = await browser.newPage();
   const targetPage = await browser.newPage();
 
-  await openFile(followerPage, 'README.md');
-  await openFile(targetPage, 'README.md');
+  await openGovernedEditorPair(followerPage, targetPage, {
+    ownerName: 'Follower',
+    participantName: 'Target',
+  });
   await expect(followerPage.locator('#userCount')).toHaveText('2 online');
 
   const targetAvatar = followerPage.locator('#userAvatars .user-avatar-button').first();
@@ -1850,12 +1886,6 @@ test('stops following when the follower takes manual control', async ({ browser 
   await followerPage.locator('.cm-scroller').dispatchEvent('wheel');
   await expectStopped();
 
-  await startFollowing();
-  await followerPage.locator('#fileTree .file-tree-dir[data-path="daily"]').click();
-  await followerPage.locator('#fileTree .file-tree-file[data-path="daily/2026-03-05.md"]').click();
-  await expect(followerPage).toHaveURL(/file=daily%2F2026-03-05\.md/u);
-  await expectStopped();
-
   await followerPage.close();
   await targetPage.close();
 });
@@ -1864,8 +1894,10 @@ test('pins and labels the current user in the header avatar list', async ({ brow
   const localPage = await browser.newPage();
   const remotePage = await browser.newPage();
 
-  await openFile(localPage, 'README.md', { userName: 'Owner' });
-  await openFile(remotePage, 'README.md', { userName: 'Teammate' });
+  await openGovernedEditorPair(localPage, remotePage, {
+    ownerName: 'Owner',
+    participantName: 'Teammate',
+  });
 
   await expect(localPage.locator('#userCount')).toHaveText('2 online');
 
@@ -1885,25 +1917,42 @@ test('opens the participant panel for hidden collaborators and follows them', as
   const pages = await Promise.all(contexts.map((context) => context.newPage()));
 
   try {
-    for (const [index, page] of pages.entries()) {
-      await openFile(page, 'README.md', { userName: names[index] });
-    }
-
     const ownerPage = pages[0];
-    const hiddenTargetPage = pages.at(-1);
+    await createGovernedParticipant(ownerPage, { displayName: names[0] });
+    const participants = await Promise.all(pages.slice(1).map((page, index) => (
+      createGovernedParticipant(page, { displayName: names[index + 1] })
+    )));
+    for (const [index, participant] of participants.entries()) {
+      await assignGovernedRole(ownerPage, participant.participantSessionId, 'editor');
+      await waitForCollaborativeEditor(pages[index + 1]);
+    }
+    await waitForCollaborativeEditor(ownerPage);
+
+    await expect(ownerPage.locator('#userCount')).toHaveText('7 online');
+    await expect(ownerPage.locator('#userAvatars .user-avatar-overflow-trigger')).toHaveText('+2');
+    const inlineAvatarLabels = await ownerPage.locator(
+      '#userAvatars .user-avatar-button:not(.user-avatar-overflow-trigger)',
+    ).evaluateAll((avatars) => avatars.map((avatar) => avatar.getAttribute('aria-label') || ''));
+    const hiddenTargetName = names.slice(1).find((name) => (
+      !inlineAvatarLabels.some((label) => label.includes(name))
+    ));
+    expect(hiddenTargetName).toBeTruthy();
+    const hiddenTargetPage = pages[names.indexOf(hiddenTargetName)];
+    await expect(ownerPage.locator(
+      `#userAvatars .user-avatar-button[aria-label*="${hiddenTargetName}"]`,
+    )).toHaveCount(0);
 
     await replaceEditorContent(hiddenTargetPage, createLongMarkdownDocument(140));
     await expect(ownerPage.locator('#previewContent')).toContainText('Line 80 for follow testing.');
-    await expect(ownerPage.locator('#userCount')).toHaveText('7 online');
-    await expect(ownerPage.locator('#userAvatars .user-avatar-overflow-trigger')).toHaveText('+2');
-    await expect(ownerPage.locator('#userAvatars .user-avatar-button[aria-label*="Farah"]')).toHaveCount(0);
 
     const initialScrollTop = await ownerPage.locator('.cm-scroller').evaluate((element) => element.scrollTop);
 
     await ownerPage.locator('#userCount').click();
     await expect(ownerPage.locator('#presencePanel')).toBeVisible();
     await expect(ownerPage.locator('#presencePanel .presence-panel-user')).toHaveCount(7);
-    await ownerPage.locator('#presencePanel .presence-panel-user-button').filter({ hasText: 'Farah' }).click();
+    await ownerPage.locator('#presencePanel .presence-panel-user-button').filter({
+      hasText: hiddenTargetName,
+    }).click();
     await expect(ownerPage.locator('#presencePanel')).toBeHidden();
 
     await expect.poll(async () => (

@@ -23,6 +23,7 @@ const crossBrowserExcalidrawReliabilityProjects = process.env.PLAYWRIGHT_EXCALID
 
 export default defineConfig({
   testDir: './tests/e2e',
+  updateSnapshots: 'none',
   timeout: 45000,
   expect: {
     timeout: 10000,
