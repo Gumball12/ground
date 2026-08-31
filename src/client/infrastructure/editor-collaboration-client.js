@@ -25,11 +25,14 @@ export class EditorCollaborationClient {
     this.localUser = null;
     this.ydoc = null;
     this.ytext = null;
+    this.undoManager = null;
     this.commentThreads = null;
+    this.governanceActivity = null;
     this.wsBaseUrl = '';
     this.initialSyncComplete = false;
     this.initialSyncPromise = Promise.resolve();
     this.resolveInitialSync = null;
+    this.destroying = false;
   }
 
   normalizeViewport(viewport) {
@@ -54,8 +57,10 @@ export class EditorCollaborationClient {
     this.ydoc = new Y.Doc();
     this.ytext = this.ydoc.getText('codemirror');
     this.commentThreads = this.ydoc.getArray('comments');
+    this.governanceActivity = this.ydoc.getArray('governanceActivity');
 
     const undoManager = new Y.UndoManager(this.ytext);
+    this.undoManager = undoManager;
     const provider = new WebsocketProvider(this.wsBaseUrl, filePath, this.ydoc, {
       disableBc: true,
       maxBackoffTime: 5000,
@@ -67,10 +72,7 @@ export class EditorCollaborationClient {
     this.provider = provider;
     this.awareness = awareness;
     this.localUser = user;
-    this.initialSyncComplete = false;
-    this.initialSyncPromise = new Promise((resolve) => {
-      this.resolveInitialSync = resolve;
-    });
+    this.beginInitialSync();
 
     awareness.setLocalStateField('user', user);
     awareness.on('change', () => {
@@ -79,13 +81,11 @@ export class EditorCollaborationClient {
 
     this.trackConnectionStatus();
 
-    let initialSyncDone = false;
     provider.on('sync', (isSynced) => {
-      if (!isSynced || initialSyncDone) {
+      if (!isSynced || this.initialSyncComplete) {
         return;
       }
 
-      initialSyncDone = true;
       this.initialSyncComplete = true;
       this.resolveInitialSync?.();
       this.resolveInitialSync = null;
@@ -95,6 +95,7 @@ export class EditorCollaborationClient {
     return {
       awareness,
       commentThreads: this.commentThreads,
+      governanceActivity: this.governanceActivity,
       localUser: this.localUser,
       undoManager,
       ydoc: this.ydoc,
@@ -102,7 +103,26 @@ export class EditorCollaborationClient {
     };
   }
 
+  beginInitialSync() {
+    if (!this.initialSyncComplete && this.resolveInitialSync) {
+      return;
+    }
+    this.initialSyncComplete = false;
+    this.initialSyncPromise = new Promise((resolve) => {
+      this.resolveInitialSync = resolve;
+    });
+  }
+
+  pauseForDisconnect() {
+    this.provider?.disconnect();
+  }
+
+  reconnect() {
+    this.provider?.connect();
+  }
+
   destroy() {
+    this.destroying = true;
     this.resolveInitialSync?.();
     this.resolveInitialSync = null;
     this.initialSyncComplete = false;
@@ -114,10 +134,13 @@ export class EditorCollaborationClient {
     this.awareness = null;
     this.localUser = null;
 
+    this.undoManager?.destroy();
+    this.undoManager = null;
     this.ydoc?.destroy();
     this.ydoc = null;
     this.ytext = null;
     this.commentThreads = null;
+    this.governanceActivity = null;
   }
 
   waitForInitialSync(timeoutMs = 1500) {
@@ -229,6 +252,15 @@ export class EditorCollaborationClient {
       if (status === 'connected') {
         attempts = 0;
         hasEverConnected = true;
+      }
+      if (status === 'disconnected') {
+        if (!this.destroying) {
+          this.beginInitialSync();
+        }
+      }
+
+      if (this.destroying) {
+        return;
       }
 
       this.onConnectionChange?.({

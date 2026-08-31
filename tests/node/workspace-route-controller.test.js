@@ -244,6 +244,96 @@ test('WorkspaceRouteController routes hash changes to empty, git diff, git file 
   ]);
 });
 
+test('WorkspaceRouteController defers a route match until a governed editor session is ready and reapplies it after recreation', async () => {
+  const route = {
+    column: 3,
+    filePath: 'notes/today.md',
+    line: 5,
+    matchLength: 6,
+    type: 'file',
+  };
+  const reveals = [];
+  let controller;
+  const notifyFileOpenReady = (session) => {
+    controller.revealEditorMatch(route, session);
+  };
+  const fixture = createController({
+    navigation: {
+      getHashRoute: () => route,
+      navigateToFile() {},
+    },
+    workspaceCoordinator: {
+      cleanupSession() {},
+      getSession: () => null,
+      openFile: async () => {
+        notifyFileOpenReady(null);
+        return true;
+      },
+    },
+  });
+  controller = fixture.controller;
+
+  await controller.handleHashChange();
+  assert.deepEqual(reveals, []);
+
+  notifyFileOpenReady({
+    revealSearchMatch(match) {
+      reveals.push(['ready', match]);
+      return true;
+    },
+  });
+  notifyFileOpenReady({
+    revealSearchMatch(match) {
+      reveals.push(['recreated', match]);
+      return true;
+    },
+  });
+
+  assert.deepEqual(reveals, [
+    ['ready', { column: 3, length: 6, line: 5 }],
+    ['recreated', { column: 3, length: 6, line: 5 }],
+  ]);
+});
+
+test('WorkspaceRouteController reveals a route match once when a normal editor session opens', async () => {
+  const route = {
+    column: 1,
+    filePath: 'notes/today.md',
+    line: 5,
+    matchLength: 6,
+    type: 'file',
+  };
+  const reveals = [];
+  let controller;
+  let session = null;
+  const readySession = {
+    revealSearchMatch(match) {
+      reveals.push(match);
+      return true;
+    },
+  };
+  const fixture = createController({
+    navigation: {
+      getHashRoute: () => route,
+      navigateToFile() {},
+    },
+    workspaceCoordinator: {
+      cleanupSession() {},
+      getSession: () => session,
+      openFile: async () => {
+        session = readySession;
+        controller.revealEditorMatch(route, readySession);
+        return true;
+      },
+    },
+  });
+  controller = fixture.controller;
+
+  await controller.handleHashChange();
+
+  assert.deepEqual(reveals, [{ column: 1, length: 6, line: 5 }]);
+});
+
 test('WorkspaceRouteController focuses an Excalidraw element route after opening its file', async () => {
   const calls = [];
   const fixture = createController({

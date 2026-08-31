@@ -4,7 +4,33 @@ import { EditorState } from '@codemirror/state';
 import * as Y from 'yjs';
 
 import { EditorSession } from '../../src/client/infrastructure/editor-session.js';
-import { createCommentThreadSharedType } from '../../src/domain/comment-threads.js';
+import { createCommentThreadSharedType, serializeCommentThreads } from '../../src/domain/comment-threads.js';
+import { createProposal } from '../../src/domain/governance-proposals.js';
+
+const EDITOR_SNAPSHOT = Object.freeze({
+  displayName: 'Writer',
+  documentPath: 'README.md',
+  kind: 'human',
+  participantSessionId: 'writer-session',
+  roleId: 'editor',
+  state: 'active',
+});
+
+function attachGovernanceDocument(session, content = 'Hello') {
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('codemirror');
+  const commentThreads = ydoc.getArray('comments');
+  const governanceActivity = ydoc.getArray('governanceActivity');
+  ytext.insert(0, content);
+  Object.assign(session.collaborationClient, {
+    commentThreads,
+    governanceActivity,
+    initialSyncComplete: true,
+    ydoc,
+    ytext,
+  });
+  return { commentThreads, governanceActivity, ydoc, ytext };
+}
 
 function createCommentBindings(content = '# Notes\n\nHello\n') {
   const ydoc = new Y.Doc();
@@ -285,4 +311,158 @@ test('EditorSession delegates replaceText to the view adapter', () => {
   assert.deepEqual(replaced, ['updated']);
 
   session.destroy();
+});
+
+test('EditorSession appends distinct Proposal lifecycle and discrete local edit Activity', () => {
+  const session = new EditorSession({
+    canComment: () => true,
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const context = attachGovernanceDocument(session);
+  createProposal({
+    activity: context.governanceActivity,
+    comments: context.commentThreads,
+    ydoc: context.ydoc,
+    ytext: context.ytext,
+  }, {
+    actor: EDITOR_SNAPSHOT,
+    anchor: {
+      anchorEnd: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(context.ytext, 5)),
+      anchorEndLine: 1,
+      anchorKind: 'text',
+      anchorQuote: 'Hello',
+      anchorStart: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(context.ytext, 0)),
+      anchorStartLine: 1,
+    },
+    baseRevision: 'revision-1',
+    expectedText: 'Hello',
+    replacementText: 'Hi',
+  });
+  context.ytext.delete(0, 5);
+  context.ytext.insert(0, 'Changed');
+
+  session.handleLocalEdit('toolbar-format');
+
+  assert.equal(serializeCommentThreads(context.commentThreads)[0].status, 'conflict');
+  assert.deepEqual(context.governanceActivity.toArray().map((record) => ({
+    action: record.action,
+    actor: record.actor,
+    outcome: record.outcome,
+    target: record.target,
+  })), [
+    {
+      action: 'proposal_created',
+      actor: {
+        displayName: 'Writer',
+        kind: 'human',
+        participantSessionId: 'writer-session',
+        roleId: 'editor',
+      },
+      outcome: 'open',
+      target: serializeCommentThreads(context.commentThreads)[0].id,
+    },
+    {
+      action: 'proposal_status_changed',
+      actor: {
+        displayName: 'Writer',
+        kind: 'human',
+        participantSessionId: 'writer-session',
+        roleId: 'editor',
+      },
+      outcome: 'conflict',
+      target: serializeCommentThreads(context.commentThreads)[0].id,
+    },
+    {
+      action: 'direct_edit_applied',
+      actor: {
+        displayName: 'Writer',
+        kind: 'human',
+        participantSessionId: 'writer-session',
+        roleId: 'editor',
+      },
+      outcome: 'applied',
+      target: 'document',
+    },
+  ]);
+  session.destroy();
+});
+
+test('EditorSession coalesces native edit Activity until an explicit burst flush', () => {
+  const session = new EditorSession({
+    canComment: () => true,
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const { governanceActivity } = attachGovernanceDocument(session);
+
+  session.handleLocalEdit('native');
+  session.handleLocalEdit('native');
+  assert.equal(governanceActivity.length, 0);
+
+  assert.equal(session.flushLocalEditBurst(), true);
+  assert.equal(governanceActivity.length, 1);
+  assert.equal(session.flushLocalEditBurst(), false);
+  session.destroy();
+});
+
+test('EditorSession freezes editing, comments, and tools on disconnect', () => {
+  const session = new EditorSession({
+    canComment: () => true,
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  attachGovernanceDocument(session);
+  const editability = [];
+  let pauseCalls = 0;
+  session.viewAdapter.setCanEdit = (value) => editability.push(value);
+  session.collaborationClient.pauseForDisconnect = () => {
+    pauseCalls += 1;
+  };
+
+  session.freezeForDisconnect();
+
+  assert.deepEqual(editability, [false]);
+  assert.equal(pauseCalls, 1);
+  assert.equal(session.isInitialSyncComplete(), false);
+  assert.equal(session.replyToCommentThread('missing', 'Denied'), null);
+  session.destroy();
+});
+
+test('EditorSession destruction releases the personal UndoManager with its Y.Doc', () => {
+  const session = new EditorSession({
+    editorContainer: null,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const ydoc = new Y.Doc();
+  let undoDestroyCalls = 0;
+  session.collaborationClient.ydoc = ydoc;
+  session.collaborationClient.undoManager = {
+    destroy() {
+      undoDestroyCalls += 1;
+    },
+  };
+
+  session.destroy();
+
+  assert.equal(undoDestroyCalls, 1);
+  assert.equal(session.collaborationClient.ydoc, null);
 });

@@ -19,6 +19,7 @@ export class CommentUiController {
     onReplyToThread,
     onToggleReaction,
     onResolveThread,
+    onSelectProposal,
     previewContainer,
     previewElement,
   }) {
@@ -35,6 +36,7 @@ export class CommentUiController {
     this.onReplyToThread = onReplyToThread;
     this.onToggleReaction = onToggleReaction;
     this.onResolveThread = onResolveThread;
+    this.onSelectProposal = onSelectProposal;
     this.previewContainer = previewContainer;
     this.previewElement = previewElement;
 
@@ -43,6 +45,7 @@ export class CommentUiController {
     this.supported = false;
     this.drawerOpen = false;
     this.threads = [];
+    this.reviewGroups = [];
     this.selectionAnchor = null;
     this.pendingSelectionAnchor = null;
     this.committedSelectionAnchor = null;

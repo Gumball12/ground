@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { createCommentThreadSharedType, serializeCommentThreads } from '../../src/domain/comment-threads.js';
 import { CommentThreadStore } from '../../src/client/infrastructure/comment-thread-store.js';
 
-function createStoreHarness() {
+function createStoreHarness({ canWrite = () => true } = {}) {
   const doc = new Y.Doc();
   const commentThreads = doc.getArray('comments');
   const ytext = doc.getText('codemirror');
@@ -20,6 +20,15 @@ function createStoreHarness() {
   };
 
   const store = new CommentThreadStore({
+    canWrite,
+    createAnchor: () => ({
+      anchorEnd: { assoc: 0, type: null },
+      anchorEndLine: 3,
+      anchorKind: 'line',
+      anchorQuote: 'Hello',
+      anchorStart: { assoc: 0, type: null },
+      anchorStartLine: 3,
+    }),
     getDoc: () => doc,
     getEditorState: () => null,
     getLocalUser: () => localUserRef.current,
@@ -105,4 +114,16 @@ test('toggleCommentReaction aggregates multiple users and removes empty groups',
   assert.equal(store.toggleCommentReaction('thread-1', 'comment-1', '🎉'), true);
   [thread] = serializeCommentThreads(commentThreads);
   assert.deepEqual(thread.messages[0].reactions, []);
+});
+
+test('document.comment gates create, reply, resolve, and reaction mutations', () => {
+  const { commentThreads, store } = createStoreHarness({ canWrite: () => false });
+  seedThread(commentThreads);
+  const before = serializeCommentThreads(commentThreads);
+
+  assert.equal(store.createCommentThread({ anchor: {}, body: 'Denied' }), null);
+  assert.equal(store.replyToCommentThread('thread-1', 'Denied'), null);
+  assert.equal(store.toggleCommentReaction('thread-1', 'comment-1', '👍'), false);
+  assert.equal(store.deleteCommentThread('thread-1'), false);
+  assert.deepEqual(serializeCommentThreads(commentThreads), before);
 });

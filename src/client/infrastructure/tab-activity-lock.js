@@ -31,12 +31,16 @@ export class TabActivityLock {
     onBlocked,
     onActivated,
     onStolen,
+    scope = '',
   } = {}) {
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.staleAfterMs = heartbeatIntervalMs * 3;
     this.onBlocked = onBlocked;
     this.onActivated = onActivated;
     this.onStolen = onStolen;
+    this.scope = String(scope || '');
+    this.lockKey = this.scope ? `${LOCK_KEY}:${encodeURIComponent(this.scope)}` : LOCK_KEY;
+    this.channelName = this.scope ? `${CHANNEL_NAME}:${encodeURIComponent(this.scope)}` : CHANNEL_NAME;
     this.tabId = this.getOrCreateTabId();
     this.channel = null;
     this.heartbeatTimer = null;
@@ -50,7 +54,7 @@ export class TabActivityLock {
     window.addEventListener('pagehide', this.handlePageHide);
 
     if ('BroadcastChannel' in globalThis) {
-      this.channel = new BroadcastChannel(CHANNEL_NAME);
+      this.channel = new BroadcastChannel(this.channelName);
       this.channel.addEventListener('message', (event) => {
         this.handleChannelMessage(event.data);
       });
@@ -66,6 +70,10 @@ export class TabActivityLock {
   }
 
   tryActivate({ takeover = false } = {}) {
+    return this.tryAcquire({ takeover });
+  }
+
+  tryAcquire({ takeover = false } = {}) {
     const currentLock = this.readLock();
     if (this.isFreshLock(currentLock) && currentLock.tabId !== this.tabId && !takeover) {
       this.isOwner = false;
@@ -85,7 +93,7 @@ export class TabActivityLock {
   release() {
     const currentLock = this.readLock();
     if (currentLock?.tabId === this.tabId) {
-      localStorage.removeItem(LOCK_KEY);
+      localStorage.removeItem(this.lockKey);
       this.channel?.postMessage({ type: 'released', tabId: this.tabId });
     }
 
@@ -110,7 +118,7 @@ export class TabActivityLock {
 
   readLock() {
     try {
-      return safeJsonParse(window.localStorage.getItem(LOCK_KEY));
+      return safeJsonParse(window.localStorage.getItem(this.lockKey));
     } catch {
       return null;
     }
@@ -127,7 +135,7 @@ export class TabActivityLock {
 
   writeLock() {
     try {
-      window.localStorage.setItem(LOCK_KEY, JSON.stringify({
+      window.localStorage.setItem(this.lockKey, JSON.stringify({
         tabId: this.tabId,
         updatedAt: now(),
       }));
@@ -157,7 +165,7 @@ export class TabActivityLock {
   }
 
   handleStorageEvent(event) {
-    if (event.key !== LOCK_KEY) {
+    if (event.key !== this.lockKey) {
       return;
     }
 

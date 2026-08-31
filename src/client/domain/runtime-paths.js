@@ -58,6 +58,12 @@ function applyBasePath(basePath, pathValue) {
   return normalizedBasePath ? `${normalizedBasePath}/${normalizedPath}` : `/${normalizedPath}`;
 }
 
+function resolveParticipantKind() {
+  return new URLSearchParams(window.location.search).get('participantKind') === 'ai'
+    ? 'ai'
+    : 'human';
+}
+
 export function getClientRuntimeConfig() {
   const rawConfig = {
     auth: {
@@ -119,6 +125,7 @@ export function getClientRuntimeConfig() {
     },
     basePath,
     build: buildConfig,
+    participantKind: resolveParticipantKind(),
     wsBasePath: normalizeRoutePath(rawConfig.wsBasePath, '/ws'),
   };
 }

@@ -58,6 +58,7 @@ function withRequestId(payload, requestId) {
 
 export class FileActionController {
   constructor({
+    canMutateWorkspace = () => true,
     mobileBreakpointQuery = (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
       ? window.matchMedia('(max-width: 768px)')
       : { matches: false },
@@ -73,6 +74,7 @@ export class FileActionController {
     view,
     refresh,
   }) {
+    this.canMutateWorkspace = canMutateWorkspace;
     this.onDirectoryExport = onDirectoryExport;
     this.onFileDelete = onFileDelete;
     this.onFileSelect = onFileSelect;
@@ -325,6 +327,9 @@ export class FileActionController {
   }
 
   async runWorkspaceMutation(callback) {
+    if (!this.canMutateWorkspace()) {
+      throw new Error('Workspace mutations are unavailable in governed mode');
+    }
     const requestId = this.createPendingWorkspaceRequestId();
 
     try {

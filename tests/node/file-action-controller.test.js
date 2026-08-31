@@ -120,6 +120,7 @@ function createController(t, overrides = {}) {
     ? overrides.vaultClient(calls)
     : (overrides.vaultClient ?? defaultVaultClient);
   const controller = new FileActionController({
+    canMutateWorkspace: overrides.canMutateWorkspace,
     onDirectoryExport: (directoryPath, format) => calls.push(['export-directory', directoryPath, format]),
     onFileDelete: (filePath) => calls.push(['delete-callback', filePath]),
     onFileSelect: (filePath) => calls.push(['select', filePath]),
@@ -177,6 +178,32 @@ test('FileActionController uploads supported vault files into a target folder', 
     ['refresh'],
   ]);
   assert.equal(state.expandedDirs.has('diagrams'), true);
+});
+
+test('FileActionController governed mode blocks file creation before the vault API', async (t) => {
+  const { calls, controller } = createController(t, {
+    canMutateWorkspace: () => false,
+  });
+
+  const created = await controller.createVaultFile('plans/q1.md', '# q1\n');
+
+  assert.equal(created, false);
+  assert.equal(calls.some(([name]) => name === 'create-file'), false);
+  assert.equal(calls.some(([name]) => name === 'refresh'), false);
+});
+
+test('FileActionController governed mode blocks uploads before the vault API', async (t) => {
+  const { calls, controller } = createController(t, {
+    canMutateWorkspace: () => false,
+  });
+
+  const uploaded = await controller.uploadVaultFiles([
+    { name: 'image.png', type: 'image/png' },
+  ]);
+
+  assert.equal(uploaded, false);
+  assert.equal(calls.some(([name]) => name === 'upload-file'), false);
+  assert.equal(calls.some(([name]) => name === 'refresh'), false);
 });
 
 test('FileActionController renames and moves the active file and notifies selection listeners', async (t) => {

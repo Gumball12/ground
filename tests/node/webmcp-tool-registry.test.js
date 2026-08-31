@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import * as Y from 'yjs';
+
+import { EditorSession } from '../../src/client/infrastructure/editor-session.js';
 import { WebMcpToolRegistry } from '../../src/client/infrastructure/webmcp-tool-registry.js';
+
+const ORIGINAL_TEXT = '# Notes\n\nHello world\n';
+
+const capabilitiesForRole = (roleId) => ({
+  editor: ['document.read', 'document.edit', 'document.suggest'],
+  owner: ['document.read', 'document.edit', 'document.suggest'],
+  reviewer: ['document.read', 'document.suggest'],
+}[roleId] ?? []);
 
 function createModelContext() {
   const tools = new Map();
@@ -14,60 +25,318 @@ function createModelContext() {
   };
 }
 
-test('WebMCP tools edit only an active synchronized supported document', async () => {
+function createRegistryHarness({
+  roleId = 'editor',
+  capabilities = capabilitiesForRole(roleId),
+  state = 'active',
+} = {}) {
   const modelContext = createModelContext();
-  const active = true;
-  let content = '# Notes\n\nHello world\n';
-  let path = 'README.md';
-  let synchronized = false;
-  const session = {
-    applyTextReplacements(replacements) {
-      for (const replacement of replacements) {
-        content = content.replace(replacement.oldText, replacement.newText);
-      }
-      return replacements.length;
+  let content = ORIGINAL_TEXT;
+  let getTextCalls = 0;
+  const participantSessionId = 'reviewer-session';
+  const governanceClient = {
+    snapshot: {
+      capabilities,
+      displayName: 'Reviewer',
+      documentPath: 'README.md',
+      kind: 'ai',
+      participantSessionId,
+      roleId,
+      state,
+      version: 1,
     },
-    getText: () => content,
-    isInitialSyncComplete: () => synchronized,
+    async authorize(capability, path) {
+      const snapshot = this.snapshot;
+      if (
+        snapshot.documentPath !== path
+        || snapshot.state !== 'active'
+        || !snapshot.capabilities.includes(capability)
+      ) {
+        return {
+          code: 'CAPABILITY_DENIED',
+          message: `Missing ${capability}`,
+          ok: false,
+          snapshot,
+        };
+      }
+      return { ok: true, snapshot };
+    },
+  };
+  const session = {
+    applyGovernedTextEdits({ actor, edits }) {
+      for (const { oldText } of edits) {
+        assert.equal(content.includes(oldText), true);
+      }
+      for (const { newText, oldText } of edits) {
+        content = content.replace(oldText, newText);
+      }
+      return { actor, conflictProposals: [], replacementCount: edits.length };
+    },
+    getText: () => {
+      getTextCalls += 1;
+      return content;
+    },
+    isInitialSyncComplete: () => true,
+    proposeTextEdit({ actor, newText, oldText, revision }) {
+      return {
+        baseRevision: revision,
+        createdByKind: actor.kind,
+        createdByParticipantSessionId: actor.participantSessionId,
+        createdByRole: actor.roleId,
+        expectedText: oldText,
+        replacementText: newText,
+      };
+    },
   };
   const registry = new WebMcpToolRegistry({
-    getActiveFilePath: () => path,
-    getIsTabActive: () => active,
+    getActiveFilePath: () => 'README.md',
+    getIsTabActive: () => true,
     getSession: () => session,
+    governanceClient,
     modelContext,
   });
 
-  assert.equal(await registry.refresh(), false);
-  assert.equal(modelContext.tools.size, 0);
+  return {
+    documentText: () => content,
+    execute: async (name, input, options) => modelContext.tools.get(name).execute(input, options),
+    getTextCalls: () => getTextCalls,
+    participantSessionId,
+    refresh: () => registry.refresh(),
+    registered: modelContext.tools,
+    registeredNames: () => Array.from(modelContext.tools.keys()).sort(),
+    resetTextReadCalls: () => { getTextCalls = 0; },
+    setRole: async (nextRole, nextState = 'active', nextCapabilities = capabilitiesForRole(nextRole)) => {
+      governanceClient.snapshot = {
+        ...governanceClient.snapshot,
+        capabilities: nextCapabilities,
+        roleId: nextRole,
+        state: nextState,
+        version: governanceClient.snapshot.version + 1,
+      };
+      await registry.refresh();
+    },
+  };
+}
 
-  synchronized = true;
-  assert.equal(await registry.refresh(), true);
-  const readTool = modelContext.tools.get('collabmd_read_active_document');
-  const editTool = modelContext.tools.get('collabmd_apply_text_edits');
-  const snapshot = await readTool.execute({});
+test('Reviewer sees read and propose but cannot execute a cached apply tool', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const cachedApply = harness.registered.get('collabmd_apply_text_edits').execute;
+  const snapshot = await harness.execute('collabmd_read_active_document', {});
 
-  assert.deepEqual(
-    { content: snapshot.content, kind: snapshot.kind, path: snapshot.path },
-    { content, kind: 'markdown', path },
-  );
-  const result = await editTool.execute({
-    path,
+  await harness.setRole('reviewer');
+  assert.deepEqual(harness.registeredNames(), [
+    'collabmd_propose_text_edit',
+    'collabmd_read_active_document',
+  ]);
+  await assert.rejects(() => cachedApply({
+    path: 'README.md',
     replacements: [{ newText: 'Hello agent', oldText: 'Hello world' }],
     revision: snapshot.revision,
+  }), /document\.edit/u);
+  assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('recomposed Editor tools omit capabilities removed by the manifest', async () => {
+  const harness = createRegistryHarness({
+    capabilities: ['document.read', 'document.suggest'],
+    roleId: 'editor',
   });
-  assert.equal(content, '# Notes\n\nHello agent\n');
+
+  await harness.refresh();
+
+  assert.deepEqual(harness.registeredNames(), [
+    'collabmd_propose_text_edit',
+    'collabmd_read_active_document',
+  ]);
+});
+
+test('custom roles expose tools granted by snapshot capabilities', async () => {
+  const harness = createRegistryHarness({
+    capabilities: ['document.read'],
+    roleId: 'observer',
+  });
+
+  assert.equal(await harness.refresh(), true);
+  assert.deepEqual(harness.registeredNames(), ['collabmd_read_active_document']);
+});
+
+test('caller actor and role fields never affect authorization or attribution', async () => {
+  const harness = createRegistryHarness({ roleId: 'reviewer' });
+  await harness.refresh();
+  const snapshot = await harness.execute('collabmd_read_active_document', {});
+
+  const result = await harness.execute('collabmd_propose_text_edit', {
+    actorId: 'owner-session',
+    newText: 'Hello reviewer',
+    oldText: 'Hello world',
+    path: 'README.md',
+    revision: snapshot.revision,
+    role: 'owner',
+  });
+
+  assert.equal(result.createdByParticipantSessionId, harness.participantSessionId);
+  assert.equal(result.createdByRole, 'reviewer');
+  assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('apply accepts a stale revision when every exact target still matches', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const staleSnapshot = await harness.execute('collabmd_read_active_document', {});
+
+  const result = await harness.execute('collabmd_apply_text_edits', {
+    path: 'README.md',
+    replacements: [{ newText: 'Hello agent', oldText: 'Hello world' }],
+    revision: staleSnapshot.revision,
+  });
+
   assert.equal(result.replacementCount, 1);
-  await assert.rejects(
-    editTool.execute({
-      path,
-      replacements: [{ newText: 'Stale edit', oldText: 'Hello agent' }],
-      revision: snapshot.revision,
-    }),
-    /changed; read it again/,
-  );
+  assert.equal(harness.documentText(), '# Notes\n\nHello agent\n');
+});
 
-  path = 'drawing.excalidraw';
-  assert.equal(await registry.refresh(), false);
-  assert.equal(modelContext.tools.size, 0);
+test('pending, expired, and revoked snapshots expose no tools', async () => {
+  for (const state of ['pending', 'expired', 'revoked']) {
+    const harness = createRegistryHarness({ roleId: 'reviewer', state });
+    assert.equal(await harness.refresh(), false);
+    assert.deepEqual(harness.registeredNames(), []);
+  }
+});
 
+test('a cached apply tool is denied after revocation without a text mutation', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const cachedApply = harness.registered.get('collabmd_apply_text_edits').execute;
+  const snapshot = await harness.execute('collabmd_read_active_document', {});
+
+  await harness.setRole('editor', 'revoked');
+  await assert.rejects(() => cachedApply({
+    path: 'README.md',
+    replacements: [{ newText: 'Hello agent', oldText: 'Hello world' }],
+    revision: snapshot.revision,
+  }), /document\.edit/u);
+  assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('denied cached apply authorizes before reading or validating document-dependent input', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const cachedApply = harness.registered.get('collabmd_apply_text_edits').execute;
+
+  await harness.setRole('editor', 'revoked');
+  harness.resetTextReadCalls();
+  await assert.rejects(() => cachedApply({
+    path: 'README.md',
+    replacements: Array.from({ length: 21 }, () => ({ newText: 'same', oldText: 'same' })),
+    revision: 'stale-revision',
+  }), /document\.edit/u);
+  assert.equal(harness.getTextCalls(), 0);
+});
+
+test('denied cached propose authorizes before reading or validating stale input', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const cachedPropose = harness.registered.get('collabmd_propose_text_edit').execute;
+
+  await harness.setRole('editor', 'revoked');
+  harness.resetTextReadCalls();
+  await assert.rejects(() => cachedPropose({
+    newText: 'same',
+    oldText: 'same',
+    path: 'README.md',
+    revision: 'stale-revision',
+  }), /document\.suggest/u);
+  assert.equal(harness.getTextCalls(), 0);
+});
+
+test('governed edits are atomic and create conflicts without changing text', () => {
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('codemirror');
+  ytext.insert(0, 'alpha beta gamma');
+  const session = Object.create(EditorSession.prototype);
+  session.collaborationClient = {
+    commentThreads: ydoc.getArray('comments'),
+    governanceActivity: ydoc.getArray('governanceActivity'),
+    initialSyncComplete: true,
+    ydoc,
+    ytext,
+  };
+  const actor = {
+    displayName: 'Writer',
+    kind: 'ai',
+    participantSessionId: 'writer-session',
+    roleId: 'editor',
+  };
+  const updates = [];
+  ydoc.on('update', (update) => updates.push(update));
+
+  const applied = session.applyGovernedTextEdits({
+    actor,
+    edits: [
+      { newText: 'ALPHA', oldText: 'alpha', revision: 'revision-1' },
+      { newText: 'GAMMA', oldText: 'gamma', revision: 'revision-1' },
+    ],
+  });
+  assert.equal(applied.replacementCount, 2);
+  assert.equal(ytext.toString(), 'ALPHA beta GAMMA');
+  assert.deepEqual(session.collaborationClient.governanceActivity.get(0), {
+    action: 'text_edits_applied',
+    actor,
+    createdAt: session.collaborationClient.governanceActivity.get(0).createdAt,
+    id: session.collaborationClient.governanceActivity.get(0).id,
+    outcome: 'applied',
+    target: 'document',
+  });
+  assert.equal(updates.length, 1);
+
+  const conflicted = session.applyGovernedTextEdits({
+    actor,
+    edits: [
+      { newText: 'BETA', oldText: 'beta', revision: 'revision-2' },
+      { newText: 'DELTA', oldText: 'delta', revision: 'revision-2' },
+    ],
+  });
+  assert.equal(conflicted.replacementCount, 0);
+  assert.equal(ytext.toString(), 'ALPHA beta GAMMA');
+  assert.equal(conflicted.conflictProposals.length, 1);
+  assert.equal(conflicted.conflictProposals[0].status, 'conflict');
+  assert.deepEqual(session.collaborationClient.governanceActivity.toArray().slice(1).map((record) => ({
+    action: record.action,
+    actor: record.actor,
+    outcome: record.outcome,
+    target: record.target,
+  })), [
+    {
+      action: 'proposal_created',
+      actor,
+      outcome: 'conflict',
+      target: conflicted.conflictProposals[0].id,
+    },
+    {
+      action: 'text_edits_conflicted',
+      actor,
+      outcome: 'conflict',
+      target: 'document',
+    },
+  ]);
+  assert.equal(updates.length, 2);
+
+  const proposal = session.proposeTextEdit({
+    actor: { ...actor, roleId: 'reviewer' },
+    newText: 'BETA',
+    oldText: 'beta',
+    revision: 'revision-3',
+  });
+  assert.equal(proposal.status, 'open');
+  assert.equal(proposal.createdByRole, 'reviewer');
+  assert.equal(ytext.toString(), 'ALPHA beta GAMMA');
+  assert.deepEqual(session.collaborationClient.governanceActivity.toArray().at(-1), {
+    action: 'proposal_created',
+    actor: { ...actor, roleId: 'reviewer' },
+    createdAt: proposal.createdAt,
+    id: session.collaborationClient.governanceActivity.toArray().at(-1).id,
+    outcome: 'open',
+    target: proposal.id,
+  });
+  assert.equal(updates.length, 3);
 });

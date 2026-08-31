@@ -13,6 +13,23 @@ function delay(ms) {
   });
 }
 
+function getActiveGrantKey(snapshot) {
+  if (snapshot?.state !== 'active') {
+    return null;
+  }
+  return JSON.stringify([
+    snapshot.participantSessionId,
+    snapshot.roleId,
+    snapshot.issuedAt,
+  ]);
+}
+
+function canReuseFrozenSession(session, sameGrant, editCapabilityChanged) {
+  return session?.isFrozenForDisconnect?.() === true
+    && sameGrant
+    && !editCapabilityChanged;
+}
+
 export class WorkspaceCoordinator {
   constructor({
     attachEditorScroller,
@@ -21,12 +38,14 @@ export class WorkspaceCoordinator {
     createEditorSession,
     getDisplayName,
     getFileList,
+    getGovernanceSnapshot = null,
     getVaultFileList = getFileList,
     getLineWrappingEnabled,
     getVimModeEnabled,
     getLocalUser,
     getStoredUserName,
     getTheme,
+    hasGovernanceCapability = null,
     isBaseFile,
     isDrawioFile,
     isExcalidrawFile,
@@ -47,6 +66,7 @@ export class WorkspaceCoordinator {
     onFileOpenError,
     onFileOpenReady,
     onImagePaste,
+    onGovernanceAccessChanged = null,
     onSelectionChange,
     onSessionAssigned = null,
     onFileOpenMetric = null,
@@ -64,6 +84,7 @@ export class WorkspaceCoordinator {
     onUpdateVisibleChrome,
     onViewModeReset,
     renderPresence,
+    refreshGovernanceSnapshot = null,
     scrollContainerForSession,
     shouldUseDrawioPreview = null,
     showEditorLoading,
@@ -75,12 +96,14 @@ export class WorkspaceCoordinator {
     this.createEditorSession = createEditorSession;
     this.getDisplayName = getDisplayName;
     this.getFileList = getFileList;
+    this.getGovernanceSnapshot = getGovernanceSnapshot;
     this.getVaultFileList = getVaultFileList;
     this.getLineWrappingEnabled = getLineWrappingEnabled;
     this.getVimModeEnabled = getVimModeEnabled ?? (() => false);
     this.getLocalUser = getLocalUser;
     this.getStoredUserName = getStoredUserName;
     this.getTheme = getTheme;
+    this.hasGovernanceCapability = hasGovernanceCapability;
     this.isBaseFile = isBaseFile ?? (() => false);
     this.isDrawioFile = isDrawioFile ?? (() => false);
     this.isExcalidrawFile = isExcalidrawFile ?? (() => false);
@@ -101,6 +124,7 @@ export class WorkspaceCoordinator {
     this.onFileOpenError = onFileOpenError;
     this.onFileOpenReady = onFileOpenReady;
     this.onImagePaste = onImagePaste;
+    this.onGovernanceAccessChanged = onGovernanceAccessChanged;
     this.onSelectionChange = onSelectionChange;
     this.onSessionAssigned = onSessionAssigned;
     this.onFileOpenMetric = onFileOpenMetric;
@@ -118,6 +142,7 @@ export class WorkspaceCoordinator {
     this.onUpdateVisibleChrome = onUpdateVisibleChrome;
     this.onViewModeReset = onViewModeReset;
     this.renderPresence = renderPresence;
+    this.refreshGovernanceSnapshot = refreshGovernanceSnapshot;
     this.scrollContainerForSession = scrollContainerForSession;
     this.shouldUseDrawioPreview = shouldUseDrawioPreview ?? (() => true);
     this.showEditorLoading = showEditorLoading;
@@ -154,6 +179,94 @@ export class WorkspaceCoordinator {
     this.session = null;
     this.attachEditorScroller(null);
     this.cleanupAfterSessionDestroy();
+  }
+
+  isGovernedDocument(filePath = this.stateStore.currentFilePath) {
+    return typeof this.getGovernanceSnapshot === 'function'
+      && typeof this.hasGovernanceCapability === 'function'
+      && isMarkdownFilePath(filePath);
+  }
+
+  hasDocumentCapability(snapshot, capability, filePath = this.stateStore.currentFilePath) {
+    return snapshot?.documentPath === filePath
+      && this.hasGovernanceCapability?.(snapshot, capability) === true;
+  }
+
+  async applyGovernanceTransition(previous, next, { allowFrozenReconnect = false } = {}) {
+    const filePath = this.stateStore.currentFilePath;
+    if (!this.isGovernedDocument(filePath) || next?.documentPath !== filePath) {
+      return false;
+    }
+
+    const hadDocumentAccess = this.hasDocumentCapability(previous, 'document.read', filePath);
+    const hasDocumentAccess = this.hasDocumentCapability(next, 'document.read', filePath);
+    const couldEdit = this.hasDocumentCapability(previous, 'document.edit', filePath);
+    const canEdit = this.hasDocumentCapability(next, 'document.edit', filePath);
+    const canComment = this.hasDocumentCapability(next, 'document.comment', filePath);
+    const editCapabilityChanged = couldEdit !== canEdit;
+    const previousGrantKey = getActiveGrantKey(previous);
+    const sameGrant = previousGrantKey !== null && previousGrantKey === getActiveGrantKey(next);
+
+    if (this.session?.setGovernanceCapabilities) {
+      this.session.setGovernanceCapabilities({ canComment, canEdit });
+    } else {
+      this.session?.setCanEdit?.(canEdit);
+    }
+
+    if (!hasDocumentAccess) {
+      if (hadDocumentAccess || this.session) {
+        this.stateStore.sessionLoadToken += 1;
+      }
+      if (this.session) {
+        this.cleanupSession();
+        this.onSessionAssigned?.(null);
+        this.onGovernanceAccessChanged?.({ discarded: true, state: next.state });
+      }
+      return true;
+    }
+
+    if (canReuseFrozenSession(this.session, sameGrant, editCapabilityChanged)) {
+      if (allowFrozenReconnect) {
+        this.session.reconnectAfterGovernanceValidation?.();
+      }
+      return true;
+    }
+
+    const shouldRecreate = !this.session
+      || !hadDocumentAccess
+      || editCapabilityChanged
+      || (this.session.isFrozenForDisconnect?.() && !sameGrant);
+    if (!shouldRecreate) {
+      return true;
+    }
+
+    const discarded = Boolean(this.session);
+    if (discarded) {
+      this.cleanupSession();
+      this.onSessionAssigned?.(null);
+      this.onGovernanceAccessChanged?.({ discarded: true, state: next.state });
+    }
+    await this.openFile(filePath, { forceReload: true });
+    return true;
+  }
+
+  async revalidateGovernanceAfterDisconnect() {
+    const session = this.session;
+    if (!session?.isFrozenForDisconnect?.() || typeof this.refreshGovernanceSnapshot !== 'function') {
+      return false;
+    }
+
+    const previous = this.getGovernanceSnapshot?.() ?? null;
+    let next;
+    try {
+      next = await this.refreshGovernanceSnapshot();
+    } catch {
+      return false;
+    }
+    if (!next || this.session !== session || !session.isFrozenForDisconnect?.()) {
+      return false;
+    }
+    return this.applyGovernanceTransition(previous, next, { allowFrozenReconnect: true });
   }
 
   prepareForFileOpen(filePath, { drawioMode = null, resetConnectionState = true } = {}) {
@@ -205,7 +318,7 @@ export class WorkspaceCoordinator {
     if (supportsBacklinks) this.loadBacklinks(filePath);
   }
 
-  async openFile(filePath, { drawioMode = null } = {}) {
+  async openFile(filePath, { drawioMode = null, forceReload = false } = {}) {
     if (!this.isTabActive()) {
       return false;
     }
@@ -213,6 +326,10 @@ export class WorkspaceCoordinator {
     if (!filePath || !this.getVaultFileList().includes(filePath)) {
       this.cleanupSession();
       this.stateStore.sessionLoadToken += 1;
+      this.stateStore.currentFilePath = null;
+      this.onUpdateCurrentFile(null);
+      this.onUpdateLobbyCurrentFile(null);
+      this.onUpdateActiveFile(null);
       this.onFileOpenError({ code: 'not-found', filePath });
       return false;
     }
@@ -231,6 +348,7 @@ export class WorkspaceCoordinator {
 
     if (
       filePath === this.stateStore.currentFilePath
+      && !forceReload
       && normalizedDrawioMode === currentDrawioMode
       && (this.session || isDrawio || isExcalidraw || isImage || isPdf)
     ) {
@@ -270,15 +388,41 @@ export class WorkspaceCoordinator {
       return true;
     }
 
+    const governed = this.isGovernedDocument(filePath);
+    let governanceSnapshot = this.getGovernanceSnapshot?.() ?? null;
+    if (governed && !this.hasDocumentCapability(governanceSnapshot, 'document.read', filePath)) {
+      this.onSessionAssigned?.(null);
+      this.onFileOpenReady(null);
+      return true;
+    }
+
     const EditorSession = await this.loadEditorSessionClass();
+    if (loadToken !== this.stateStore.sessionLoadToken) {
+      return false;
+    }
+    governanceSnapshot = this.getGovernanceSnapshot?.() ?? null;
+    if (governed && !this.hasDocumentCapability(governanceSnapshot, 'document.read', filePath)) {
+      this.onSessionAssigned?.(null);
+      this.onFileOpenReady(null);
+      return true;
+    }
     const session = this.createEditorSession(EditorSession, {
+      canComment: !governed || this.hasDocumentCapability(governanceSnapshot, 'document.comment', filePath),
+      canEdit: !governed || this.hasDocumentCapability(governanceSnapshot, 'document.edit', filePath),
       filePath,
       getFileList: this.getFileList,
+      getGovernanceSnapshot: this.getGovernanceSnapshot ?? (() => null),
+      governed,
       lineWrappingEnabled: this.getLineWrappingEnabled(),
       localUser: this.getLocalUser(),
       vimModeEnabled: this.getVimModeEnabled(),
       onAwarenessChange: (users) => this.onFileAwarenessChange(users),
-      onConnectionChange: (state) => this.onConnectionChange(state),
+      onConnectionChange: (state) => {
+        this.onConnectionChange(state);
+        if (governed && state?.status === 'disconnected') {
+          void this.revalidateGovernanceAfterDisconnect();
+        }
+      },
       onCommentsChange: (threads) => this.onCommentsChange?.(threads),
       onContentChange: () => {
         if (isExcalidraw) {
@@ -293,7 +437,7 @@ export class WorkspaceCoordinator {
           isStructurizrWorkspace,
         });
       },
-      onImagePaste: (file) => this.onImagePaste?.(file),
+      ...(!governed ? { onImagePaste: (file) => this.onImagePaste?.(file) } : {}),
       preferredUserName: this.getStoredUserName(),
       onSelectionChange: (anchor) => this.onSelectionChange?.(anchor),
       theme: this.getTheme(),

@@ -48,6 +48,7 @@ export const commentsFeature = {
 
   handleCommentThreadsChange(threads = []) {
     this.commentUi.setThreads(threads);
+    this.renderGovernanceUi?.();
     this.focusPendingCommentOverviewThread();
   },
 

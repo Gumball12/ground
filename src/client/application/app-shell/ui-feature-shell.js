@@ -77,8 +77,7 @@ function initialize() {
   this.initializeSidebarResizer?.();
   this.restoreSidebarState();
   this.initializeVersionMonitoring();
-  this.tabActivityLock.initialize();
-  this.tabActivityLock.tryActivate();
+  void this.initializeGovernanceTabActivity();
 
   window.addEventListener('hashchange', () => this.workspaceRouteController.handleHashChange());
   const handleResize = this.createResizeHandler();
@@ -286,6 +285,9 @@ function bindEvents() {
   this.elements.skipToEditor?.addEventListener('click', (event) => this.focusEditor(event));
 
   this.elements.emptyStateNewFileBtn?.addEventListener('click', () => {
+    if (this.isGovernedMode?.()) {
+      return;
+    }
     this.fileExplorer.actionController.openRootCreateMenu({
       anchor: this.elements.emptyStateNewFileBtn,
     });
@@ -838,6 +840,9 @@ function handlePreviewContentClick(event) {
   const wikiLink = event.target.closest('a.wiki-link[data-wiki-target]');
   if (wikiLink) {
     event.preventDefault();
+    if (this.isGovernedMode?.()) {
+      return;
+    }
     this.wikiLinkFileController.handleWikiLinkClick(wikiLink.dataset.wikiTarget);
     return;
   }
@@ -943,6 +948,7 @@ function handleThemeChange(theme) {
 /** @this {UiShellContext} */
 function handleConnectionChange(state) {
   this.connectionState = state;
+  void this.webMcpTools?.refresh();
   if (state?.firstConnection) {
     this.recordFileOpenMetric?.('ws_connected', {
       status: state.status,

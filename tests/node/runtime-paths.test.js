@@ -1,7 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveWsBaseUrl, resolveWsServerOverride } from '../../src/client/domain/runtime-paths.js';
+import {
+  getClientRuntimeConfig,
+  resolveWsBaseUrl,
+  resolveWsServerOverride,
+} from '../../src/client/domain/runtime-paths.js';
+
+test('getClientRuntimeConfig treats only exact participantKind=ai as AI presentation metadata', () => {
+  const originalWindow = globalThis.window;
+
+  try {
+    for (const [search, expected] of [
+      ['', 'human'],
+      ['?participantKind=reviewer', 'human'],
+      ['?participantKind=AI', 'human'],
+      ['?participantKind=ai', 'ai'],
+    ]) {
+      globalThis.window = {
+        __COLLABMD_CONFIG__: {},
+        location: { search },
+      };
+      assert.equal(getClientRuntimeConfig().participantKind, expected);
+    }
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
 
 test('resolveWsBaseUrl ignores query server overrides outside development and test environments', () => {
   const originalWindow = globalThis.window;

@@ -7,6 +7,36 @@ function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+function createGovernedAdapter({ canEdit = false, content = '- [ ] Original\n' } = {}) {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const localEdits = [];
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('codemirror');
+  ytext.insert(0, content);
+  const undoManager = new Y.UndoManager(ytext);
+  const adapter = new EditorViewAdapter({
+    canEdit: () => canEdit,
+    editorContainer: document.getElementById('editor'),
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onLocalEdit: (action) => localEdits.push(action),
+  });
+  adapter.initialize({ awareness: null, filePath: 'README.md', undoManager, ytext });
+
+  return {
+    adapter,
+    destroy() {
+      adapter.destroy();
+      undoManager.destroy();
+      ydoc.destroy();
+    },
+    localEdits,
+    undoManager,
+    ydoc,
+    ytext,
+  };
+}
+
 describe('EditorViewAdapter Vim mode', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -118,6 +148,90 @@ describe('EditorViewAdapter collaboration history', () => {
     adapter.destroy();
     undoManager.destroy();
     ydoc.destroy();
+  });
+});
+
+describe('EditorViewAdapter governance', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  for (const action of ['typing', 'plain-paste', 'toolbar-format', 'task-toggle']) {
+    it(`rejects reviewer ${action} without emitting a local edit`, () => {
+      const harness = createGovernedAdapter();
+      const originalText = harness.adapter.getText();
+
+      if (action === 'typing') {
+        harness.adapter.editorView.dispatch({
+          changes: { from: originalText.length, insert: 'typed' },
+          userEvent: 'input.type',
+        });
+      } else if (action === 'plain-paste') {
+        harness.adapter.editorView.dispatch({
+          changes: { from: originalText.length, insert: 'pasted' },
+          userEvent: 'input.paste',
+        });
+      } else if (action === 'toolbar-format') {
+        harness.adapter.editorView.dispatch({ selection: { anchor: 6, head: 14 } });
+        harness.adapter.applyMarkdownToolbarAction('bold');
+      } else {
+        harness.adapter.toggleTaskListItem(1);
+      }
+
+      expect(harness.adapter.getText()).toBe(originalText);
+      expect(harness.ytext.toString()).toBe(originalText);
+      expect(harness.localEdits).toEqual([]);
+      harness.destroy();
+    });
+  }
+
+  it('allows remote Yjs updates while the reviewer editor is read-only', () => {
+    const harness = createGovernedAdapter();
+
+    harness.ydoc.transact(() => {
+      harness.ytext.insert(harness.ytext.length, 'remote');
+    }, { remote: true });
+
+    expect(harness.adapter.getText()).toBe('- [ ] Original\nremote');
+    expect(harness.localEdits).toEqual([]);
+    harness.destroy();
+  });
+
+  it('reconfigures editability and emits one discrete action from the origin page', () => {
+    const harness = createGovernedAdapter();
+
+    expect(harness.adapter.getState().readOnly).toBe(true);
+    harness.adapter.setCanEdit(true);
+    expect(harness.adapter.getState().readOnly).toBe(false);
+    expect(harness.adapter.toggleTaskListItem(1)).toBe(true);
+
+    expect(harness.adapter.getText()).toBe('- [x] Original\n');
+    expect(harness.localEdits).toEqual(['task-toggle']);
+    harness.destroy();
+  });
+
+  it('rechecks revoked Undo and Redo before touching personal history', () => {
+    const harness = createGovernedAdapter({ canEdit: true, content: '' });
+    harness.adapter.insertText('local');
+    harness.adapter.setCanEdit(false);
+
+    expect(harness.adapter.runEditorCommand('undo')).toBe(false);
+    expect(harness.adapter.runEditorCommand('redo')).toBe(false);
+
+    const modifier = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? { metaKey: true }
+      : { ctrlKey: true };
+    harness.adapter.editorView.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
+      ...modifier,
+      bubbles: true,
+      key: 'z',
+    }));
+
+    expect(harness.adapter.getText()).toBe('local');
+    expect(harness.localEdits[0]).toBe('toolbar-format');
+    expect(harness.localEdits).not.toContain('undo');
+    expect(harness.localEdits).not.toContain('redo');
+    harness.destroy();
   });
 });
 

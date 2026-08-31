@@ -26,7 +26,15 @@ import {
   searchKeymap,
   searchPanelOpen,
 } from '@codemirror/search';
-import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
+import {
+  Annotation,
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+  StateEffect,
+  StateField,
+} from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import {
   Decoration,
@@ -41,7 +49,7 @@ import {
   lineNumbers,
   rectangularSelection,
 } from '@codemirror/view';
-import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+import { yCollab, ySyncAnnotation, yUndoManagerKeymap } from 'y-codemirror.next';
 
 import {
   isBaseFilePath,
@@ -72,6 +80,18 @@ const REMOTE_UPDATE_FLASH_DURATION_MS = 1350;
 const REMOTE_UPDATE_CARET_MAX_LENGTH = 160;
 const RECENT_LOCAL_INPUT_WINDOW_MS = 900;
 const TASK_LIST_MARKER_PATTERN = /^(\s*(?:>\s*)*(?:[-+*]|\d+[.)])\s+\[)( |x|X)(\])(\s.*)?$/;
+const localEditAnnotation = Annotation.define();
+
+function getLocalEditAction(transaction) {
+  const annotatedAction = transaction.annotation(localEditAnnotation);
+  if (annotatedAction) {
+    return annotatedAction;
+  }
+  if (transaction.isUserEvent('input.paste')) {
+    return 'plain-paste';
+  }
+  return 'native';
+}
 
 function openSearchPanelPreservingViewport(view) {
   const scrollTop = view.scrollDOM.scrollTop;
@@ -420,6 +440,7 @@ function getSelectionBounds(selection) {
 
 export class EditorViewAdapter {
   constructor({
+    canEdit = true,
     editorContainer,
     getFileList,
     initialTheme,
@@ -428,9 +449,11 @@ export class EditorViewAdapter {
     vimModeEnabled = false,
     onDocChanged = null,
     onImagePaste = null,
+    onLocalEdit = null,
     onSelectionChanged = null,
     onViewportChanged = null,
   }) {
+    this.editAllowed = typeof canEdit === 'function' ? Boolean(canEdit()) : Boolean(canEdit);
     this.editorContainer = editorContainer;
     this.getFileList = getFileList ?? (() => []);
     this.initialTheme = initialTheme;
@@ -439,10 +462,13 @@ export class EditorViewAdapter {
     this.vimModeEnabled = Boolean(vimModeEnabled);
     this.onDocChanged = onDocChanged;
     this.onImagePaste = onImagePaste;
+    this.onLocalEdit = onLocalEdit;
     this.onSelectionChanged = onSelectionChanged;
     this.onViewportChanged = onViewportChanged;
     this.editorView = null;
     this.undoManager = null;
+    this.editorMode = null;
+    this.editabilityCompartment = new Compartment();
     this.themeCompartment = new Compartment();
     this.syntaxThemeCompartment = new Compartment();
     this.lineWrappingCompartment = new Compartment();
@@ -463,12 +489,21 @@ export class EditorViewAdapter {
     this.handleLocalInputActivity = () => {
       this.lastLocalInputAt = Date.now();
     };
+    this.handleEditorBlur = () => {
+      this.onLocalEdit?.('flush');
+    };
   }
 
   createUpdateListener() {
     return EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         this.onDocChanged?.();
+        const localTransaction = update.transactions.find((transaction) => (
+          transaction.docChanged && !transaction.annotation(ySyncAnnotation)
+        ));
+        if (localTransaction) {
+          this.onLocalEdit?.(getLocalEditAction(localTransaction));
+        }
       }
 
       if (update.selectionSet || update.docChanged) {
@@ -480,6 +515,7 @@ export class EditorViewAdapter {
 
   getBaseExtensions(filePath, { readOnly = false } = {}) {
     const wikiLinkCompletionSource = wikiLinkCompletions(this.getFileList);
+    const editable = !readOnly && this.canEdit();
     const extensions = [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -500,7 +536,7 @@ export class EditorViewAdapter {
       highlightActiveLine(),
       highlightSelectionMatches(),
       createSearchNavigationListener(),
-      this.vimModeCompartment.of(!readOnly && this.vimModeEnabled ? vim({ status: true }) : []),
+      this.vimModeCompartment.of(editable && this.vimModeEnabled ? vim({ status: true }) : []),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -519,13 +555,21 @@ export class EditorViewAdapter {
       this.themeCompartment.of(createEditorTheme(this.initialTheme)),
       this.syntaxThemeCompartment.of(this.initialTheme === 'dark' ? oneDark : []),
       this.lineWrappingCompartment.of(this.lineWrappingEnabled ? EditorView.lineWrapping : []),
+      this.editabilityCompartment.of([
+        EditorState.readOnly.of(!editable),
+        EditorView.editable.of(editable),
+      ]),
+      EditorState.transactionFilter.of((transaction) => {
+        if (!transaction.docChanged || transaction.annotation(ySyncAnnotation)) {
+          return transaction;
+        }
+        return this.canEdit() ? transaction : [];
+      }),
       remoteUpdateFlashField,
       this.createUpdateListener(),
     ];
 
     if (readOnly) {
-      extensions.push(EditorState.readOnly.of(true));
-      extensions.push(EditorView.editable.of(false));
       return extensions;
     }
 
@@ -555,6 +599,7 @@ export class EditorViewAdapter {
     this.editorView?.contentDOM?.removeEventListener('keydown', this.handleLocalInputActivity);
     this.editorView?.contentDOM?.removeEventListener('paste', this.handleLocalInputActivity);
     this.editorView?.contentDOM?.removeEventListener('compositionstart', this.handleLocalInputActivity);
+    this.editorView?.contentDOM?.removeEventListener('blur', this.handleEditorBlur);
     this.editorView?.scrollDOM?.removeEventListener('scroll', this.handleScroll);
     this.editorView?.destroy();
     this.editorView = null;
@@ -575,11 +620,13 @@ export class EditorViewAdapter {
     });
 
     this.editorContainer.dataset.editorMode = editorMode;
+    this.editorMode = editorMode;
     this.editorView.scrollDOM.addEventListener('scroll', this.handleScroll, { passive: true });
     this.editorView.contentDOM.addEventListener('beforeinput', this.handleLocalInputActivity);
     this.editorView.contentDOM.addEventListener('keydown', this.handleLocalInputActivity);
     this.editorView.contentDOM.addEventListener('paste', this.handleLocalInputActivity);
     this.editorView.contentDOM.addEventListener('compositionstart', this.handleLocalInputActivity);
+    this.editorView.contentDOM.addEventListener('blur', this.handleEditorBlur);
     this.updateCursorInfo(this.editorView.state);
     this.onSelectionChanged?.(this.editorView.state);
     this.emitViewportChange();
@@ -600,7 +647,10 @@ export class EditorViewAdapter {
       doc: ytext.toString(),
       extensions: [
         ...this.getBaseExtensions(filePath),
-        keymap.of(yUndoManagerKeymap),
+        keymap.of(yUndoManagerKeymap.map((binding, index) => ({
+          ...binding,
+          run: () => this.runEditorCommand(index === 0 ? 'undo' : 'redo'),
+        }))),
         yCollab(ytext, awareness, { undoManager }),
       ],
     });
@@ -635,7 +685,31 @@ export class EditorViewAdapter {
       this.remoteUpdateFlashTimer = 0;
     }
     this.undoManager = null;
+    this.editorMode = null;
     this.teardownEditorView({ clearContainer: true });
+  }
+
+  canEdit() {
+    return this.editAllowed;
+  }
+
+  setCanEdit(value) {
+    this.editAllowed = Boolean(value);
+    if (!this.editorView || this.editorMode !== 'collaborative') {
+      return;
+    }
+
+    this.editorView.dispatch({
+      effects: [
+        this.editabilityCompartment.reconfigure([
+          EditorState.readOnly.of(!this.editAllowed),
+          EditorView.editable.of(this.editAllowed),
+        ]),
+        this.vimModeCompartment.reconfigure(
+          this.editAllowed && this.vimModeEnabled ? vim({ status: true }) : [],
+        ),
+      ],
+    });
   }
 
   getText() {
@@ -682,7 +756,7 @@ export class EditorViewAdapter {
     }
 
     this.vimModeEnabled = nextEnabled;
-    if (!this.editorView || this.editorView.state.readOnly) {
+    if (!this.editorView || !this.canEdit() || this.editorView.state.readOnly) {
       return nextEnabled;
     }
 
@@ -737,6 +811,7 @@ export class EditorViewAdapter {
       EditorSelection.range(Math.min(anchor, formatted.length), Math.min(head, formatted.length))
     )));
     view.dispatch({
+      annotations: localEditAnnotation.of('format-document'),
       changes: { from: 0, to: source.length, insert: formatted },
       selection,
       scrollIntoView: true,
@@ -753,8 +828,12 @@ export class EditorViewAdapter {
 
     const normalizedCommandId = String(commandId ?? '');
     if ((normalizedCommandId === 'undo' || normalizedCommandId === 'redo') && this.undoManager) {
+      if (!this.canEdit()) {
+        return false;
+      }
       const applied = this.undoManager[normalizedCommandId]() != null;
       if (applied) {
+        this.onLocalEdit?.(normalizedCommandId);
         this.editorView.focus();
       }
       return applied;
@@ -767,6 +846,7 @@ export class EditorViewAdapter {
 
     const applied = command(this.editorView);
     if (applied && normalizedCommandId !== 'openSearch') {
+      this.onLocalEdit?.('flush');
       this.editorView.focus();
     }
 
@@ -1109,6 +1189,7 @@ export class EditorViewAdapter {
     }
 
     this.editorView.dispatch(state.update(transactionSpec, {
+      annotations: localEditAnnotation.of('toolbar-format'),
       scrollIntoView: true,
       userEvent: 'input',
     }));
@@ -1127,6 +1208,7 @@ export class EditorViewAdapter {
     const anchor = range.from + insertValue.length;
 
     this.editorView.dispatch({
+      annotations: localEditAnnotation.of('toolbar-format'),
       changes: {
         from: range.from,
         insert: insertValue,
@@ -1167,7 +1249,11 @@ export class EditorViewAdapter {
       }
     }
 
-    this.editorView.dispatch({ changes, userEvent: 'input' });
+    this.editorView.dispatch({
+      annotations: localEditAnnotation.of('structured-edit'),
+      changes,
+      userEvent: 'input',
+    });
     return changes.length;
   }
 
@@ -1179,6 +1265,7 @@ export class EditorViewAdapter {
     const nextText = String(text ?? '');
     const { state } = this.editorView;
     this.editorView.dispatch({
+      annotations: localEditAnnotation.of('replace-text'),
       changes: {
         from: 0,
         insert: nextText,
@@ -1217,6 +1304,7 @@ export class EditorViewAdapter {
     const nextMarker = marker === ' ' ? 'x' : ' ';
 
     this.editorView.dispatch({
+      annotations: localEditAnnotation.of('task-toggle'),
       changes: {
         from: markerFrom,
         insert: nextMarker,

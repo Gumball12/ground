@@ -138,11 +138,14 @@ export class WorkspaceRouteController {
       this.preserveSidebarTabRoutePath = null;
       this.setSidebarTab('files');
     }
+    const previousSession = this.workspaceCoordinator.getSession?.();
     const didOpen = await this.openFile(route.filePath, { drawioMode: route.drawioMode || null });
     if (!didOpen) {
       return;
     }
-    this.revealEditorMatch(route);
+    if (previousSession === this.workspaceCoordinator.getSession?.()) {
+      this.revealEditorMatch(route);
+    }
     if (route.elementId) {
       this.excalidrawEmbed?.openElement(
         route.filePath,
@@ -362,12 +365,11 @@ export class WorkspaceRouteController {
     this.fileExplorer.revealFile?.(filePath, { clearSearch });
   }
 
-  revealEditorMatch(route = {}) {
+  revealEditorMatch(route = {}, session = this.workspaceCoordinator.getSession?.()) {
     if (!Number.isFinite(route.line)) {
       return false;
     }
 
-    const session = this.workspaceCoordinator.getSession?.();
     return session?.revealSearchMatch?.({
       column: route.column,
       length: route.matchLength,

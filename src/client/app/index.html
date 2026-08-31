@@ -233,7 +233,7 @@
               <span class="ui-pill-badge ui-pill-badge--muted hidden toolbar-badge" id="gitOperationStatus" aria-live="polite" aria-atomic="true"></span>
             </div>
 
-            <div class="toolbar-presence-cluster">
+            <div class="toolbar-presence-cluster" id="toolbarPresence">
               <div class="user-avatars" id="userAvatars"></div>
               <button
                 type="button"
@@ -468,6 +468,9 @@
         </div>
 
         <div id="editor-page" class="editor-page hidden">
+          <section id="participantBar" class="participant-bar" aria-label="Governed document Participants" hidden>
+            <button type="button" class="ui-button ui-button--secondary ui-button--compact" id="manageAccessBtn" hidden>Manage access</button>
+          </section>
           <div class="editor-layout" id="editorLayout" data-view="split">
             <div class="editor-pane" id="editorPane">
               <div class="pane-header">
@@ -610,6 +613,16 @@
               </div>
             </div>
           </div>
+          <aside id="governanceRail" class="governance-rail" aria-label="Document governance" hidden>
+            <div class="ui-nav-tabs governance-tabs" role="tablist" aria-label="Governance views">
+              <button class="ui-nav-tab active" type="button" data-governance-tab="review" aria-controls="governanceReviewPanel">Review</button>
+              <button class="ui-nav-tab" type="button" data-governance-tab="activity" aria-controls="governanceActivityPanel">Activity</button>
+              <button class="ui-nav-tab" type="button" data-governance-tab="roles" aria-controls="governanceRolesPanel">Roles</button>
+            </div>
+            <section id="governanceReviewPanel" class="governance-panel" data-governance-panel="review"></section>
+            <section id="governanceActivityPanel" class="governance-panel" data-governance-panel="activity" hidden></section>
+            <section id="governanceRolesPanel" class="governance-panel" data-governance-panel="roles" hidden></section>
+          </aside>
         </div>
 
         <div id="diff-page" class="diff-page hidden">
@@ -685,6 +698,19 @@
           <button type="submit" class="ui-button ui-button--primary" id="displayNameSubmit">Save name</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="app-dialog manage-access-dialog" id="manageAccessDialog" aria-labelledby="manageAccessTitle">
+      <div class="app-dialog-form">
+        <div class="app-dialog-header">
+          <h2 class="app-dialog-title" id="manageAccessTitle">Manage access</h2>
+          <p class="app-dialog-copy">Assign a Role and expiry, or revoke an active Grant immediately.</p>
+        </div>
+        <div class="manage-access-list" data-manage-access-list></div>
+        <div class="app-dialog-actions">
+          <button type="button" class="ui-button ui-button--secondary" data-manage-access-close>Close</button>
+        </div>
+      </div>
     </dialog>
 
     <dialog class="app-dialog" id="fileActionDialog" aria-labelledby="fileActionTitle">

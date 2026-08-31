@@ -22,7 +22,7 @@ function setInteractionClasses(element, isActive, isHovered) {
 /** @this {any} */
 function refreshLayout() {
   const groups = this.getThreadGroups();
-  this.renderEditorLayer(groups);
+  this.renderEditorLayer([...groups, ...this.getLocatedReviewGroups()]);
   this.renderPreviewLayer(groups);
   this.repositionActiveCard();
 }
@@ -115,6 +115,10 @@ function renderEditorLayer(groups = this.getThreadGroups()) {
         if (!currentGroup) {
           return;
         }
+        if (currentGroup.markerKind === 'proposal') {
+          this.onSelectProposal?.(currentGroup.proposals[0]?.id);
+          return;
+        }
         this.openThreadGroup(currentGroup, {
           anchor: currentGroup.anchor,
           origin: 'editor',
@@ -126,6 +130,12 @@ function renderEditorLayer(groups = this.getThreadGroups()) {
 
     button.commentGroup = group;
     button.commentSourceRect = rect;
+    button.classList.toggle('governance-review-badge', group.markerKind === 'proposal');
+    if (group.markerKind === 'proposal') {
+      button.dataset.conflictCount = String(group.proposals.length);
+    } else {
+      delete button.dataset.conflictCount;
+    }
     if (button.dataset.count !== String(group.threads.length)) {
       button.dataset.count = String(group.threads.length);
       button.replaceChildren(createCommentMarkerContent(group.threads.length));
@@ -133,11 +143,14 @@ function renderEditorLayer(groups = this.getThreadGroups()) {
     const isActive = this.activeCard?.groupKey === group.key;
     const isHovered = this.hoveredEditorGroupKeys.includes(group.key);
     setInteractionClasses(button, isActive, isHovered);
-    button.setAttribute('aria-label', `${group.threads.length} comment thread${group.threads.length === 1 ? '' : 's'}`);
+    const markerLabel = group.markerKind === 'proposal'
+      ? `${group.proposals.length} Proposal or Conflict item${group.proposals.length === 1 ? '' : 's'}`
+      : `${group.threads.length} comment thread${group.threads.length === 1 ? '' : 's'}`;
+    button.setAttribute('aria-label', markerLabel);
     const top = Math.max(relativeRect.top, 8);
     button.style.top = `${top}px`;
     button.style.left = `${Math.max(containerRect.width - 36, 8)}px`;
-    button.title = `${group.threads.length} comment${group.threads.length === 1 ? '' : 's'}`;
+    button.title = markerLabel;
     visibleGroupKeys.add(group.key);
     occupiedTops.push(top);
   });

@@ -239,7 +239,7 @@ export class CommentThreadStore {
   }
 
   toggleCommentReaction(threadId, messageId, emoji) {
-    if (!this.ydoc || !threadId || !messageId || typeof emoji !== 'string' || !emoji.trim()) {
+    if (!this.canWrite() || !this.ydoc || !threadId || !messageId || typeof emoji !== 'string' || !emoji.trim()) {
       return false;
     }
 

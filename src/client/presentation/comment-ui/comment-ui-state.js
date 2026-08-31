@@ -73,6 +73,7 @@ function setCurrentFile(filePath, { fileKind = 'markdown', supported = false } =
   if (didChangeFile) {
     this.drawerOpen = false;
     this.threads = [];
+    this.reviewGroups = [];
     this.selectionAnchor = null;
     this.pendingSelectionAnchor = null;
     this.committedSelectionAnchor = null;
@@ -90,6 +91,7 @@ function setCurrentFile(filePath, { fileKind = 'markdown', supported = false } =
     this.drawerOpen = false;
     this.activeCard = null;
     this.threads = [];
+    this.reviewGroups = [];
     this.selectionAnchor = null;
     this.pendingSelectionAnchor = null;
     this.committedSelectionAnchor = null;
@@ -167,7 +169,7 @@ function handleEditorContentChange() {
 
 /** @this {CommentUiStateContext} */
 function setThreads(threads = []) {
-  this.threads = sortThreads(threads);
+  this.threads = sortThreads(threads.filter((thread) => thread?.kind !== 'proposal'));
   const groups = this.getThreadGroups();
   if (
     this.activeCard?.mode === 'group'
@@ -207,6 +209,12 @@ function setThreads(threads = []) {
     this.reactionPicker = null;
   }
   this.render();
+}
+
+/** @this {CommentUiStateContext} */
+function setReviewGroups(reviewGroups = []) {
+  this.reviewGroups = Array.isArray(reviewGroups) ? reviewGroups : [];
+  this.scheduleLayoutRefresh();
 }
 
 /** @this {CommentUiStateContext} */
@@ -275,6 +283,19 @@ function getThreadGroups() {
 }
 
 /** @this {CommentUiStateContext} */
+function getLocatedReviewGroups() {
+  return this.reviewGroups
+    .filter((group) => !group.unlocated && group.anchor && group.proposals?.length > 0)
+    .map((group) => ({
+      anchor: group.anchor,
+      key: `governance::${group.from}::${group.to}`,
+      markerKind: 'proposal',
+      proposals: group.proposals,
+      threads: group.proposals,
+    }));
+}
+
+/** @this {CommentUiStateContext} */
 function clearSelectionRevealTimer() {
   if (!this.selectionRevealTimer) {
     return;
@@ -306,6 +327,7 @@ export const commentUiStateMethods = {
   attachSession,
   clearSelectionRevealTimer,
   closeDrawer,
+  getLocatedReviewGroups,
   getThreadGroups,
   handleEditorContentChange,
   openThreadFromOverview,
@@ -313,5 +335,6 @@ export const commentUiStateMethods = {
   setCurrentFile,
   setDrawerOpen,
   setSelectionAnchor,
+  setReviewGroups,
   setThreads,
 };

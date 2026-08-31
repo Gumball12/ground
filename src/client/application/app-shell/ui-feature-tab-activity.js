@@ -1,3 +1,5 @@
+import { isMarkdownFilePath } from '../../../domain/file-kind.js';
+
 /**
  * @typedef {object} UiTabActivityContext
  * @property {boolean} isTabActive
@@ -15,6 +17,10 @@
  * @property {{ connect(): void, disconnect(): void, provider?: unknown }} workspaceSync
  * @property {{ show(message: string): void }} toastController
  * @property {{ tryActivate(options?: { takeover?: boolean }): void }} tabActivityLock
+ * @property {{ destroy?(): void, restoreOrCreate(input: { documentPath: string, displayName: string, kind: string }): Promise<{ participantSessionId: string }> }} governanceClient
+ * @property {{ participantKind?: 'ai' | 'human' }} runtimeConfig
+ * @property {(scope?: string) => UiTabActivityContext['tabActivityLock']} createTabActivityLock
+ * @property {() => string} getStoredUserName
  * @property {{ refresh(): Promise<boolean> }} webMcpTools
  * @property {{ prepareFileDisconnect(filePath: string): Promise<void> }} excalidrawEmbed
  * @property {{ handleHashChange(): Promise<void> }} workspaceRouteController
@@ -25,6 +31,56 @@
  * @property {({ reason }: { reason?: string }) => void} showTabLockOverlay
  * @property {() => void} hideTabLockOverlay
  */
+
+/** @this {UiTabActivityContext} */
+async function initializeGovernanceTabActivity(documentPath = null) {
+  const hadTabActivityLock = Boolean(this.tabActivityLock);
+  if (!this.tabActivityLock) {
+    this.tabActivityLock = this.createTabActivityLock('');
+    this.tabActivityLock.initialize();
+    this.tabActivityLock.tryActivate();
+  }
+
+  if (!isMarkdownFilePath(documentPath)) {
+    this.governanceDocumentPath = null;
+    this.governanceClient.destroy?.();
+    if (!hadTabActivityLock) {
+      return;
+    }
+    this.tabActivityLock.destroy();
+    this.tabActivityLock = this.createTabActivityLock('');
+    this.tabActivityLock.initialize();
+    this.tabActivityLock.tryActivate();
+    return;
+  }
+
+  if (this.governanceDocumentPath === documentPath) {
+    return;
+  }
+
+  this.governanceDocumentPath = documentPath;
+  try {
+    const snapshot = await this.governanceClient.restoreOrCreate({
+      displayName: this.getStoredUserName() || 'Guest',
+      documentPath,
+      kind: this.runtimeConfig?.participantKind ?? 'human',
+    });
+    if (this.governanceDocumentPath !== documentPath) {
+      return;
+    }
+
+    if (!snapshot) {
+      return;
+    }
+
+    this.tabActivityLock.destroy();
+    this.tabActivityLock = this.createTabActivityLock(snapshot.participantSessionId);
+    this.tabActivityLock.initialize();
+    this.tabActivityLock.tryActivate();
+  } catch {
+    this.governanceDocumentPath = null;
+  }
+}
 
 /** @this {UiTabActivityContext} */
 function handleTabTakeover() {
@@ -138,5 +194,6 @@ export const uiFeatureTabActivityMethods = {
   handleTabBlocked,
   handleTabTakeover,
   hideTabLockOverlay,
+  initializeGovernanceTabActivity,
   showTabLockOverlay,
 };

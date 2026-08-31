@@ -21,8 +21,8 @@ function normalizeToolbarAction(action) {
   return String(action ?? '').trim();
 }
 
-function renderToolbarButtons(actions) {
-  return actions.map((item) => (
+function renderToolbarButtons(actions, { governed = false } = {}) {
+  return actions.filter((item) => !governed || item.action !== 'image').map((item) => (
     `<button type="button" class="ui-icon-button ui-icon-button--toolbar ui-toolbar-action" ${item.commandId
       ? `data-editor-command="${escapeHtml(item.commandId)}"`
       : `data-markdown-action="${escapeHtml(item.action)}"`} aria-label="${escapeHtml(item.label)}" title="${escapeHtml(item.title)}">${item.icon}</button>`
@@ -69,7 +69,7 @@ function renderBlockMenuItemsMarkup(activeAction) {
   }).join('');
 }
 
-function renderMarkdownToolbarMarkup(activeAction) {
+function renderMarkdownToolbarMarkup(activeAction, { governed = false } = {}) {
   return markdownToolbarLayout.map((group) => {
     if (group.kind === 'block-menu') {
       return renderBlockMenuMarkup(activeAction);
@@ -77,7 +77,7 @@ function renderMarkdownToolbarMarkup(activeAction) {
 
     return `
       <div class="markdown-toolbar-group${group.mobileOnly ? ' markdown-toolbar-group--mobile-only' : ''}" role="group" aria-label="${escapeHtml(group.groupLabel)}">
-        ${renderToolbarButtons(group.actions)}
+        ${renderToolbarButtons(group.actions, { governed })}
       </div>
     `;
   }).join('');
@@ -110,7 +110,9 @@ function renderMarkdownToolbar() {
   }
 
   const activeAction = this.getActiveMarkdownBlockAction();
-  root.innerHTML = renderMarkdownToolbarMarkup(activeAction);
+  root.innerHTML = renderMarkdownToolbarMarkup(activeAction, {
+    governed: this.isGovernedMode?.() === true,
+  });
   this.renderMarkdownBlockMenuPopover();
   this.syncMarkdownToolbarBlockUi();
 }
@@ -366,6 +368,9 @@ function applyMarkdownToolbarAction(action) {
   }
 
   if (action === 'image') {
+    if (this.isGovernedMode?.()) {
+      return;
+    }
     void this.handleToolbarImageInsert();
     return;
   }
@@ -395,6 +400,9 @@ function runEditorCommand(commandId) {
 
 /** @this {UiToolbarContext} */
 async function handleToolbarImageInsert() {
+  if (this.isGovernedMode?.()) {
+    return false;
+  }
   const [file] = await pickFiles({ accept: IMAGE_FILE_PICKER_ACCEPT });
   if (!file) {
     return;
@@ -405,6 +413,9 @@ async function handleToolbarImageInsert() {
 
 /** @this {UiToolbarContext} */
 async function handleEditorImageInsert(file) {
+  if (this.isGovernedMode?.()) {
+    return false;
+  }
   if (!this.session || !isMarkdownFilePath(this.currentFilePath)) {
     console.warn('[ui] Ignoring image insert because there is no active markdown session.', {
       currentFilePath: this.currentFilePath,

@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
 
 import { gitFeature } from '../../src/client/application/app-shell/git-feature.js';
+import { governanceFeature } from '../../src/client/application/app-shell/governance-feature.js';
 import { uiFeatureIdentityMethods } from '../../src/client/application/app-shell/ui-feature-identity.js';
 import { uiFeatureShellMethods } from '../../src/client/application/app-shell/ui-feature-shell.js';
 import { uiFeatureSidebarMethods } from '../../src/client/application/app-shell/ui-feature-sidebar.js';
 import { uiFeatureToolbarMethods } from '../../src/client/application/app-shell/ui-feature-toolbar.js';
 import { ensureQuickSwitcherInstance } from '../../src/client/application/quick-switcher-loader.js';
+import { GovernanceUiController } from '../../src/client/presentation/governance-ui-controller.js';
 
 function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
   document.body.innerHTML = `
@@ -50,6 +53,143 @@ function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) 
   return context;
 }
 
+function createGovernanceContext({ credential = '', snapshot = null } = {}) {
+  const context = {
+    commentUi: { setReviewGroups: vi.fn() },
+    currentFilePath: 'README.md',
+    elements: {},
+    getGovernanceReviewGroups: () => [],
+    governanceClient: { credential },
+    governanceSnapshot: snapshot,
+    governanceUi: { hide: vi.fn(), render: vi.fn() },
+    isGovernedMode: () => true,
+    toastController: { show: vi.fn() },
+  };
+  Object.assign(context, governanceFeature);
+  context.governanceRequest = vi.fn(async () => ({ roles: {} }));
+  return context;
+}
+
+const ownerParticipant = Object.freeze({
+  displayName: 'Mina',
+  joinedAt: 1_000,
+  kind: 'human',
+  participantSessionId: 'owner-session',
+  roleId: 'owner',
+  state: 'active',
+});
+
+const pendingParticipant = Object.freeze({
+  displayName: 'Writer',
+  joinedAt: 2_000,
+  kind: 'ai',
+  participantSessionId: 'writer-session',
+  roleId: undefined,
+  state: 'pending',
+});
+
+function lifecycleSnapshot(participants, current = ownerParticipant) {
+  return {
+    ...current,
+    documentPath: 'README.md',
+    participants,
+  };
+}
+
+function createGovernanceLifecycleContext(snapshot, ydoc = new Y.Doc()) {
+  const context = createGovernanceContext({ credential: 'owner-credential', snapshot });
+  const activity = ydoc.getArray('governanceActivity');
+  context.session = {
+    getGovernanceContext: () => ({ activity, ydoc }),
+  };
+  return { activity, context, ydoc };
+}
+
+const activityDetails = (activity) => activity.toArray().map((record) => ({
+  action: record.action,
+  actor: record.actor,
+  createdAt: record.createdAt,
+  outcome: record.outcome,
+  target: record.target,
+}));
+
+function createDeferred() {
+  return Promise.withResolvers();
+}
+
+function setGovernanceSession(context, { credential, documentPath, participantSessionId }) {
+  context.currentFilePath = documentPath;
+  context.governanceClient.credential = credential;
+  context.governanceSnapshot = {
+    documentPath,
+    participantSessionId,
+    participants: [],
+  };
+}
+
+function useRealGovernanceUi(context) {
+  document.body.innerHTML = `
+    <section id="participant-bar"></section>
+    <aside id="governance-rail">
+      <div role="tablist">
+        <button type="button" data-governance-tab="review">Review</button>
+        <button type="button" data-governance-tab="activity">Activity</button>
+        <button type="button" data-governance-tab="roles">Roles</button>
+      </div>
+      <section data-governance-panel="review"></section>
+      <section data-governance-panel="activity"></section>
+      <section data-governance-panel="roles"></section>
+    </aside>
+    <button id="manage-access" type="button">Manage access</button>
+    <dialog id="manage-access-dialog">
+      <div data-manage-access-list></div>
+      <button type="button" data-manage-access-close>Close</button>
+    </dialog>
+  `;
+  const controller = new GovernanceUiController({
+    governanceRail: document.getElementById('governance-rail'),
+    manageAccessButton: document.getElementById('manage-access'),
+    manageAccessDialog: document.getElementById('manage-access-dialog'),
+    participantBar: document.getElementById('participant-bar'),
+  });
+  context.elements.governanceRail = document.getElementById('governance-rail');
+  context.governanceUi = controller;
+  return controller;
+}
+
+function startDeferredRolesSessionSwitch() {
+  const context = createGovernanceContext({
+    credential: 'credential-a',
+    snapshot: {
+      documentPath: 'README.md',
+      participantSessionId: 'session-a',
+      participants: [],
+    },
+  });
+  const sessionA = createDeferred();
+  const sessionB = createDeferred();
+  const render = vi.spyOn(useRealGovernanceUi(context), 'render');
+  context.governanceRequest
+    .mockReturnValueOnce(sessionA.promise)
+    .mockReturnValueOnce(sessionB.promise);
+  context.renderGovernanceUi();
+  const requestA = context._governanceRolesPromise;
+  setGovernanceSession(context, {
+    credential: 'credential-b',
+    documentPath: 'notes.md',
+    participantSessionId: 'session-b',
+  });
+  context.renderGovernanceUi();
+  return {
+    context,
+    render,
+    requestA,
+    requestB: context._governanceRolesPromise,
+    sessionA,
+    sessionB,
+  };
+}
+
 describe('uiFeature browser helpers', () => {
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
@@ -86,6 +226,302 @@ describe('uiFeature browser helpers', () => {
     expect(context.preferences.setVimModeEnabled).toHaveBeenCalledWith(true);
     expect(context.elements.vimModeToggleLabel.textContent).toBe('On');
     expect(context.elements.toggleVimModeButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('hides unsupported workspace controls but keeps presence available in governed mode', () => {
+    document.body.innerHTML = `
+      <aside id="sidebar"></aside>
+      <div id="diff-page"></div>
+      <div id="file-search"></div>
+      <button id="toolbar-search"></button>
+      <button id="search-files"></button>
+      <button id="git-tab"></button>
+      <button id="history" hidden></button>
+      <button id="review"></button>
+      <div id="backlinks"></div>
+      <div id="backlinks-header"></div>
+      <div id="backlinks-inline"></div>
+      <div id="quick-switcher"></div>
+      <div id="toolbar-presence"></div>
+    `;
+    const context = {
+      elements: {
+        backlinksHeaderPanel: document.getElementById('backlinks-header'),
+        backlinksInlinePanel: document.getElementById('backlinks-inline'),
+        backlinksPanel: document.getElementById('backlinks'),
+        diffPage: document.getElementById('diff-page'),
+        fileHistoryButton: document.getElementById('history'),
+        fileSearch: document.getElementById('file-search'),
+        gitSidebarTab: document.getElementById('git-tab'),
+        quickSwitcher: document.getElementById('quick-switcher'),
+        reviewFileChangesButton: document.getElementById('review'),
+        searchFilesButton: document.getElementById('search-files'),
+        sidebar: document.getElementById('sidebar'),
+        toolbarPresence: document.getElementById('toolbar-presence'),
+        toolbarSearchButton: document.getElementById('toolbar-search'),
+      },
+    };
+    const { toolbarPresence, ...unsupportedElements } = context.elements;
+
+    governanceFeature.syncGovernedSurfaces.call(context, true);
+
+    Object.values(unsupportedElements).forEach((element) => {
+      expect(element.hidden).toBe(true);
+      expect(element.inert).toBe(true);
+    });
+    expect(toolbarPresence.hidden).toBe(false);
+    expect(toolbarPresence.inert).toBe(false);
+    expect(document.body).toHaveAttribute('data-governed', 'true');
+
+    governanceFeature.syncGovernedSurfaces.call(context, false);
+
+    expect(context.elements.sidebar.hidden).toBe(false);
+    expect(context.elements.sidebar.inert).toBe(false);
+    expect(context.elements.fileHistoryButton.hidden).toBe(true);
+    expect(context.elements.fileHistoryButton.inert).toBe(false);
+    expect(document.body).not.toHaveAttribute('data-governed');
+  });
+
+  it('does not request Roles before the current governance session and credential exist', () => {
+    const context = createGovernanceContext();
+
+    context.renderGovernanceUi();
+
+    expect(context.governanceRequest).not.toHaveBeenCalled();
+  });
+
+  it('records Owner and new Participant joins once across repeat observation and reload', () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant, pendingParticipant]);
+    const { activity, context, ydoc } = createGovernanceLifecycleContext(snapshot);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+
+    expect(activityDetails(activity)).toEqual([
+      {
+        action: 'participant_joined',
+        actor: {
+          displayName: 'Mina',
+          kind: 'human',
+          participantSessionId: 'owner-session',
+          roleId: 'owner',
+        },
+        createdAt: 1_000,
+        outcome: 'joined',
+        target: 'owner-session',
+      },
+      {
+        action: 'participant_joined',
+        actor: {
+          displayName: 'Writer',
+          kind: 'ai',
+          participantSessionId: 'writer-session',
+          roleId: 'pending',
+        },
+        createdAt: 2_000,
+        outcome: 'joined',
+        target: 'writer-session',
+      },
+    ]);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+    const reloaded = createGovernanceLifecycleContext(snapshot, ydoc);
+    governanceFeature.appendGovernanceLifecycleActivity.call(reloaded.context, snapshot);
+
+    expect(activity).toHaveLength(2);
+  });
+
+  it('records each Grant expiry cycle once', () => {
+    const activeWriter = { ...pendingParticipant, expiresAt: 61_000, roleId: 'editor', state: 'active' };
+    const active = lifecycleSnapshot([ownerParticipant, activeWriter]);
+    const { activity, context, ydoc } = createGovernanceLifecycleContext(active);
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, active);
+    const firstExpired = lifecycleSnapshot([
+      ownerParticipant,
+      { ...activeWriter, state: 'expired' },
+    ]);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, firstExpired);
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, firstExpired);
+
+    const regrantedWriter = { ...activeWriter, expiresAt: 121_000 };
+    const regranted = lifecycleSnapshot([ownerParticipant, regrantedWriter]);
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, regranted);
+    const secondExpired = lifecycleSnapshot([
+      ownerParticipant,
+      { ...regrantedWriter, state: 'expired' },
+    ]);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, secondExpired);
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, secondExpired);
+    const reloaded = createGovernanceLifecycleContext(secondExpired, ydoc);
+    governanceFeature.appendGovernanceLifecycleActivity.call(reloaded.context, secondExpired);
+
+    expect(activityDetails(activity).filter((record) => record.action === 'grant_expired')).toEqual([
+      {
+        action: 'grant_expired',
+        actor: {
+          displayName: 'Writer',
+          kind: 'ai',
+          participantSessionId: 'writer-session',
+          roleId: 'editor',
+        },
+        createdAt: 61_000,
+        outcome: 'expired',
+        target: 'writer-session',
+      },
+      {
+        action: 'grant_expired',
+        actor: {
+          displayName: 'Writer',
+          kind: 'ai',
+          participantSessionId: 'writer-session',
+          roleId: 'editor',
+        },
+        createdAt: 121_000,
+        outcome: 'expired',
+        target: 'writer-session',
+      },
+    ]);
+  });
+
+  it('records join and expiry when the first observation is already expired', () => {
+    const expiredWriter = {
+      ...pendingParticipant,
+      expiresAt: 61_000,
+      roleId: 'reviewer',
+      state: 'expired',
+    };
+    const snapshot = lifecycleSnapshot([ownerParticipant, expiredWriter]);
+    const { activity, context } = createGovernanceLifecycleContext(snapshot);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+
+    expect(activity.toArray().map((record) => `${record.action}:${record.target}`)).toEqual([
+      'participant_joined:owner-session',
+      'participant_joined:writer-session',
+      'grant_expired:writer-session',
+    ]);
+  });
+
+  it('does not append lifecycle Activity from a non-Owner client', () => {
+    const writer = { ...pendingParticipant, expiresAt: 61_000, roleId: 'editor', state: 'expired' };
+    const snapshot = lifecycleSnapshot([ownerParticipant, writer], writer);
+    const { activity, context } = createGovernanceLifecycleContext(snapshot);
+
+    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+
+    expect(activity).toHaveLength(0);
+  });
+
+  it('waits for governance transition session readiness before appending lifecycle Activity', async () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant]);
+    const { activity, context, ydoc } = createGovernanceLifecycleContext(snapshot);
+    const ready = Promise.withResolvers();
+    context.session = null;
+    context.workspaceCoordinator = {
+      async applyGovernanceTransition() {
+        await ready.promise;
+        context.session = {
+          getGovernanceContext: () => ({ activity, ydoc }),
+        };
+      },
+    };
+
+    const handling = governanceFeature.applyGovernanceSnapshotTransition.call(context, null, snapshot);
+    expect(activity).toHaveLength(0);
+
+    ready.resolve();
+    await handling;
+
+    expect(activity.toArray().map((record) => record.action)).toEqual(['participant_joined']);
+  });
+
+  it('retries a failed Roles request on the next same-session render and restores controls', async () => {
+    const roles = { owner: ['conflict.resolve', 'grant.manage'] };
+    const context = createGovernanceContext({
+      credential: 'credential-a',
+      snapshot: {
+        documentPath: 'README.md',
+        participantSessionId: 'session-a',
+        participants: [],
+        roleId: 'owner',
+        state: 'active',
+      },
+    });
+    context.getGovernanceReviewGroups = () => [{
+      from: 0,
+      proposals: [{
+        createdByDisplayName: 'Reviewer',
+        expectedText: 'before',
+        id: 'proposal-1',
+        replacementText: 'after',
+        status: 'open',
+      }],
+      to: 1,
+      unlocated: false,
+    }];
+    context.governanceRequest
+      .mockRejectedValueOnce(new Error('roles unavailable'))
+      .mockResolvedValueOnce({ roles });
+    useRealGovernanceUi(context);
+
+    context.renderGovernanceUi();
+    const firstRequest = context._governanceRolesPromise;
+    context.renderGovernanceUi();
+    expect(context.governanceRequest).toHaveBeenCalledTimes(1);
+    await firstRequest;
+
+    expect(document.getElementById('manage-access').hidden).toBe(true);
+    expect(document.querySelector('[data-proposal-resolution="apply_proposed"]').disabled).toBe(true);
+    expect(context.toastController.show).toHaveBeenCalledTimes(1);
+
+    context.renderGovernanceUi();
+    const retry = context._governanceRolesPromise;
+
+    expect(context.governanceRequest).toHaveBeenCalledTimes(2);
+    await retry;
+
+    expect(context.governanceRoles).toEqual(roles);
+    expect(document.getElementById('manage-access').hidden).toBe(false);
+    expect(document.querySelector('[data-proposal-resolution="apply_proposed"]').disabled).toBe(false);
+    expect(context.toastController.show).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a stale Roles success after the next session renders its matrix', async () => {
+    const rolesA = { owner: ['grant.manage'] };
+    const rolesB = { reviewer: ['document.read'] };
+    const { context, render, requestA, requestB, sessionA, sessionB } = startDeferredRolesSessionSwitch();
+    sessionB.resolve({ roles: rolesB });
+    await requestB;
+    const renderCountAfterB = render.mock.calls.length;
+
+    sessionA.resolve({ roles: rolesA });
+    await requestA;
+
+    expect(context.governanceRoles).toEqual(rolesB);
+    expect(render).toHaveBeenCalledTimes(renderCountAfterB);
+    expect(document.getElementById('roleCapabilityMatrix').textContent).toContain('Reviewer');
+    expect(document.getElementById('roleCapabilityMatrix').textContent).not.toContain('Owner');
+  });
+
+  it('ignores a stale Roles failure without toasting or unlocking the next session retry', async () => {
+    const rolesB = { editor: ['document.edit'] };
+    const { context, requestA, requestB, sessionA, sessionB } = startDeferredRolesSessionSwitch();
+
+    sessionA.reject(new Error('session A failed late'));
+    await requestA;
+
+    expect(context._governanceRolesAttemptedKey).toBe('notes.md::session-b');
+    context.renderGovernanceUi();
+
+    expect(context.toastController.show).not.toHaveBeenCalled();
+    expect(context.governanceRequest).toHaveBeenCalledTimes(2);
+
+    sessionB.resolve({ roles: rolesB });
+    await requestB;
+
+    expect(context.governanceRoles).toEqual(rolesB);
+    expect(document.getElementById('roleCapabilityMatrix').textContent).toContain('Editor');
   });
 
   it('switches sidebar tabs and updates visibility state', () => {
@@ -156,6 +592,7 @@ describe('uiFeature browser helpers', () => {
       gitRepoAvailable: false,
       handleGitRepoChange: gitFeature.handleGitRepoChange,
       initializeExportBridge: vi.fn(),
+      initializeGovernanceTabActivity: vi.fn(),
       initializePreviewLayoutObserver: vi.fn(),
       initializeVersionMonitoring: vi.fn(),
       initializeVisualViewportBinding: vi.fn(),

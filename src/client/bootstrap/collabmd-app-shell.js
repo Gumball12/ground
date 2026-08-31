@@ -11,6 +11,7 @@ import { chatFeature } from '../application/app-shell/chat-feature.js';
 import { commentsFeature } from '../application/app-shell/comments-feature.js';
 import { exportFeature } from '../application/app-shell/export-feature.js';
 import { gitFeature } from '../application/app-shell/git-feature.js';
+import { governanceFeature } from '../application/app-shell/governance-feature.js';
 import { presenceFeature } from '../application/app-shell/presence-feature.js';
 import { uiFeatureIdentityMethods } from '../application/app-shell/ui-feature-identity.js';
 import { uiFeatureShellMethods } from '../application/app-shell/ui-feature-shell.js';
@@ -22,6 +23,7 @@ import { LOBBY_CHAT_MESSAGE_MAX_LENGTH, LobbyPresence } from '../infrastructure/
 import { BrowserPreferencesPort } from '../infrastructure/browser-preferences-port.js';
 import { BrowserNotificationPort } from '../infrastructure/browser-notification-port.js';
 import { AppVersionMonitor } from '../infrastructure/app-version-monitor.js';
+import { GovernanceClient } from '../infrastructure/governance-client.js';
 import { gitApiClient } from '../infrastructure/git-api-client.js';
 import {
   getHashRoute,
@@ -40,6 +42,7 @@ import { WorkspaceSyncClient } from '../infrastructure/workspace-sync-client.js'
 import { BacklinksPanel } from '../presentation/backlinks-panel.js';
 import { CommentOverviewController } from '../presentation/comment-overview-controller.js';
 import { CommentUiController } from '../presentation/comment-ui-controller.js';
+import { GovernanceUiController } from '../presentation/governance-ui-controller.js';
 import { FileExplorerController } from '../presentation/file-explorer-controller.js';
 import { FileHistoryViewController } from '../presentation/file-history-view-controller.js';
 import { BasesPreviewController } from '../presentation/bases-preview-controller.js';
@@ -60,6 +63,7 @@ const APP_SHELL_FEATURES = [
   commentsFeature,
   exportFeature,
   gitFeature,
+  governanceFeature,
   presenceFeature,
   {
     ...uiFeatureShellMethods,
@@ -70,6 +74,12 @@ const APP_SHELL_FEATURES = [
   },
   workspaceFeature,
 ];
+
+export function hasGovernanceCapability(snapshot, capability) {
+  return snapshot?.state === 'active'
+    && Array.isArray(snapshot.capabilities)
+    && snapshot.capabilities.includes(capability);
+}
 
 export class CollabMdAppShell {
   constructor() {
@@ -165,17 +175,45 @@ export class CollabMdAppShell {
       },
     });
 
+    this.governanceClient = new GovernanceClient();
+    this.governanceSnapshot = null;
     this.toastController = new ToastController(this.elements.toastContainer);
     this.chatToastController = new ToastController(this.elements.chatToastContainer);
+    this.governanceUi = new GovernanceUiController({
+      governanceRail: this.elements.governanceRail,
+      manageAccessButton: this.elements.manageAccessButton,
+      manageAccessDialog: this.elements.manageAccessDialog,
+      onAssignRole: (participantSessionId, roleId, expiresInMinutes) => {
+        void this.assignGovernanceRole(participantSessionId, roleId, expiresInMinutes);
+      },
+      onResolveProposal: (proposalId, resolution) => {
+        void this.resolveGovernanceProposal(proposalId, resolution);
+      },
+      onRevoke: (participantSessionId) => {
+        void this.revokeGovernanceGrant(participantSessionId);
+      },
+      onSelectProposal: (proposalId) => this.selectGovernanceProposal(proposalId),
+      participantBar: this.elements.participantBar,
+    });
     this.webMcpTools = new WebMcpToolRegistry({
       getActiveFilePath: () => this.currentFilePath,
       getIsTabActive: () => this.isTabActive,
       getSession: () => this.session,
+      governanceClient: this.governanceClient,
       onDidEdit: ({ replacementCount }) => {
         this.toastController.show(`Agent-assisted edit applied (${replacementCount} replacement${replacementCount === 1 ? '' : 's'}). Review it before committing.`);
       },
     });
+    this.governanceClient.subscribe((snapshot) => {
+      const previous = this.governanceSnapshot;
+      this.governanceSnapshot = snapshot;
+      void this.applyGovernanceSnapshotTransition(previous, snapshot);
+      this.renderMarkdownToolbar?.();
+      this.renderGovernanceUi();
+      void this.webMcpTools.refresh();
+    });
     this.fileExplorer = new FileExplorerController({
+      canMutateWorkspace: () => !this.isGovernedMode(),
       mobileBreakpointQuery: this.mobileBreakpointQuery,
       onDirectoryExport: (directoryPath, format) => this.handleDirectoryExportRequest(directoryPath, format),
       onFileDelete: () => this.navigation.navigateToFile(null),
@@ -382,6 +420,7 @@ export class CollabMdAppShell {
       onReplyToThread: (threadId, body) => this.replyToCommentThread(threadId, body),
       onToggleReaction: (threadId, messageId, emoji) => this.session?.toggleCommentReaction(threadId, messageId, emoji),
       onResolveThread: (threadId) => this.resolveCommentThread(threadId),
+      onSelectProposal: (proposalId) => this.selectGovernanceProposal(proposalId),
     });
     this.structurizrPreview = new StructurizrPreviewController({
       enabled: this.runtimeConfig.structurizrEnabled === true,
@@ -456,10 +495,11 @@ export class CollabMdAppShell {
       }),
       toastController: this.toastController,
     });
-    this.tabActivityLock = new TabActivityLock({
+    this.createTabActivityLock = (scope) => new TabActivityLock({
       onActivated: ({ takeover }) => this.handleTabActivated({ takeover }),
       onBlocked: () => this.handleTabBlocked({ reason: 'active-elsewhere' }),
       onStolen: () => this.handleTabBlocked({ reason: 'taken-over' }),
+      scope,
     });
     this.workspaceCoordinator = new WorkspaceCoordinator({
       attachEditorScroller: (scroller) => this.scrollSyncController.attachEditorScroller(scroller),
@@ -472,14 +512,18 @@ export class CollabMdAppShell {
         clearTimeout(this._backlinkRefreshTimer);
       },
       createEditorSession: (EditorSession, options) => new EditorSession({
+        canComment: options.canComment,
+        canEdit: options.canEdit,
         editorContainer: this.elements.editorContainer,
         getFileList: options.getFileList,
+        getGovernanceSnapshot: options.getGovernanceSnapshot,
+        governed: options.governed,
         initialTheme: options.theme,
         lineInfoElement: this.elements.lineInfo,
         lineWrappingEnabled: options.lineWrappingEnabled,
         localUser: options.localUser,
         vimModeEnabled: options.vimModeEnabled,
-        onImagePaste: options.onImagePaste,
+        ...(options.onImagePaste ? { onImagePaste: options.onImagePaste } : {}),
         onAwarenessChange: options.onAwarenessChange,
         onCommentsChange: options.onCommentsChange,
         onConnectionChange: options.onConnectionChange,
@@ -489,12 +533,14 @@ export class CollabMdAppShell {
       }),
       getDisplayName: (filePath) => this.getDisplayName(filePath),
       getFileList: () => this.fileExplorer.flatDocumentFiles,
+      getGovernanceSnapshot: () => this.governanceClient.snapshot,
       getVaultFileList: () => this.fileExplorer.flatFiles,
       getLineWrappingEnabled: () => this.getStoredLineWrapping(),
       getVimModeEnabled: () => this.getStoredVimMode(),
       getLocalUser: () => this.lobby.getLocalUser(),
       getStoredUserName: () => this.getStoredUserName(),
       getTheme: () => this.themeController.getTheme(),
+      hasGovernanceCapability,
       isBaseFile: (filePath) => this.isBaseFile(filePath),
       isDrawioFile: (filePath) => this.isDrawioFile(filePath),
       isExcalidrawFile: (filePath) => this.isExcalidrawFile(filePath),
@@ -515,6 +561,7 @@ export class CollabMdAppShell {
         this._basePreviewRenderTimer = null;
         this.session = null;
         this.commentUi.attachSession(null);
+        this.bindGovernanceSession(null);
         this.layoutController.reset();
         this.workspacePreviewController.resetPreviewMode();
         this.elements.emptyState?.classList.add('hidden');
@@ -561,18 +608,27 @@ export class CollabMdAppShell {
         this.syncWrapToggle();
         this.toastController.show(notFound ? 'File not found' : 'Failed to initialize editor');
       },
-      onFileOpenReady: () => {
+      onFileOpenReady: (session) => {
         this.hideEditorLoading();
         if (this.currentFilePath) {
           this.preferences.recordRecentFile(this.currentFilePath);
         }
+        if (session) {
+          this.workspaceRouteController?.revealEditorMatch(this.navigation.getHashRoute(), session);
+        }
       },
       onSelectionChange: (anchor) => this.handleCommentSelectionChange(anchor),
       onImagePaste: (file) => this.handleEditorImageInsert(file),
+      onGovernanceAccessChanged: ({ discarded, state }) => {
+        if (discarded) {
+          this.toastController.show(`Access changed (${state}). Unsynchronized local changes were discarded.`);
+        }
+      },
       onFileOpenMetric: (name, payload) => this.recordFileOpenMetric(name, payload),
       onSessionAssigned: (session) => {
         this.session = session;
         this.commentUi.attachSession(session);
+        this.bindGovernanceSession(session);
       },
       onRenderDrawioPreview: (filePath) => this.workspacePreviewController.renderDrawioFilePreview(filePath),
       onRenderBasePreview: (filePath) => this.renderBaseFilePreview(filePath),
@@ -585,6 +641,9 @@ export class CollabMdAppShell {
       onUpdateActiveFile: (filePath) => this.fileExplorer.setActiveFile(filePath),
       onUpdateCurrentFile: (filePath) => {
         this.currentFilePath = filePath;
+        void this.initializeGovernanceTabActivity(filePath);
+        this.renderMarkdownToolbar?.();
+        this.renderGovernanceUi();
       },
       onUpdateLobbyCurrentFile: (filePath) => this.lobby.setCurrentFile(filePath),
       onUpdateVisibleChrome: (filePath, { displayName }) => {
@@ -601,6 +660,7 @@ export class CollabMdAppShell {
       },
       onViewModeReset: () => this.workspacePreviewController.resetPreviewMode(),
       renderPresence: () => this.renderPresence(),
+      refreshGovernanceSnapshot: () => this.governanceClient.refresh(),
       scrollContainerForSession: (session) => session.getScrollContainer(),
       shouldUseDrawioPreview: () => Boolean(this.runtimeConfig.drawioBaseUrl),
       showEditorLoading: () => this.showEditorLoading(),
@@ -750,10 +810,26 @@ export class CollabMdAppShell {
   }
 
   async ensureQuickSwitcher() {
+    if (this.isGovernedMode()) {
+      return null;
+    }
     return ensureQuickSwitcherInstance(this);
   }
 
   async toggleQuickSwitcher() {
+    if (this.isGovernedMode()) {
+      return false;
+    }
     return toggleQuickSwitcherInstance(this);
+  }
+
+  isGovernedMode() {
+    return Boolean(
+      this.currentFilePath
+      && (
+        this.workspaceCoordinator?.isGovernedDocument(this.currentFilePath)
+        || this.governanceDocumentPath === this.currentFilePath
+      ),
+    );
   }
 }

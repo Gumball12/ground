@@ -5,6 +5,7 @@ import { FileExplorerView } from './file-explorer-view.js';
 
 export class FileExplorerController {
   constructor({
+    canMutateWorkspace = () => true,
     mobileBreakpointQuery = window.matchMedia('(max-width: 768px)'),
     onFileSelect,
     onFileDelete,
@@ -57,6 +58,7 @@ export class FileExplorerController {
       },
     });
     this.actionController = new FileActionController({
+      canMutateWorkspace,
       mobileBreakpointQuery,
       onDirectoryExport: this.onDirectoryExport,
       onFileDelete: this.onFileDelete,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { EditorSession } from '../../src/client/infrastructure/editor-session.js';
 import { WorkspaceCoordinator } from '../../src/client/application/workspace-coordinator.js';
+import * as appShell from '../../src/client/bootstrap/collabmd-app-shell.js';
 
 function createStateStore() {
   return {
@@ -12,6 +13,29 @@ function createStateStore() {
     currentFilePath: null,
     sessionLoadToken: 0,
   };
+}
+
+const governanceSnapshot = ({
+  capabilities = ['document.read', 'document.comment', 'document.suggest', 'document.edit'],
+  issuedAt = 1,
+  participantSessionId = 'participant-1',
+  roleId = 'editor',
+  state = 'active',
+  version = 1,
+} = {}) => ({
+  capabilities,
+  displayName: 'Tester',
+  documentPath: 'README.md',
+  issuedAt,
+  kind: 'human',
+  participantSessionId,
+  roleId,
+  state,
+  version,
+});
+
+function hasGovernanceCapability(snapshot, capability) {
+  return snapshot?.state === 'active' && snapshot.capabilities.includes(capability);
 }
 
 function createCoordinator(overrides = {}) {
@@ -184,6 +208,33 @@ test('WorkspaceCoordinator rejects missing files before creating an editor sessi
   assert.equal(coordinator.getSession(), null);
 });
 
+test('WorkspaceCoordinator clears the active path after a missing file so Governance cannot reopen it', async () => {
+  const activePaths = [];
+  const currentPaths = [];
+  const lobbyPaths = [];
+  const snapshot = governanceSnapshot();
+  const { coordinator, stateStore } = createCoordinator({
+    getFileList: () => ['README.md'],
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    onUpdateActiveFile: (filePath) => activePaths.push(filePath),
+    onUpdateCurrentFile: (filePath) => currentPaths.push(filePath),
+    onUpdateLobbyCurrentFile: (filePath) => lobbyPaths.push(filePath),
+  });
+
+  await coordinator.openFile('README.md');
+  assert.notEqual(coordinator.getSession(), null);
+
+  assert.equal(await coordinator.openFile('__missing__.md'), false);
+  assert.equal(stateStore.currentFilePath, null);
+  assert.equal(currentPaths.at(-1), null);
+  assert.equal(activePaths.at(-1), null);
+  assert.equal(lobbyPaths.at(-1), null);
+
+  await coordinator.applyGovernanceTransition(null, snapshot);
+  assert.equal(coordinator.getSession(), null);
+});
+
 test('WorkspaceCoordinator renders an arbitrary .dsl workspace root', async () => {
   let renderedPath = null;
   const { coordinator } = createCoordinator({
@@ -280,6 +331,277 @@ test('WorkspaceCoordinator forwards image paste handling into the editor session
   await coordinator.openFile('README.md');
 
   assert.equal(typeof sessionOptions?.onImagePaste, 'function');
+});
+
+test('WorkspaceCoordinator omits image paste handling in governed mode', async () => {
+  let sessionOptions = null;
+  const snapshot = governanceSnapshot();
+  const { coordinator } = createCoordinator({
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    createEditorSession: (_EditorSessionClass, options) => {
+      sessionOptions = options;
+      return {
+        activateCollaborativeView() {},
+        applyTheme() {},
+        destroy() {},
+        ensureInitialContent() {},
+        getScrollContainer() {
+          return null;
+        },
+        hasBootstrapContent() {
+          return false;
+        },
+        initialize: async () => {},
+        requestMeasure() {},
+        showBootstrapContent() {
+          return false;
+        },
+        waitForInitialSync: async () => {},
+      };
+    },
+  });
+
+  await coordinator.openFile('README.md');
+
+  assert.equal(Object.hasOwn(sessionOptions, 'onImagePaste'), false);
+});
+
+test('WorkspaceCoordinator keeps pending Participants out of the document provider', async () => {
+  let createSessionCalls = 0;
+  const snapshot = governanceSnapshot({ roleId: undefined, state: 'pending' });
+  const { coordinator } = createCoordinator({
+    createEditorSession: () => {
+      createSessionCalls += 1;
+      return {};
+    },
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+  });
+
+  assert.equal(await coordinator.openFile('README.md'), true);
+  assert.equal(createSessionCalls, 0);
+  assert.equal(coordinator.getSession(), null);
+});
+
+test('WorkspaceCoordinator governed disconnect starts a post-freeze governance refresh', async () => {
+  const snapshot = governanceSnapshot();
+  let connectionHandler = null;
+  let refreshCalls = 0;
+  const session = {
+    activateCollaborativeView() {},
+    applyTheme() {},
+    destroy() {},
+    ensureInitialContent() {},
+    getScrollContainer: () => null,
+    hasBootstrapContent: () => false,
+    initialize: async () => {},
+    isFrozenForDisconnect: () => true,
+    reconnectAfterGovernanceValidation() {},
+    requestMeasure() {},
+    setCanEdit() {},
+    showBootstrapContent: () => false,
+    waitForInitialSync: async () => {},
+  };
+  const { coordinator } = createCoordinator({
+    createEditorSession: (_EditorSessionClass, options) => {
+      connectionHandler = options.onConnectionChange;
+      return session;
+    },
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    refreshGovernanceSnapshot: async () => {
+      refreshCalls += 1;
+      return { ...snapshot };
+    },
+  });
+  await coordinator.openFile('README.md');
+
+  connectionHandler({ status: 'disconnected' });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(refreshCalls, 1);
+});
+
+test('WorkspaceCoordinator normal snapshots leave a frozen EditorSession disconnected', async () => {
+  const snapshot = governanceSnapshot();
+  let reconnectCalls = 0;
+  let destroyCalls = 0;
+  const session = {
+    destroy() {
+      destroyCalls += 1;
+    },
+    isFrozenForDisconnect: () => true,
+    reconnectAfterGovernanceValidation() {
+      reconnectCalls += 1;
+    },
+    setCanEdit() {},
+  };
+  const { coordinator, stateStore } = createCoordinator({
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    session,
+  });
+  coordinator.session = session;
+  stateStore.currentFilePath = 'README.md';
+
+  await coordinator.applyGovernanceTransition(snapshot, { ...snapshot });
+
+  assert.equal(reconnectCalls, 0);
+  assert.equal(destroyCalls, 0);
+  assert.equal(coordinator.getSession(), session);
+});
+
+test('WorkspaceCoordinator reconnects only after its post-disconnect refresh resolves', async () => {
+  const snapshot = governanceSnapshot();
+  let resolveRefresh;
+  let reconnectCalls = 0;
+  const refreshPromise = new Promise((resolve) => {
+    resolveRefresh = resolve;
+  });
+  const session = {
+    destroy() {},
+    isFrozenForDisconnect: () => true,
+    reconnectAfterGovernanceValidation() {
+      reconnectCalls += 1;
+    },
+    setCanEdit() {},
+  };
+  const { coordinator, stateStore } = createCoordinator({
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    refreshGovernanceSnapshot: () => refreshPromise,
+    session,
+  });
+  coordinator.session = session;
+  stateStore.currentFilePath = 'README.md';
+
+  const revalidating = coordinator.revalidateGovernanceAfterDisconnect();
+  await Promise.resolve();
+  assert.equal(reconnectCalls, 0);
+  assert.equal(coordinator.getSession(), session);
+
+  resolveRefresh({ ...snapshot });
+  assert.equal(await revalidating, true);
+  assert.equal(reconnectCalls, 1);
+  assert.equal(coordinator.getSession(), session);
+});
+
+test('WorkspaceCoordinator recreates from authoritative content when document.edit is lost', async () => {
+  const previous = governanceSnapshot({ roleId: 'editor', version: 1 });
+  const next = governanceSnapshot({
+    capabilities: ['document.read', 'document.comment', 'document.suggest'],
+    issuedAt: 2,
+    roleId: 'editor',
+    version: 2,
+  });
+  const events = [];
+  const session = {
+    destroy() {
+      events.push('destroy');
+    },
+    isFrozenForDisconnect: () => false,
+    setCanEdit(value) {
+      events.push(`can-edit:${value}`);
+    },
+  };
+  const { coordinator, stateStore } = createCoordinator({
+    getGovernanceSnapshot: () => next,
+    hasGovernanceCapability,
+    onGovernanceAccessChanged: (transition) => events.push(`access:${transition.state}`),
+    session,
+  });
+  coordinator.session = session;
+  stateStore.currentFilePath = 'README.md';
+  coordinator.openFile = async (filePath, options) => {
+    events.push(`open:${filePath}:${options.forceReload}`);
+    return true;
+  };
+
+  await coordinator.applyGovernanceTransition(previous, next);
+
+  assert.deepEqual(events, [
+    'can-edit:false',
+    'destroy',
+    'access:active',
+    'open:README.md:true',
+  ]);
+  assert.equal(coordinator.getSession(), null);
+});
+
+test('app shell capability callback consumes snapshot capabilities', () => {
+  const snapshot = governanceSnapshot({
+    capabilities: ['document.read'],
+    roleId: 'custom-reader',
+  });
+
+  assert.equal(appShell.hasGovernanceCapability?.(snapshot, 'document.read'), true);
+  assert.equal(appShell.hasGovernanceCapability?.(snapshot, 'document.edit'), false);
+});
+
+test('WorkspaceCoordinator destroys revoked document state and stays control-only', async () => {
+  const previous = governanceSnapshot({ roleId: 'editor', version: 1 });
+  const next = governanceSnapshot({ roleId: 'editor', state: 'revoked', version: 2 });
+  const events = [];
+  const session = {
+    destroy() {
+      events.push('destroy');
+    },
+    setCanEdit(value) {
+      events.push(`can-edit:${value}`);
+    },
+  };
+  const { coordinator, stateStore } = createCoordinator({
+    getGovernanceSnapshot: () => next,
+    hasGovernanceCapability,
+    onGovernanceAccessChanged: (transition) => events.push(`access:${transition.state}`),
+    session,
+  });
+  coordinator.session = session;
+  stateStore.currentFilePath = 'README.md';
+  coordinator.openFile = async () => {
+    events.push('open');
+    return true;
+  };
+
+  await coordinator.applyGovernanceTransition(previous, next);
+
+  assert.deepEqual(events, ['can-edit:false', 'destroy', 'access:revoked']);
+  assert.equal(coordinator.getSession(), null);
+});
+
+test('WorkspaceCoordinator never creates a provider after revocation wins an in-flight module load', async () => {
+  const previous = governanceSnapshot({ roleId: 'editor', version: 1 });
+  const next = governanceSnapshot({ roleId: 'editor', state: 'revoked', version: 2 });
+  let snapshot = previous;
+  let resolveEditorSessionClass;
+  let createSessionCalls = 0;
+  const editorSessionClassPromise = new Promise((resolve) => {
+    resolveEditorSessionClass = resolve;
+  });
+  const { coordinator } = createCoordinator({
+    createEditorSession: () => {
+      createSessionCalls += 1;
+      return {
+        destroy() {},
+        initialize: async () => {},
+      };
+    },
+    getGovernanceSnapshot: () => snapshot,
+    hasGovernanceCapability,
+    loadEditorSessionClass: () => editorSessionClassPromise,
+  });
+
+  const opening = coordinator.openFile('README.md');
+  await Promise.resolve();
+  snapshot = next;
+  await coordinator.applyGovernanceTransition(previous, next);
+  resolveEditorSessionClass(EditorSession);
+  await opening;
+
+  assert.equal(createSessionCalls, 0);
+  assert.equal(coordinator.getSession(), null);
 });
 
 test('WorkspaceCoordinator skips creating an editor session for Excalidraw files', async () => {

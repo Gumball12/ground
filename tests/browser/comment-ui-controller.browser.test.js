@@ -19,7 +19,12 @@ function flushFrame() {
   });
 }
 
-function createController({ isMobile = false, onNavigateToLine = () => {}, sourceText = '' } = {}) {
+function createController({
+  isMobile = false,
+  onNavigateToLine = () => {},
+  onSelectProposal = () => {},
+  sourceText = '',
+} = {}) {
   document.body.innerHTML = `
     <div id="editor"></div>
     <button id="comment-selection"><span class="ui-action-label">Comment</span></button>
@@ -62,6 +67,7 @@ function createController({ isMobile = false, onNavigateToLine = () => {}, sourc
     onNavigateToLine,
     onReplyToThread: async () => 'message-2',
     onResolveThread: async () => true,
+    onSelectProposal,
     onToggleReaction: async () => true,
     onWillOpenDrawer: () => {},
     previewContainer,
@@ -504,6 +510,52 @@ describe('CommentUiController browser behavior', () => {
     expect(controller.editorLayer.querySelector('.comment-editor-badge')).toBe(editorBadge);
     expect(controller.previewLayer.querySelector('.comment-preview-badge')).toBeNull();
     expect(editorBadge.classList.contains('is-hovered')).toBe(true);
+  });
+
+  it('keeps Proposals out of Comment UI and renders one located conflict marker per group', () => {
+    const selected = [];
+    const setup = createController({ onSelectProposal: (proposalId) => selected.push(proposalId) });
+    controller = setup.controller;
+    const comment = {
+      anchor: { endLine: 1, quote: 'Line 1', startLine: 1 },
+      createdAt: 1,
+      createdByName: 'Alice',
+      id: 'thread-1',
+      messages: [{ body: 'First comment', createdAt: 2, id: 'message-1', reactions: [], userName: 'Alice' }],
+    };
+    const proposals = [
+      {
+        anchor: { endIndex: 9, endLine: 3, quote: 'Target', startIndex: 3, startLine: 3 },
+        createdAt: 3,
+        id: 'proposal-1',
+        kind: 'proposal',
+        status: 'conflict',
+      },
+      {
+        anchor: { endIndex: 9, endLine: 3, quote: 'Target', startIndex: 3, startLine: 3 },
+        createdAt: 4,
+        id: 'proposal-2',
+        kind: 'proposal',
+        status: 'conflict',
+      },
+    ];
+
+    controller.setThreads([comment, ...proposals]);
+    controller.setReviewGroups([
+      { anchor: proposals[0].anchor, from: 3, proposals, to: 9, unlocated: false },
+      { anchor: null, from: null, proposals: [{ ...proposals[0], id: 'proposal-unlocated' }], to: null, unlocated: true },
+    ]);
+    controller.setDrawerOpen(true);
+    controller.refreshLayout();
+
+    expect(setup.commentsDrawer.querySelectorAll('.comments-drawer-item')).toHaveLength(1);
+    expect(controller.editorLayer.querySelectorAll('[data-conflict-count]')).toHaveLength(1);
+    const conflictMarker = controller.editorLayer.querySelector('[data-conflict-count="2"]');
+    expect(conflictMarker?.textContent).toContain('2');
+    expect(controller.editorLayer.querySelector('[data-conflict-count="1"]')).toBeNull();
+
+    conflictMarker.click();
+    expect(selected).toEqual(['proposal-1']);
   });
 });
 
