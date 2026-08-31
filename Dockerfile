@@ -26,6 +26,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/src ./src
 COPY --from=build /app/bin ./bin
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/collabmd.governance.json ./collabmd.governance.json
 
 # Default vault directory — mount a volume here
 VOLUME ["/data"]

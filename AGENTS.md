@@ -26,6 +26,8 @@ config changes.
 - Lint: `npm run lint`
 - Full non-E2E check: `npm run check`
 - Full suite: `npm test`
+- Governed E2E: `npm run build && npm run test:e2e:governance:prebuilt`
+- Local Evidence: `npm run test:e2e:evidence`
 - Local app: `npm start` → `http://localhost:1234`
 - Split development: `npm run dev:server` and `npm run dev:client`
 
@@ -103,6 +105,16 @@ See `docs/architecture.md` for the exact allowed imports.
   responses as untrusted at their boundaries.
 - The supported deployment is single-instance; do not imply cross-replica room
   state.
+- `collabmd.governance.json` is the Role and Capability source of truth. Do not
+  duplicate Role maps in client code.
+- Client gating is user experience; the server reauthorizes every WebMCP
+  execution.
+- `participantKind` is self-declared presentation metadata, never verified
+  authorization identity.
+- Proposal, Conflict, and Activity records are outside document Undo and Redo
+  semantics.
+- The supported governance threat boundary covers the shipped UI and WebMCP
+  flows, not malicious raw Yjs clients.
 
 ## Code and UI conventions
 
@@ -134,6 +146,10 @@ Match tests to the changed boundary:
 
 Playwright failure artifacts (traces, screenshots) land in `test-results/`;
 inspect them before re-running blind.
+
+Successful governed Evidence is generated only by
+`npm run test:e2e:evidence`; its ignored output is not a snapshot baseline or
+the final Challenge demo.
 
 Before finishing:
 

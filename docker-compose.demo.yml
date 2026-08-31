@@ -1,0 +1,32 @@
+services:
+  collabmd:
+    build: .
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 1234
+      COLLABMD_VAULT_DIR: /data
+      COLLABMD_GIT_ENABLED: "false"
+      AUTH_STRATEGY: none
+    volumes:
+      - ./data/vault:/data
+      - ./collabmd.governance.json:/app/collabmd.governance.json:ro
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - collabmd
+    environment:
+      WEBMCP_HOSTNAME: ${WEBMCP_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

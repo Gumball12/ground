@@ -1,0 +1,3 @@
+{$WEBMCP_HOSTNAME} {
+  reverse_proxy collabmd:1234
+}
