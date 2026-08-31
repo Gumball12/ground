@@ -14,6 +14,7 @@ import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
+import { createSignedCookieManager } from '../../../src/server/auth/session-cookie.js';
 import { extractAssetPath } from '../helpers/asset-path.js';
 import { extractCookieHeader } from '../helpers/cookie.js';
 import { waitForCondition } from '../helpers/test-server.js';
@@ -54,6 +55,31 @@ function httpRequest(url, { method = 'GET', headers = {}, body } = {}) {
     req.end();
   });
 }
+
+const createOidcCookie = ({ cookieName, secret, user }) => extractCookieHeader(
+  createSignedCookieManager({ cookieName, secret }).create({ headers: {} }, {
+    authenticatedAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    strategy: 'oidc',
+    user,
+  }),
+);
+
+const governanceRequest = (baseUrl, {
+  body,
+  cookie = '',
+  credential = '',
+  method,
+  path,
+}) => httpRequest(`${baseUrl}${path}`, {
+  body: body === undefined ? undefined : JSON.stringify(body),
+  headers: {
+    ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    ...(cookie ? { Cookie: cookie } : {}),
+    ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+  },
+  method,
+});
 
 function listZipEntryNames(buffer) {
   const endOfCentralDirectorySignature = 0x06054b50;
@@ -268,6 +294,42 @@ test('HTTP server serves health, runtime config, and static assets', async (t) =
   assert.equal(compressedAssetResponse.statusCode, 200);
   assert.equal(compressedAssetResponse.headers['content-encoding'], 'gzip');
   assert.match(gunzipSync(compressedAssetResponse.bodyBuffer).toString('utf8'), /--color-bg/);
+});
+
+test('HTTP test resets keep collaboration and governance session lifecycles separate', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const createGovernanceSession = async (displayName) => {
+    const response = await httpRequest(`${app.baseUrl}/api/governance/session`, {
+      body: JSON.stringify({ displayName, documentPath: 'test.md', kind: 'human' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    assert.equal(response.statusCode, 201);
+    return JSON.parse(response.body);
+  };
+
+  const owner = await createGovernanceSession('Owner');
+  const pending = await createGovernanceSession('Pending');
+  assert.equal(pending.state, 'pending');
+
+  assert.equal((await httpRequest(`${app.baseUrl}/api/test/reset-state`, { method: 'POST' })).statusCode, 200);
+  const retained = await httpRequest(`${app.baseUrl}/api/governance/session`, {
+    headers: { Authorization: `Bearer ${owner.credential}` },
+  });
+  assert.equal(retained.statusCode, 200);
+  assert.equal(JSON.parse(retained.body).participants.length, 2);
+
+  assert.equal((await httpRequest(`${app.baseUrl}/api/test/reset-governance-state`, {
+    method: 'POST',
+  })).statusCode, 200);
+  assert.equal((await httpRequest(`${app.baseUrl}/api/governance/session`, {
+    headers: { Authorization: `Bearer ${owner.credential}` },
+  })).statusCode, 401);
+
+  const nextOwner = await createGovernanceSession('Next owner');
+  assert.equal(nextOwner.roleId, 'owner');
 });
 
 test('HTTP server compresses large JSON API responses without changing payloads', async (t) => {
@@ -1131,6 +1193,185 @@ test('HTTP server enforces password auth for API session flow', async (t) => {
   });
   assert.equal(authenticatedApiResponse.statusCode, 200);
   assert.match(authenticatedApiResponse.body, /test\.md/);
+});
+
+test('HTTP server applies password authentication before every Governance API method', async (t) => {
+  const app = await startTestServer({
+    auth: {
+      password: 'test-password-123',
+      strategy: 'password',
+    },
+  });
+  t.after(() => app.close());
+
+  const unauthenticatedRequests = [
+    { method: 'GET', path: '/api/governance/session' },
+    {
+      body: { displayName: 'Owner', documentPath: 'test.md', kind: 'human' },
+      method: 'POST',
+      path: '/api/governance/session',
+    },
+    {
+      body: { roleId: 'reviewer' },
+      method: 'PUT',
+      path: '/api/governance/grants/missing',
+    },
+    { method: 'DELETE', path: '/api/governance/grants/missing' },
+  ];
+  for (const requestOptions of unauthenticatedRequests) {
+    const response = await governanceRequest(app.baseUrl, requestOptions);
+    assert.equal(response.statusCode, 401);
+    assert.equal(JSON.parse(response.body).code, 'AUTH_REQUIRED');
+  }
+
+  const loginResponse = await httpRequest(`${app.baseUrl}/api/auth/session`, {
+    body: JSON.stringify({ password: 'test-password-123' }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  const cookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+  const createSession = async (displayName) => {
+    const response = await governanceRequest(app.baseUrl, {
+      body: { displayName, documentPath: 'test.md', kind: 'human' },
+      cookie,
+      method: 'POST',
+      path: '/api/governance/session',
+    });
+    assert.equal(response.statusCode, 201);
+    return JSON.parse(response.body);
+  };
+  const owner = await createSession('Owner');
+  const participant = await createSession('Participant');
+
+  assert.equal((await governanceRequest(app.baseUrl, {
+    cookie,
+    credential: owner.credential,
+    method: 'GET',
+    path: '/api/governance/session',
+  })).statusCode, 200);
+  assert.equal((await governanceRequest(app.baseUrl, {
+    body: { roleId: 'reviewer' },
+    cookie,
+    credential: owner.credential,
+    method: 'PUT',
+    path: `/api/governance/grants/${participant.participantSessionId}`,
+  })).statusCode, 200);
+  assert.equal((await governanceRequest(app.baseUrl, {
+    cookie,
+    credential: owner.credential,
+    method: 'DELETE',
+    path: `/api/governance/grants/${participant.participantSessionId}`,
+  })).statusCode, 200);
+});
+
+test('HTTP server applies OIDC authentication before Governance routing', async (t) => {
+  const cookieName = 'governance_oidc_auth';
+  const sessionSecret = 'governance-oidc-session-secret';
+  const app = await startTestServer({
+    auth: {
+      oidc: {
+        allowedDomains: [],
+        allowedEmails: [],
+        callbackUrl: 'http://127.0.0.1/api/auth/oidc/callback',
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        flowCookieName: 'governance_oidc_flow',
+        issuer: 'https://accounts.google.com',
+        provider: 'google',
+        publicBaseUrl: 'http://127.0.0.1',
+      },
+      sessionCookieName: cookieName,
+      sessionSecret,
+      strategy: 'oidc',
+    },
+  });
+  t.after(() => app.close());
+
+  const sessionRequest = {
+    body: { displayName: 'Owner', documentPath: 'test.md', kind: 'human' },
+    method: 'POST',
+    path: '/api/governance/session',
+  };
+  const unauthenticated = await governanceRequest(app.baseUrl, sessionRequest);
+  assert.equal(unauthenticated.statusCode, 401);
+  assert.equal(JSON.parse(unauthenticated.body).code, 'AUTH_REQUIRED');
+
+  const cookie = createOidcCookie({
+    cookieName,
+    secret: sessionSecret,
+    user: {
+      email: 'owner@example.com',
+      emailVerified: true,
+      name: 'Owner',
+      picture: '',
+      sub: 'owner-sub',
+    },
+  });
+  const authenticated = await governanceRequest(app.baseUrl, { ...sessionRequest, cookie });
+  assert.equal(authenticated.statusCode, 201);
+});
+
+test('HTTP server applies hosted workspace authorization before Governance routing', async (t) => {
+  const metadataRoot = await mkdtemp(join(tmpdir(), 'collabmd-governance-hosted-'));
+  t.after(() => rm(metadataRoot, { force: true, recursive: true }));
+  const cookieName = 'governance_hosted_auth';
+  const sessionSecret = 'governance-hosted-session-secret';
+  const user = {
+    email: 'admin@example.com',
+    emailVerified: true,
+    name: 'Admin',
+    picture: '',
+    sub: 'admin-sub',
+  };
+  const app = await startTestServer({
+    auth: {
+      oidc: {
+        allowedDomains: [],
+        allowedEmails: [],
+        callbackUrl: 'http://127.0.0.1/api/auth/oidc/callback',
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        flowCookieName: 'governance_hosted_oidc_flow',
+        issuer: 'https://accounts.google.com',
+        provider: 'google',
+        publicBaseUrl: 'http://127.0.0.1',
+      },
+      sessionCookieName: cookieName,
+      sessionSecret,
+      strategy: 'oidc',
+    },
+    hosted: {
+      claim: { email: user.email, token: 'claim-secret' },
+      enabled: true,
+      githubApp: {
+        apiBaseUrl: 'https://api.github.com',
+        appId: '',
+        appSlug: '',
+        flowCookieName: 'governance_hosted_github_flow',
+        htmlBaseUrl: 'https://github.com',
+        privateKey: '',
+      },
+      metadataDbPath: join(metadataRoot, 'hosted.sqlite'),
+    },
+  });
+  t.after(() => app.close());
+
+  const cookie = createOidcCookie({ cookieName, secret: sessionSecret, user });
+  const sessionRequest = {
+    body: { displayName: 'Owner', documentPath: 'test.md', kind: 'human' },
+    cookie,
+    method: 'POST',
+    path: '/api/governance/session',
+  };
+  const denied = await governanceRequest(app.baseUrl, sessionRequest);
+  assert.equal(denied.statusCode, 403);
+  assert.equal(JSON.parse(denied.body).code, 'HOSTED_MEMBERSHIP_REQUIRED');
+
+  await app.server.hostedWorkspaceService.claimWorkspace({ token: 'claim-secret', user });
+  await app.server.hostedWorkspaceService.completeWorkspaceSetup();
+
+  const authorized = await governanceRequest(app.baseUrl, sessionRequest);
+  assert.equal(authorized.statusCode, 201);
 });
 
 test('HTTP server rejects unsupported methods and missing files', async (t) => {

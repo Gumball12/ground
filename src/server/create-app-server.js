@@ -1,5 +1,7 @@
 import { createServer } from 'http';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from './config/env.js';
 import { createAuthService } from './auth/create-auth-service.js';
@@ -29,6 +31,8 @@ import { WorkspaceReconciliation } from './application/workspace-reconciliation.
 import { createWorkspaceStateFileSystemAdapter } from './infrastructure/workspace/workspace-state-file-system-adapter.js';
 import { createSignedCookieManager } from './auth/session-cookie.js';
 import { workspaceStateMetadataEqual } from './domain/workspace-state.js';
+import { validateGovernanceManifest } from './config/governance-manifest.js';
+import { GovernanceSessionRegistry } from './domain/governance-session-registry.js';
 
 function getDisplayHost(host) {
   return host === '127.0.0.1' ? 'localhost' : host;
@@ -53,6 +57,18 @@ function closeHttpServer(httpServer) {
 
 export function createAppServer(config = loadConfig()) {
   const authService = createAuthService(config);
+  const cwdGovernanceManifestPath = resolve(
+    config.governanceManifestPath ?? process.cwd(),
+    'collabmd.governance.json',
+  );
+  const governanceManifestPath = existsSync(cwdGovernanceManifestPath)
+    ? cwdGovernanceManifestPath
+    : fileURLToPath(new URL('../../collabmd.governance.json', import.meta.url));
+  const governanceManifest = config.governanceManifest ?? validateGovernanceManifest(JSON.parse(readFileSync(
+    governanceManifestPath,
+    'utf8',
+  )));
+  const governanceSessionRegistry = new GovernanceSessionRegistry({ manifest: governanceManifest });
   const hostedWorkspaceService = new HostedWorkspaceService({
     claim: config.hosted?.claim,
     enabled: config.hosted?.enabled,
@@ -165,6 +181,8 @@ export function createAppServer(config = loadConfig()) {
     hostedWorkspaceService,
     githubSetupFlow,
     structurizrWorkspaceService,
+    governanceSessionRegistry,
+    governanceManifest,
   );
   const httpServer = createServer((req, res) => {
     requestHandler(req, res).catch((error) => {

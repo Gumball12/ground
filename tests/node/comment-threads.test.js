@@ -6,6 +6,7 @@ import {
   createCommentThreadSharedType,
   normalizeCommentQuote,
   normalizeCommentQuoteForComparison,
+  populateCommentThreads,
   serializeCommentThreads,
 } from '../../src/domain/comment-threads.js';
 
@@ -220,4 +221,50 @@ test('comment thread serialization ignores malformed reactions', () => {
 
   const [serialized] = serializeCommentThreads(threads);
   assert.deepEqual(serialized.messages[0].reactions, []);
+});
+
+test('terminal Proposals serialize and populate without changing resolved comment behavior', () => {
+  const source = new Y.Doc();
+  const sourceThreads = source.getArray('comments');
+  const proposal = {
+    anchorEnd: { assoc: 0, tname: 'codemirror' },
+    anchorEndLine: 1,
+    anchorKind: 'text',
+    anchorQuote: '$100K',
+    anchorStart: { assoc: 0, tname: 'codemirror' },
+    anchorStartLine: 1,
+    baseRevision: 'base',
+    createdAt: 100,
+    createdByDisplayName: 'Reviewer',
+    createdByKind: 'ai',
+    createdByParticipantSessionId: 'reviewer-session',
+    createdByRole: 'reviewer',
+    expectedText: '$100K',
+    id: 'proposal-1',
+    kind: 'proposal',
+    replacementText: '$120K',
+    resolution: 'apply_proposed',
+    resolvedAt: 200,
+    resolvedByParticipantSessionId: 'owner-session',
+    status: 'accepted',
+  };
+  const resolvedComment = createCommentThreadSharedType({
+    anchorEnd: { assoc: 0, type: null },
+    anchorEndLine: 1,
+    anchorKind: 'line',
+    anchorQuote: 'Budget',
+    anchorStart: { assoc: 0, type: null },
+    anchorStartLine: 1,
+    messages: [{ body: 'Done', id: 'comment-1', userName: 'Tester' }],
+  });
+  sourceThreads.push([createCommentThreadSharedType(proposal)]);
+  resolvedComment?.set('resolvedAt', 200);
+  sourceThreads.push([resolvedComment]);
+
+  const serialized = serializeCommentThreads(sourceThreads);
+  const target = new Y.Doc();
+  populateCommentThreads(target.getArray('comments'), serialized);
+
+  assert.deepEqual(serialized, [proposal]);
+  assert.deepEqual(serializeCommentThreads(target.getArray('comments')), [proposal]);
 });

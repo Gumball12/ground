@@ -1,4 +1,5 @@
 import { createAuthApiHandler } from './create-auth-api-handler.js';
+import { createGovernanceApiHandler } from './create-governance-api-handler.js';
 import { createGitApiCommandHandler } from './create-git-api-command-handler.js';
 import { createGitApiQueryHandler } from './create-git-api-query-handler.js';
 import { createHostedApiHandler } from './create-hosted-api-handler.js';
@@ -38,6 +39,8 @@ export function createRequestHandler(
   hostedWorkspaceService = null,
   githubSetupFlow = null,
   structurizrWorkspaceService = null,
+  governanceSessionRegistry = null,
+  governanceManifest = null,
 ) {
   const handleStaticRequest = createStaticHandler(config, authService, searchService);
   const handleAuthApi = createAuthApiHandler({ authService });
@@ -46,6 +49,9 @@ export function createRequestHandler(
     githubSetupFlow,
     hostedWorkspaceService,
   });
+  const handleGovernanceApi = governanceSessionRegistry && governanceManifest
+    ? createGovernanceApiHandler({ manifest: governanceManifest, registry: governanceSessionRegistry })
+    : null;
   const handleGitApiQuery = createGitApiQueryHandler({ gitService });
   const handleGitApiCommand = createGitApiCommandHandler({
     authService,
@@ -122,7 +128,9 @@ export function createRequestHandler(
       return false;
     }
 
-    if (requestUrl.pathname === '/api/test/reset-state' && req.method === 'POST') {
+    const routeKey = `${req.method} ${requestUrl.pathname}`;
+
+    if (routeKey === 'POST /api/test/reset-state') {
       await fileSystemSyncService?.resetForExternalStateChange?.();
       await roomRegistry?.reset?.();
       await backlinkIndex?.build?.();
@@ -132,7 +140,13 @@ export function createRequestHandler(
       return true;
     }
 
-    if (requestUrl.pathname === '/api/test/hydrate-delay' && req.method === 'POST') {
+    if (routeKey === 'POST /api/test/reset-governance-state') {
+      await governanceSessionRegistry?.reset?.();
+      jsonResponse(req, res, 200, { ok: true });
+      return true;
+    }
+
+    if (routeKey === 'POST /api/test/hydrate-delay') {
       const body = await parseJsonBody(req).catch(() => ({}));
       testControls.wsRoomHydrateDelayMs = Math.max(0, Number(body?.delayMs) || 0);
       await fileSystemSyncService?.resetForExternalStateChange?.();
@@ -196,6 +210,10 @@ export function createRequestHandler(
         jsonResponse(req, res, hostedAuthorization.statusCode, hostedAuthorization.body);
         return;
       }
+    }
+
+    if (handleGovernanceApi && await handleGovernanceApi(req, res, requestUrl)) {
+      return;
     }
 
     if (await handleStructurizrApi(req, res, requestUrl)) {

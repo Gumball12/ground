@@ -6,6 +6,8 @@ export const COMMENT_ANCHOR_QUOTE_MAX_LENGTH = 280;
 export const COMMENT_REACTION_EMOJI_MAX_LENGTH = 16;
 
 const COMMENT_ANCHOR_KINDS = new Set(['diagram-element', 'line', 'text']);
+const PROPOSAL_STATUSES = new Set(['open', 'accepted', 'rejected', 'conflict']);
+const PROPOSAL_RESOLUTIONS = new Set(['apply_proposed', 'keep_current']);
 
 function asFiniteNumber(value) {
   return Number.isFinite(value) ? value : null;
@@ -266,6 +268,41 @@ export function normalizeCommentAnchor(record = {}) {
 }
 
 export function createCommentThreadSharedType(record = {}) {
+  if (record.kind === 'proposal') {
+    const anchor = normalizeCommentAnchor(record);
+    const status = PROPOSAL_STATUSES.has(record.status) ? record.status : null;
+    const id = asString(record.id);
+    if (!anchor || !status || !id) {
+      return null;
+    }
+
+    const proposal = new Y.Map();
+    Object.entries({
+      ...anchor,
+      baseRevision: asString(record.baseRevision),
+      createdAt: asFiniteNumber(record.createdAt) ?? Date.now(),
+      createdByDisplayName: asString(record.createdByDisplayName),
+      createdByKind: asString(record.createdByKind),
+      createdByParticipantSessionId: asString(record.createdByParticipantSessionId),
+      createdByRole: asString(record.createdByRole),
+      expectedText: asString(record.expectedText),
+      id,
+      kind: 'proposal',
+      replacementText: asString(record.replacementText),
+      status,
+    }).forEach(([key, value]) => proposal.set(key, value));
+
+    const resolvedAt = asFiniteNumber(record.resolvedAt);
+    const resolution = PROPOSAL_RESOLUTIONS.has(record.resolution) ? record.resolution : null;
+    const resolvedByParticipantSessionId = asString(record.resolvedByParticipantSessionId);
+    if (resolvedAt !== null) proposal.set('resolvedAt', resolvedAt);
+    if (resolution) proposal.set('resolution', resolution);
+    if (resolvedByParticipantSessionId) {
+      proposal.set('resolvedByParticipantSessionId', resolvedByParticipantSessionId);
+    }
+    return proposal;
+  }
+
   if (asFiniteNumber(record.resolvedAt) !== null) {
     return null;
   }
@@ -310,6 +347,46 @@ export function createCommentThreadSharedType(record = {}) {
 }
 
 export function serializeCommentThread(thread) {
+  if (readThreadValue(thread, 'kind') === 'proposal') {
+    const anchor = normalizeCommentAnchor({
+      anchorEnd: readThreadValue(thread, 'anchorEnd'),
+      anchorEndLine: readThreadValue(thread, 'anchorEndLine'),
+      anchorKind: readThreadValue(thread, 'anchorKind'),
+      anchorQuote: readThreadValue(thread, 'anchorQuote'),
+      anchorStart: readThreadValue(thread, 'anchorStart'),
+      anchorStartLine: readThreadValue(thread, 'anchorStartLine'),
+    });
+    const status = readThreadValue(thread, 'status');
+    const id = asString(readThreadValue(thread, 'id'));
+    if (!anchor || !PROPOSAL_STATUSES.has(status) || !id) {
+      return null;
+    }
+
+    const proposal = {
+      ...anchor,
+      baseRevision: asString(readThreadValue(thread, 'baseRevision')),
+      createdAt: asFiniteNumber(readThreadValue(thread, 'createdAt')) ?? Date.now(),
+      createdByDisplayName: asString(readThreadValue(thread, 'createdByDisplayName')),
+      createdByKind: asString(readThreadValue(thread, 'createdByKind')),
+      createdByParticipantSessionId: asString(readThreadValue(thread, 'createdByParticipantSessionId')),
+      createdByRole: asString(readThreadValue(thread, 'createdByRole')),
+      expectedText: asString(readThreadValue(thread, 'expectedText')),
+      id,
+      kind: 'proposal',
+      replacementText: asString(readThreadValue(thread, 'replacementText')),
+      status,
+    };
+    const resolvedAt = asFiniteNumber(readThreadValue(thread, 'resolvedAt'));
+    const resolution = readThreadValue(thread, 'resolution');
+    const resolvedByParticipantSessionId = asString(readThreadValue(thread, 'resolvedByParticipantSessionId'));
+    if (resolvedAt !== null) proposal.resolvedAt = resolvedAt;
+    if (PROPOSAL_RESOLUTIONS.has(resolution)) proposal.resolution = resolution;
+    if (resolvedByParticipantSessionId) {
+      proposal.resolvedByParticipantSessionId = resolvedByParticipantSessionId;
+    }
+    return proposal;
+  }
+
   if (isResolvedThread(thread)) {
     return null;
   }

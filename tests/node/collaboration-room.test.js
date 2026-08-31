@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import { CollaborationRoom } from '../../src/server/domain/collaboration/collaboration-room.js';
 import { RoomRegistry } from '../../src/server/domain/collaboration/room-registry.js';
 import { createCommentThreadSharedType } from '../../src/domain/comment-threads.js';
+import { createProposal } from '../../src/domain/governance-proposals.js';
 import {
   EXCALIDRAW_META_KEY,
   EXCALIDRAW_SCHEMA_VERSION_KEY,
@@ -457,6 +458,112 @@ test('CollaborationRoom preserves pending edits when external content changes el
   assert.equal(ytext.toString(), '## A\nalpha HUMAN\n\n## B\nbravo\n\n## C\ncharlie EXTERNAL\n');
   assert.equal(writes.at(-1).includeContent, true);
   assert.equal(writes.at(-1).content, ytext.toString());
+});
+
+test('CollaborationRoom appends distinct system reconciliation and Proposal lifecycle Activity atomically', async (t) => {
+  let diskContent = 'Budget is $100K.';
+  let diskThreads = [];
+  const room = new CollaborationRoom({
+    maxBufferedAmountBytes: 1024,
+    name: 'governed.md',
+    onEmpty: () => {},
+    vaultFileStore: {
+      async readCollaborationSnapshot() {
+        return null;
+      },
+      async readCommentThreads() {
+        return diskThreads;
+      },
+      async readEditableVaultContent() {
+        return diskContent;
+      },
+      async persistCollaborationState(_path, { commentThreads }) {
+        diskThreads = commentThreads;
+      },
+    },
+  });
+
+  t.after(() => room.destroy());
+  await room.hydrate();
+  const ytext = room.doc.getText('codemirror');
+  const proposal = createProposal({
+    activity: room.doc.getArray('governanceActivity'),
+    comments: room.doc.getArray('comments'),
+    ydoc: room.doc,
+    ytext,
+  }, {
+    actor: {
+      displayName: 'Reviewer',
+      kind: 'ai',
+      participantSessionId: 'reviewer-session',
+      roleId: 'reviewer',
+    },
+    anchor: {
+      anchorEnd: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, 15)),
+      anchorEndLine: 1,
+      anchorKind: 'text',
+      anchorQuote: '$100K',
+      anchorStart: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, 10)),
+      anchorStartLine: 1,
+    },
+    baseRevision: 'base',
+    expectedText: '$100K',
+    id: 'proposal-1',
+    replacementText: '$120K',
+  });
+  const updates = [];
+  await room.persist();
+  room.doc.on('update', (update, origin) => {
+    if (origin === 'workspace-reconcile') updates.push(update);
+  });
+  diskContent = 'Budget is $110K.';
+
+  await room.reloadFromDisk();
+
+  const sharedProposal = room.doc.getArray('comments').toArray()
+    .find((record) => record.get('id') === proposal.id);
+  assert.equal(sharedProposal.get('status'), 'conflict');
+  assert.deepEqual(room.doc.getArray('governanceActivity').toArray().map((record) => ({
+    action: record.action,
+    actor: record.actor,
+    outcome: record.outcome,
+    target: record.target,
+  })), [
+    {
+      action: 'proposal_created',
+      actor: {
+        displayName: 'Reviewer',
+        kind: 'ai',
+        participantSessionId: 'reviewer-session',
+        roleId: 'reviewer',
+      },
+      outcome: 'open',
+      target: proposal.id,
+    },
+    {
+      action: 'proposal_status_changed',
+      actor: {
+        displayName: 'system',
+        kind: 'system',
+        participantSessionId: 'system',
+        roleId: 'system',
+      },
+      outcome: 'conflict',
+      target: proposal.id,
+    },
+    {
+      action: 'external_reconciliation',
+      actor: {
+        displayName: 'system',
+        kind: 'system',
+        participantSessionId: 'system',
+        roleId: 'system',
+      },
+      outcome: 'applied',
+      target: 'governed.md',
+    },
+  ]);
+  assert.equal(updates.length, 1);
 });
 
 test('CollaborationRoom reuses cached initial sync payload until the document changes', async () => {

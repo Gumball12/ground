@@ -22,7 +22,15 @@ import {
 } from '../../../domain/excalidraw-room-codec.js';
 import { isDrawioLeaseRoom } from '../../../domain/drawio-room.js';
 import { normalizeWorkspaceEvent } from '../../../domain/workspace-change.js';
+import { revalidateOpenProposals } from '../../../domain/governance-proposals.js';
 import { WORKSPACE_EVENT_MAX_MESSAGES, WORKSPACE_ROOM_NAME } from '../../../domain/workspace-room.js';
+
+const SYSTEM_ACTOR = Object.freeze({
+  displayName: 'system',
+  kind: 'system',
+  participantSessionId: 'system',
+  roleId: 'system',
+});
 
 function closeSlowClient(ws, clientState, { maxBufferedAmountBytes, name }) {
   if (!clientState || clientState.backpressureCloseIssued) {
@@ -617,6 +625,19 @@ export class CollaborationRoom {
           }
           populateCommentThreads(comments, commentThreads);
         }
+        if (replacement) {
+          revalidateOpenProposals({
+            activity: this.doc.getArray('governanceActivity'),
+            comments,
+            target: this.name,
+            ydoc: this.doc,
+            ytext,
+          }, {
+            actor: SYSTEM_ACTOR,
+            origin: 'workspace-reconcile',
+            system: true,
+          });
+        }
       }, 'workspace-reconcile');
     }
 
@@ -626,6 +647,9 @@ export class CollaborationRoom {
       this.schedulePersist();
     } else {
       this.resetContentBaseline();
+      if (replacement) {
+        this.schedulePersist();
+      }
     }
     return {
       highlightRange: replacement
