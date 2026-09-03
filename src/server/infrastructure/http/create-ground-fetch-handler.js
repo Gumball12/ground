@@ -1,3 +1,5 @@
+import { GROUND_ERROR_STATUS } from '../../../domain/ground-hosted-contract.js';
+
 export const GROUND_OPERATIONS = Object.freeze([
   'create_document', 'join_document', 'get_session', 'hydrate_document',
   'append_update', 'list_roles', 'list_participants', 'assign_role',
@@ -6,17 +8,6 @@ export const GROUND_OPERATIONS = Object.freeze([
 ]);
 
 const GROUND_ENDPOINT_PATH = '/api/ground';
-
-const ERROR_STATUS = Object.freeze({
-  GROUND_FORBIDDEN: 403,
-  GROUND_INVALID_REQUEST: 400,
-  GROUND_RATE_LIMITED: 429,
-  GROUND_STALE_STATE: 409,
-  GROUND_TEMPORARILY_UNAVAILABLE: 503,
-  GROUND_UNAUTHENTICATED: 401,
-  GROUND_UNAVAILABLE: 404,
-  GROUND_UPDATE_TOO_LARGE: 413,
-});
 
 const SAFE_HEADERS = Object.freeze({
   'cache-control': 'no-store',
@@ -29,7 +20,7 @@ const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
   status,
 });
 
-const errorResponse = (code) => jsonResponse(ERROR_STATUS[code], { code });
+const errorResponse = (code) => jsonResponse(GROUND_ERROR_STATUS[code], { code });
 
 const readBearerToken = (request) => {
   const header = request.headers.get('authorization') ?? '';
@@ -103,7 +94,7 @@ export const createGroundFetchHandler = ({
       try {
         return await dispatch(request);
       } catch (error) {
-        const code = ERROR_STATUS[error?.code] ? error.code : 'GROUND_TEMPORARILY_UNAVAILABLE';
+        const code = GROUND_ERROR_STATUS[error?.code] ? error.code : 'GROUND_TEMPORARILY_UNAVAILABLE';
         return errorResponse(code);
       }
     },

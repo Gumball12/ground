@@ -4,6 +4,7 @@ import {
   GROUND_ACCESS_STATES,
   GROUND_ACTIVITY_SOURCES,
   GROUND_COMPACTION_UPDATE_CANDIDATES,
+  GROUND_ERROR_STATUS,
   GROUND_LIMIT_CANDIDATES,
   GROUND_OPERATION_KINDS,
   createGroundDocumentId,
@@ -113,4 +114,18 @@ test('exposes the Ground access, operation, and activity vocabularies', () => {
     'access_management',
     'system_reconciliation',
   ]);
+});
+
+test('exposes the shared Ground error code to HTTP status contract', () => {
+  assert.deepEqual({ ...GROUND_ERROR_STATUS }, {
+    GROUND_FORBIDDEN: 403,
+    GROUND_INVALID_REQUEST: 400,
+    GROUND_RATE_LIMITED: 429,
+    GROUND_STALE_STATE: 409,
+    GROUND_TEMPORARILY_UNAVAILABLE: 503,
+    GROUND_UNAUTHENTICATED: 401,
+    GROUND_UNAVAILABLE: 404,
+    GROUND_UPDATE_TOO_LARGE: 413,
+  });
+  assert.equal(Object.isFrozen(GROUND_ERROR_STATUS), true);
 });

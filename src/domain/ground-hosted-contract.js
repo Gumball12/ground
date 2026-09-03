@@ -17,6 +17,19 @@ export const GROUND_ACTIVITY_SOURCES = Object.freeze([
   'system_reconciliation',
 ]);
 
+// The Ground HTTP failure contract. The server maps a service error to its
+// status; the client refuses to surface any code absent from this table.
+export const GROUND_ERROR_STATUS = Object.freeze({
+  GROUND_FORBIDDEN: 403,
+  GROUND_INVALID_REQUEST: 400,
+  GROUND_RATE_LIMITED: 429,
+  GROUND_STALE_STATE: 409,
+  GROUND_TEMPORARILY_UNAVAILABLE: 503,
+  GROUND_UNAUTHENTICATED: 401,
+  GROUND_UNAVAILABLE: 404,
+  GROUND_UPDATE_TOO_LARGE: 413,
+});
+
 export const GROUND_LIMIT_CANDIDATES = Object.freeze([64_000, 200_000, 500_000, 1_000_000]);
 
 export const GROUND_COMPACTION_UPDATE_CANDIDATES = Object.freeze([50, 100, 200]);
