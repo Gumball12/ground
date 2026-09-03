@@ -83,3 +83,40 @@ test('rejects an origin carrying a path, query, or hash', () => {
 test('rejects a value that is not an absolute URL', () => {
   assert.throws(() => loadGroundHostedEnv({ ...validEnv, SUPABASE_URL: 'project.supabase.co' }), /absolute/u);
 });
+
+test('exposes the configured origin and only the exact staged Vercel origin', async () => {
+  const base = {
+    GROUND_PUBLIC_ORIGIN: 'https://ground.example',
+    GROUND_RATE_LIMIT_HMAC_KEY: 'key',
+    NODE_ENV: 'production',
+    SUPABASE_PUBLISHABLE_KEY: 'publishable',
+    SUPABASE_SECRET_KEY: 'secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+  };
+
+  assert.deepEqual(loadGroundHostedEnv(base).allowedOrigins, ['https://ground.example']);
+  assert.deepEqual(
+    loadGroundHostedEnv({ ...base, VERCEL_URL: 'ground-abc123.vercel.app' }).allowedOrigins,
+    ['https://ground.example', 'https://ground-abc123.vercel.app'],
+  );
+  assert.equal(Object.isFrozen(loadGroundHostedEnv(base).allowedOrigins), true);
+});
+
+test('never turns a hostile VERCEL_URL into an allowed origin', async () => {
+  const base = {
+    GROUND_PUBLIC_ORIGIN: 'https://ground.example',
+    GROUND_RATE_LIMIT_HMAC_KEY: 'key',
+    NODE_ENV: 'production',
+    SUPABASE_PUBLISHABLE_KEY: 'publishable',
+    SUPABASE_SECRET_KEY: 'secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+  };
+
+  for (const value of ['', '  ', 'null', 'evil.test/../ground', 'https://evil.test', '*.vercel.app']) {
+    assert.deepEqual(
+      loadGroundHostedEnv({ ...base, VERCEL_URL: value }).allowedOrigins,
+      ['https://ground.example'],
+      value,
+    );
+  }
+});

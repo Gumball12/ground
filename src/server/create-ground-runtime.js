@@ -20,7 +20,7 @@ export const createGroundRuntime = async ({ env, fetchImpl, limits } = {}) => {
   ]);
 
   const handler = createGroundFetchHandler({
-    allowedOrigins: [config.publicOrigin],
+    allowedOrigins: config.allowedOrigins,
     authVerifier: createGroundAuthVerifier({
       fetchImpl,
       publishableKey: config.supabasePublishableKey,

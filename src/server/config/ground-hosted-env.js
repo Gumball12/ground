@@ -41,6 +41,24 @@ const requireOrigin = ({ allowLoopback, name, value }) => {
   return url.origin;
 };
 
+// Vercel sets VERCEL_URL to the bare host of the current deployment. Only that
+// exact host becomes an extra allowed Origin: no suffix matching, no wildcard,
+// and nothing a caller can influence.
+const stagedOrigin = (vercelUrl) => {
+  const host = typeof vercelUrl === 'string' ? vercelUrl.trim() : '';
+  // `null` is a legal host string but the value browsers send for an opaque
+  // Origin, so it must never become an allowed Origin.
+  if (host === 'null' || !host.includes('.') || !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/u.test(host)) {
+    return null;
+  }
+  try {
+    const url = new URL(`https://${host}`);
+    return url.origin === `https://${host}` ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
+
 export const loadGroundHostedEnv = (env = {}) => {
   const values = Object.fromEntries(
     REQUIRED_VARIABLES.map((name) => [name, readRequired(env, name)]),
@@ -57,7 +75,12 @@ export const loadGroundHostedEnv = (env = {}) => {
     value: values.SUPABASE_URL,
   });
 
+  const staged = stagedOrigin(env.VERCEL_URL);
+
   return Object.freeze({
+    allowedOrigins: Object.freeze(staged && staged !== publicOrigin
+      ? [publicOrigin, staged]
+      : [publicOrigin]),
     publicConfig: Object.freeze({
       groundHosted: true,
       supabasePublishableKey: values.SUPABASE_PUBLISHABLE_KEY,
