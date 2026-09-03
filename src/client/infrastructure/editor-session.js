@@ -91,10 +91,13 @@ function anchorForConflict(ytext, content, oldText) {
   };
 }
 
+const defaultCreateCollaborationClient = (options) => new EditorCollaborationClient(options);
+
 export class EditorSession {
   constructor({
     canComment = true,
     canEdit = true,
+    createCollaborationClient = defaultCreateCollaborationClient,
     editorContainer,
     lineWrappingEnabled = true,
     vimModeEnabled = false,
@@ -131,7 +134,7 @@ export class EditorSession {
     this.destroying = false;
     const governanceSnapshot = this.governed ? this.getGovernanceSnapshot() : null;
 
-    this.collaborationClient = new EditorCollaborationClient({
+    this.collaborationClient = createCollaborationClient({
       governanceSnapshot,
       localUser,
       onAwarenessChange: (users) => this.onAwarenessChange?.(users),
@@ -659,6 +662,12 @@ export class EditorSession {
 
   waitForInitialSync(timeoutMs = 1500) {
     return this.collaborationClient.waitForInitialSync(timeoutMs);
+  }
+
+  // A hosted transport persists edits over HTTP, so callers can wait for the
+  // server to confirm them. The local WebSocket transport has nothing to await.
+  waitForPendingUpdates() {
+    return this.collaborationClient.waitForPendingUpdates?.() ?? Promise.resolve();
   }
 
   destroy() {
