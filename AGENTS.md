@@ -111,6 +111,13 @@ See `docs/architecture.md` for the exact allowed imports.
   execution.
 - `participantKind` is self-declared presentation metadata, never verified
   authorization identity.
+- Governed Roles are room-lifetime: Pending, Active, or Revoked; do not
+  reintroduce duration or Comment capability without a new approved design.
+- Removed CollabMD product surfaces must have no DOM, bootstrap, focus, or
+  accessibility-tree entry; do not reintroduce them as hidden controls.
+- Pending and Revoked pages are status-only and must not retain document
+  content, removed-feature UI, or personal-history state in the page.
+- Activity source is required and uses the fixed domain vocabulary.
 - Proposal, Conflict, and Activity records are outside document Undo and Redo
   semantics.
 - The supported governance threat boundary covers the shipped UI and WebMCP

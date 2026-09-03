@@ -5,6 +5,10 @@
 **Target:** OpenAI WebMCP Challenge  
 **Base project:** [CollabMD](https://github.com/andes90/collabmd) (MIT)
 
+> **Amendment:** The focused workspace, room-lifetime Role, and governed UI
+> requirements are superseded by
+> `docs/superpowers/specs/2026-09-01-focused-governed-workspace-design.md`.
+
 ## 1. Summary
 
 Build a WebMCP-native governed collaboration layer on top of CollabMD. One human and multiple AI page sessions edit one live Markdown document. Within the supported CollabMD UI and WebMCP flows, each session receives a room-scoped Role that determines whether it can read, comment, propose, edit, resolve conflicts, or manage Grants.

@@ -1,97 +1,112 @@
 # Governed Collaboration for WebMCP
 
-Governed Collaboration adds visible, configurable permissions to one live Markdown document shared by a human and multiple browser-agent page sessions.
+Governed Collaboration is a focused workspace for one live Markdown document
+shared by human- and AI-labelled browser page sessions. It adds visible Roles,
+server-authoritative access checks, Proposals, deterministic Conflicts, and
+collaboration Activity to CollabMD's synchronized editor.
 
-The project targets the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/). It is locally implemented and packaged; this README does not claim a public deployment, public fork URL, or recorded demo.
+The project targets the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/).
+It is implemented and packaged for local verification. This README does not
+claim a public deployment, a live ChatGPT verification, a Challenge submission,
+or a recorded demo.
 
-## Why it exists
+## Focused product contract
 
-Realtime editors already merge concurrent text. Mixed human/agent work also needs an answer to a different question: who may read, propose, edit, resolve, or change access right now?
+The focused governed workspace is the only product mode. It contains one
+Markdown editor, one Participant bar, and, for the Owner only, `Review`,
+`Activity`, `Roles`, and `Manage access` surfaces.
 
-This MVP adds:
+- The first successful page session becomes the immutable Owner for the
+  in-memory room lifetime.
+- The Owner can explicitly `Assign role`, `Update role`, or `Revoke access` for
+  other Participants.
+- Owner, Editor, and Reviewer Roles remain active until the Owner changes or
+  revokes them, or the server restarts.
+- Pending and Revoked Participants receive status-only pages. They have no
+  document content, editor, removed-feature UI, personal Undo/Redo history, or
+  WebMCP document tools.
+- An active Editor receives a writable editor. An active Reviewer receives a
+  read-only editor. Neither sees Owner management or governance surfaces.
+- The server authorizes every supported WebMCP execution; visible controls and
+  tool discovery are usability gates, not the authority.
 
-- page-session capability gating for Owner, Editor, and Reviewer Roles;
-- runtime Grants with assignment, expiry, Role changes, and revocation;
-- Role-aware WebMCP tool discovery with authorization checked again at execution time;
-- synchronized Proposals, grouped Conflicts, and human resolution;
-- a visible Participant bar, Review rail, Activity history, Roles matrix, and Manage access dialog;
-- deterministic overlap conflict handling when an exact target or anchor is no longer current.
-
-It deliberately governs supported UI/WebMCP flows instead of replacing the collaborative editor or claiming a general authorization system.
+The product has no access duration or expiry, `Comment` capability, preview,
+Chat, file tree, multi-document navigation, classic/full CollabMD mode, or
+hidden switch that restores those features. Shared lower-level primitives may
+remain where the focused editor still consumes them, but they are not product
+surfaces.
 
 ## Built on CollabMD
 
-This repository is based on [CollabMD](https://github.com/andes90/collabmd), copyright 2026 andes90, under the MIT License. The original [`LICENSE`](LICENSE) is preserved.
+This repository is based on [CollabMD](https://github.com/andes90/collabmd),
+copyright 2026 andes90, under the MIT License. The original [`LICENSE`](LICENSE)
+is preserved.
 
-The MVP reuses CollabMD's:
+The focused MVP reuses CollabMD's filesystem-backed Markdown content,
+CodeMirror editor, Yjs text synchronization and convergence, Participant
+awareness and cursors, exact-text revision guard, and active-document WebMCP
+integration. The added product layer governs supported browser UI and WebMCP
+flows; it is not a new CRDT editor or a general authorization system.
 
-- Markdown editor and filesystem-backed vault;
-- Yjs document synchronization, convergence, presence, and cursors;
-- synchronized comments and persistence;
-- exact-text revision guard;
-- active-document WebMCP tools;
-- local duplicate-tab lock.
+## Access states and tools
 
-The added product layer is page-session governance for mixed human/agent collaboration. It is not a new CRDT editor.
+| Access | Visible workspace | WebMCP document tools |
+|---|---|---|
+| Owner | Writable editor, Participant bar, Manage access, Review, Activity, Roles | Read, apply, propose |
+| Editor | Writable editor and Participant bar | Read, apply, propose |
+| Reviewer | Read-only editor and Participant bar | Read, propose |
+| Pending | `Waiting for access` status page and Participant bar | None |
+| Revoked | `Access revoked` status page and Participant bar | None |
 
-## Three-session walkthrough
-
-Use one `README.md` document in three independent page sessions. Separate browser profiles or contexts avoid copying the same tab-scoped session.
-
-1. Open the document in the first page session. Atomic room creation makes that session the immutable Owner for the room lifetime.
-2. Open two more page sessions with `?participantKind=ai` and label them `Writer` and `Reviewer`. They begin pending, without document access.
-3. In **Manage access**, assign `Editor` to Writer and `Reviewer` to Reviewer, with a Grant duration.
-4. Writer discovers read, apply, and propose WebMCP tools and can directly edit the document.
-5. Reviewer discovers read and propose tools. A Proposal is synchronized for the Owner to review without directly changing the document.
-6. Make two stale structured changes at the same target. They appear as a grouped Conflict while remaining individually selectable in **Review**.
-7. The Owner chooses **Keep current** or **Apply** for one Proposal. Overlapping open Proposals are revalidated.
-8. Revoke Writer in **Manage access**. After Writer receives the updated snapshot, even a previously discovered apply tool is denied.
-9. Inspect **Activity** for collaboration history and **Roles** for the Role-by-Capability matrix.
-
-Only the exact query `?participantKind=ai` creates an `ai`-labelled page session; omission or any other value uses `human`. For example, an agent page may open `http://127.0.0.1:1234/?participantKind=ai#file=README.md`. This value and names such as `Writer` and `Reviewer` are self-declared presentation metadata, not authenticated person, provider, model, or account claims. They never affect authorization.
-
-## Role configuration
-
-The server loads `collabmd.governance.json` from the process working directory when present, otherwise it uses the default manifest included in the npm package and Docker image:
-
-```json
-{
-  "roles": {
-    "owner": [
-      "document.read",
-      "document.comment",
-      "document.suggest",
-      "document.edit",
-      "conflict.resolve",
-      "grant.manage"
-    ],
-    "editor": [
-      "document.read",
-      "document.comment",
-      "document.suggest",
-      "document.edit"
-    ],
-    "reviewer": [
-      "document.read",
-      "document.comment",
-      "document.suggest"
-    ]
-  },
-  "defaultGrantMinutes": 60
-}
-```
-
-Roles may be recomposed from the fixed capability vocabulary. Adding a new capability still requires an application command that implements and enforces it. The Owner Role must include `grant.manage`; invalid Roles, capabilities, or durations fail startup.
-
-The WebMCP surface derived from this manifest is:
+The concrete tool matrix is:
 
 | Role | Tools |
 |---|---|
 | Owner / Editor | `collabmd_read_active_document`, `collabmd_apply_text_edits`, `collabmd_propose_text_edit` |
 | Reviewer | `collabmd_read_active_document`, `collabmd_propose_text_edit` |
-| Pending / expired / revoked | No document tools |
+| Pending / Revoked | No document tools |
 
-Grant management and Conflict resolution remain Owner UI actions, not WebMCP tools.
+Access management and Conflict resolution are Owner UI actions, not WebMCP
+tools. Cached tool calls are still reauthorized by the server when executed.
+
+## Role configuration
+
+The server loads `collabmd.governance.json` from the process working directory
+when present; otherwise it uses the default manifest included in the npm
+package and Docker image.
+
+```json
+{
+  "roles": {
+    "owner": ["document.read", "document.suggest", "document.edit", "conflict.resolve", "grant.manage"],
+    "editor": ["document.read", "document.suggest", "document.edit"],
+    "reviewer": ["document.read", "document.suggest"]
+  }
+}
+```
+
+This is the complete focused capability vocabulary. The Owner Role must include
+`grant.manage`. Removed capabilities and duration fields fail configuration
+validation instead of being silently accepted.
+
+## Activity boundary
+
+Owner-only `Activity` is a latest-first collaboration history. Each item shows
+the actor and Role at action time, action, timestamp, source, outcome, and
+target.
+
+The fixed source labels are:
+
+- `Document editor`
+- `WebMCP apply`
+- `WebMCP proposal`
+- `Owner decision`
+- `Access management`
+- `System reconciliation`
+
+Activity does not store full direct-edit diffs, record every denied or no-op
+command, or provide tamper resistance. It is synchronized collaboration
+history, not a durable security audit log.
 
 ## Run locally with Node 26
 
@@ -99,7 +114,9 @@ Requirements:
 
 - Node.js 26 or newer;
 - npm;
-- ripgrep (`rg`), which powers global text search and is included in the Docker image; on macOS, install it with `brew install ripgrep`.
+- ripgrep (`rg`), used by global text search infrastructure retained below the
+  focused product surface and included in the Docker image. On macOS, install
+  it with `brew install ripgrep`.
 
 ```bash
 npm ci
@@ -111,83 +128,108 @@ npm run start:prod -- data/vault --no-tunnel
 
 Open `http://127.0.0.1:1234/#file=README.md`.
 
-The release checks are:
+The current source verification commands are:
 
 ```bash
+npm run lint
 npm run build
 npm run check
 npm run test:e2e:prebuilt
-git diff --check
 ```
 
-`npm run check` runs lint, guardrails, unit tests, integration tests, and browser tests. `npm run test:e2e:prebuilt` runs the Playwright suite against the existing build.
+`npm run check` runs lint, guardrails, unit tests, integration tests, and browser
+tests. `npm run test:e2e:prebuilt` runs the full Playwright suite against the
+existing build.
 
-## Deterministic demo seed and reset
+## Deterministic walkthrough and reset
 
-Seed the ignored local vault from the tracked launch brief:
+Use separate browser profiles or browser contexts so each page has an
+independent Participant session. Copying a tab does not create a distinct
+session.
+
+1. Seed `data/vault/README.md` from `docs/demo/launch-plan.md` and start the
+   server.
+2. Open the document in the first browser context. That page becomes Owner.
+3. Open Writer and Reviewer in separate contexts with
+   `?participantKind=ai#file=README.md`. Both begin Pending.
+4. In `Manage access`, choose Editor for Writer and click `Assign role`; choose
+   Reviewer for Reviewer and click `Assign role`.
+5. Edit as Writer, create a Proposal as Reviewer, and create same-location stale
+   Proposals to show a grouped Conflict.
+6. As Owner, use `Keep current` or `Apply`, then inspect the actor, action, time,
+   source, outcome, and target in `Activity`.
+7. Click `Revoke access` for Writer. The Writer page becomes status-only and a
+   previously discovered apply tool is denied when executed.
+
+Only the exact query `?participantKind=ai` applies an AI presentation label;
+omission or any other value uses Human. Labels and display names are
+self-declared metadata, not verified identities, providers, models, or accounts,
+and never affect authorization.
+
+To reset deterministically, stop the running server, replace the document, and
+start a new process:
 
 ```bash
-mkdir -p data/vault
 cp docs/demo/launch-plan.md data/vault/README.md
+npm run start:prod -- data/vault --no-tunnel
 ```
 
-The document keeps `$100K`, `$110K`, and `$120K` visually distinct so exact-text edit and Proposal prompts can be rehearsed without changing the scenario.
+The new server process clears the in-memory Owner and Role assignments. There
+is no public reset endpoint or reset button.
 
-Runtime Grants and the Owner session are intentionally held in server memory. The operator-only reset is a process restart plus a fresh seed copy:
+## Local package and container verification
+
+Inspect the npm package contents without publishing:
 
 ```bash
-docker compose -f docker-compose.demo.yml restart collabmd
-cp docs/demo/launch-plan.md data/vault/README.md
+npm pack --dry-run
 ```
 
-There is no public reset endpoint or reset button.
-
-## Local Docker packaging
-
-The existing multi-stage [`Dockerfile`](Dockerfile) builds the app. The demo Compose file adds only the app and Caddy; it does not add hosted mode, OIDC, diagram services, replicas, or a deployment framework.
-
-Validate the Compose configuration with the reserved `.example` hostname, then smoke-test the app container directly:
+Validate the local Compose configuration and smoke-test the image's packaged
+default governance manifest without a custom manifest bind:
 
 ```bash
-mkdir -p data/vault
-cp docs/demo/launch-plan.md data/vault/README.md
-WEBMCP_HOSTNAME=governed-collaboration.example docker compose -f docker-compose.demo.yml config
-docker build -t collabmd-governed:local .
+WEBMCP_HOSTNAME=governed-collaboration.example docker compose -f docker-compose.demo.yml config --quiet
+docker build -t collabmd-governed:focused .
 docker run --rm -d \
-  --name collabmd-governed-local \
-  -p 127.0.0.1:1234:1234 \
-  --mount type=bind,src="$PWD/data/vault",dst=/data \
+  --name collabmd-governed-focused-smoke \
+  -p 127.0.0.1:12345:1234 \
   -e HOST=0.0.0.0 \
   -e PORT=1234 \
   -e COLLABMD_VAULT_DIR=/data \
   -e COLLABMD_GIT_ENABLED=false \
   -e AUTH_STRATEGY=none \
-  collabmd-governed:local
-curl -fsS http://127.0.0.1:1234/
-docker stop collabmd-governed-local
+  collabmd-governed:focused
+curl -fsS http://127.0.0.1:12345/
+docker stop collabmd-governed-focused-smoke
 ```
 
-The image includes the default governance manifest. Bind a custom manifest to `/app/collabmd.governance.json` only when overriding the default Roles or Grant duration.
-
-[`docker-compose.demo.yml`](docker-compose.demo.yml) and [`deploy/Caddyfile`](deploy/Caddyfile) are deployment packaging only. `WEBMCP_HOSTNAME=governed-collaboration.example` is for local configuration validation, not a live host. A real hostname, DNS, HTTPS deployment, public repository, live browser smoke test, and recording require separate authorization and verification.
+`npm run test:e2e:evidence` produces ignored local Playwright Evidence for the
+six focused flows. It is a verification artifact, not proof of a public
+deployment, live ChatGPT integration, recorded demo, or Challenge submission.
 
 ## Security and claim boundary
 
-Authorization is server-authoritative for the current room, document, expiry, revocation state, and fixed capabilities. Controls and tool discovery improve usability; every supported mutation is checked again immediately before execution.
+- Page sessions are not accounts, organizations, or identity-provider
+  principals.
+- The supported boundary covers the shipped UI and WebMCP flows. A deliberately
+  custom raw Yjs client is outside the authorization claim.
+- The filesystem remains the source of truth for document content; governance
+  session state is in memory and supports one server instance.
+- Owner recovery, transfer, multiple Owners, and persistence across restart are
+  excluded.
+- Proposal Conflict detection compares exact text and anchors, not meaning.
 
-The boundary is intentionally narrow:
+See the approved [focused workspace design](docs/superpowers/specs/2026-09-01-focused-governed-workspace-design.md)
+for the complete system and verification boundary.
 
-- page sessions are not accounts, organizations, or identity-provider principals;
-- display names and `human`/`ai` labels are not authenticated identities;
-- the shared Yjs update channel does not reject a deliberately custom client, so a client outside supported UI/WebMCP flows may bypass the application restrictions;
-- Activity is synchronized collaboration history, not an immutable evidence store;
-- deterministic overlap conflict compares exact text and anchors, not meaning;
-- Owner recovery, transfer, multiple Owners, and restart recovery are excluded;
-- multi-document inheritance and section-, field-, or number-specific Grants are excluded;
-- governed image paste, attachment upload, offline editing, file-tree/Git/diagram mutation, and a public SDK are excluded.
+## Post-MVP investigations
 
-See the approved [design specification](docs/superpowers/specs/2026-08-30-webmcp-governed-collaboration-design.md) for the complete system and verification boundary.
+Vercel hosting, Supabase-backed identity or durable records, group/document
+routes, and an access-aware Share experience are future investigations only.
+They are not implemented, deployed, or verified by this MVP.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE). CollabMD attribution and its original license notice are retained.
+MIT. See [`LICENSE`](LICENSE). CollabMD attribution and its original license
+notice are retained.
