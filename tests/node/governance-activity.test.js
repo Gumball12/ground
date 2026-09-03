@@ -76,3 +76,50 @@ test('appendActivity requires an allowed source', () => {
     'system_reconciliation',
   ]);
 });
+
+test('appendActivity accepts an actor without a kind', () => {
+  const doc = new Y.Doc();
+  const activity = doc.getArray('governanceActivity');
+
+  const record = appendActivity(activity, {
+    action: 'document_edit',
+    actor: {
+      displayName: 'Writer Agent',
+      participantSessionId: 'writer-session',
+      roleId: 'editor',
+    },
+    createdAt: 2_000,
+    id: 'activity-2',
+    outcome: 'applied',
+    source: 'webmcp_apply',
+    target: 'document',
+  });
+
+  assert.deepEqual(record.actor, {
+    displayName: 'Writer Agent',
+    participantSessionId: 'writer-session',
+    roleId: 'editor',
+  });
+  assert.deepEqual(activity.get(0), record);
+});
+
+test('appendActivity still requires the other actor fields', () => {
+  const doc = new Y.Doc();
+  const activity = doc.getArray('governanceActivity');
+  const base = {
+    action: 'document_edit',
+    outcome: 'applied',
+    source: 'webmcp_apply',
+    target: 'document',
+  };
+
+  for (const field of ['displayName', 'participantSessionId', 'roleId']) {
+    const actor = {
+      displayName: 'Writer Agent',
+      participantSessionId: 'writer-session',
+      roleId: 'editor',
+    };
+    delete actor[field];
+    assert.throws(() => appendActivity(activity, { ...base, actor }), /is required/u);
+  }
+});
