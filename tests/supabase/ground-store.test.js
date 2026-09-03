@@ -21,6 +21,15 @@ const buildService = () => createGroundService({
   }),
 });
 
+// The API transports Yjs bytes as base64; a browser decodes them before replay.
+const decodeHydrated = ({ snapshot, updates }) => hydrateGroundYDoc({
+  snapshot: snapshot ? Buffer.from(snapshot, 'base64') : undefined,
+  updates: updates.map(({ sequence, update }) => ({
+    sequence,
+    update: Buffer.from(update, 'base64'),
+  })),
+});
+
 test('the Supabase store carries a full governed flow through real RPCs', async () => {
   const service = buildService();
   const owner = await createAnonymousClient();
@@ -62,7 +71,7 @@ test('the Supabase store carries a full governed flow through real RPCs', async 
     actorId: editor.userId,
     documentId: created.documentId,
   });
-  const document = hydrateGroundYDoc(hydrated);
+  const document = decodeHydrated(hydrated);
   assert.equal(document.ytext.toString().includes('$110K'), true);
   assert.equal(document.ytext.toString().includes('$100K'), false);
   assert.deepEqual(
@@ -107,7 +116,7 @@ test('the store denies a Reviewer apply and keeps the document unchanged', async
     actorId: owner.userId,
     documentId: created.documentId,
   });
-  assert.equal(hydrateGroundYDoc(hydrated).ytext.toString().includes('$100K'), true);
+  assert.equal(decodeHydrated(hydrated).ytext.toString().includes('$100K'), true);
 });
 
 test('the store maps a stale Owner version to GROUND_STALE_STATE', async () => {

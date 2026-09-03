@@ -421,3 +421,40 @@ test('mutations fail closed when no update byte limit is calibrated', async () =
     replacementText: '$110K',
   }), (thrown) => groundCode(thrown) === 'GROUND_TEMPORARILY_UNAVAILABLE');
 });
+
+test('hydrate_document returns JSON-safe base64 bytes the browser can decode', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'The approved launch budget is $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+
+  const hydrated = await service.hydrate_document({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+  });
+
+  assert.equal(typeof hydrated.snapshot, 'string');
+  assert.match(hydrated.snapshot, /^[A-Za-z0-9+/]*={0,2}$/u);
+  assert.equal(hydrated.updates.length, 1);
+  assert.equal(typeof hydrated.updates[0].update, 'string');
+  assert.equal(Number.isInteger(hydrated.updates[0].sequence), true);
+
+  // A browser decodes the transported strings and replays them into one Y.Doc.
+  const replayed = hydrateGroundYDoc({
+    snapshot: Buffer.from(hydrated.snapshot, 'base64'),
+    updates: hydrated.updates.map(({ sequence, update }) => ({
+      sequence,
+      update: Buffer.from(update, 'base64'),
+    })),
+  });
+  assert.equal(replayed.ytext.toString(), 'The approved launch budget is $110K.\n');
+
+  // The transported body must not inflate bytes into numeric-key objects.
+  const body = JSON.stringify(hydrated);
+  assert.equal(body.includes('"0":'), false);
+});

@@ -8,6 +8,8 @@ import {
 } from './ground-service-support.js';
 import { captureGroundUpdate } from './ground-yjs-state.js';
 
+const encodeBase64 = (bytes) => Buffer.from(bytes ?? []).toString('base64');
+
 const replaceUniqueText = ({ context, expectedText, replacementText }) => {
   const text = context.ytext.toString();
   const from = text.indexOf(requireText(expectedText));
@@ -49,14 +51,20 @@ export const createGroundDocumentOperations = ({ helpers }) => {
       });
     },
 
+    // Yjs bytes cross the API as base64 in both directions. Returning raw
+    // Uint8Arrays serializes them as numeric-key JSON objects, which inflated a
+    // twelve-character document to a 10,051-byte response in a real local run.
     hydrate_document: async ({ actorId, documentId }) => {
       await requireCapability({ actorId, capability: 'document.read', documentId });
       const { state } = await loadContext(documentId);
       return {
         headSequence: state.headSequence,
-        snapshot: state.snapshot,
+        snapshot: encodeBase64(state.snapshot),
         snapshotSequence: state.snapshotSequence,
-        updates: state.updates,
+        updates: state.updates.map(({ sequence, update }) => ({
+          sequence,
+          update: encodeBase64(update),
+        })),
       };
     },
 
