@@ -34,11 +34,24 @@ jobs:
       - name: Install validation tools
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
+      - name: Start local Supabase
+        run: npm run supabase:start
+
+      - name: Run Ground Supabase suite
+        run: npm run test:supabase
+
       - name: Run project validation
         run: npm run check
 
       - name: Run governed collaboration E2E
         run: npm run test:e2e:governance:prebuilt
+
+      - name: Run Ground hosted E2E
+        run: npm run test:e2e:ground
+
+      - name: Stop local Supabase
+        if: always()
+        run: npm run supabase:stop
 
   docker:
     needs: validate
