@@ -45,8 +45,12 @@ export const createAdminClient = () => {
 };
 
 export const uniqueDocumentId = () => randomBytes(16).toString('base64url');
-export const encodeUpdate = (value) => Buffer.from(value).toString('base64');
-export const decodeUpdate = (value) => new Uint8Array(Buffer.from(value, 'base64'));
+export const encodeUpdate = (value) => `\\x${Buffer.from(value).toString('hex')}`;
+export const decodeUpdate = (value) => new Uint8Array(
+  value.startsWith('\\x')
+    ? Buffer.from(value.slice(2), 'hex')
+    : Buffer.from(value, 'base64'),
+);
 
 export const createDocumentAsAdmin = ({
   actorId,
