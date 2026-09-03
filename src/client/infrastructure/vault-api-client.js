@@ -32,11 +32,6 @@ export class VaultApiClient {
     return parseApiResponse(response, 'Failed to load file tree');
   }
 
-  async readCommentOverview() {
-    const response = await fetch(resolveApiUrl('/comments/overview'));
-    return parseApiResponse(response, 'Failed to load comment overview');
-  }
-
   async readFile(path) {
     const response = await fetch(resolveApiUrl(`/file?path=${encodeURIComponent(path)}`));
     return parseApiResponse(response, 'Failed to read file');

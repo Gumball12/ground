@@ -1,389 +1,62 @@
+import { isMarkdownFilePath } from '../../domain/file-kind.js';
+
 export class WorkspaceRouteController {
   constructor({
-    backlinksPanel,
-    clearInitialFileBootstrap,
-    clearStaticPreviewDocument = null,
-    closeSidebarOnMobile,
-    drawioEmbed,
-    elements,
-    excalidrawEmbed,
-    fileHistoryView = null,
-    fileExplorer,
+    getIsDocumentIndexReady = () => true,
     getIsTabActive,
-    getSessionLoadToken,
-    gitDiffView,
-    gitPanel,
-    imageLightbox = null,
-    lobby,
+    hasIndexedDocument,
     navigation,
-    previewRenderer,
-    renderAvatars,
-    renderPresence,
-    requestPreviewRouteAnchor = null,
-    resetPreviewMode,
-    scrollSyncController,
-    setSession,
-    setSessionLoadToken,
-    setSidebarTab,
-    setSidebarVisibility,
-    setCurrentFilePath,
-    showGitCommit,
-    showGitDiff,
-    showGitFileHistory,
-    showGitFilePreview,
-    showGitHistory,
-    syncMainChrome,
-    videoEmbed,
+    onDocumentRequested,
     workspaceCoordinator,
-    layoutController,
   }) {
-    this.backlinksPanel = backlinksPanel;
-    this.clearInitialFileBootstrap = clearInitialFileBootstrap;
-    this.clearStaticPreviewDocument = clearStaticPreviewDocument;
-    this.closeSidebarOnMobile = closeSidebarOnMobile;
-    this.drawioEmbed = drawioEmbed ?? { setHydrationPaused() {} };
-    this.elements = elements;
-    this.excalidrawEmbed = excalidrawEmbed;
-    this.fileHistoryView = fileHistoryView;
-    this.fileExplorer = fileExplorer;
+    this.getIsDocumentIndexReady = getIsDocumentIndexReady;
     this.getIsTabActive = getIsTabActive;
-    this.getSessionLoadToken = getSessionLoadToken;
-    this.gitDiffView = gitDiffView;
-    this.gitPanel = gitPanel;
-    this.imageLightbox = imageLightbox;
-    this.lobby = lobby;
+    this.hasIndexedDocument = hasIndexedDocument;
     this.navigation = navigation;
-    this.previewRenderer = previewRenderer;
-    this.renderAvatars = renderAvatars;
-    this.renderPresence = renderPresence;
-    this.requestPreviewRouteAnchor = requestPreviewRouteAnchor;
-    this.resetPreviewMode = resetPreviewMode;
-    this.scrollSyncController = scrollSyncController;
-    this.setSession = setSession;
-    this.setSessionLoadToken = setSessionLoadToken;
-    this.setSidebarTab = setSidebarTab;
-    this.setSidebarVisibility = setSidebarVisibility ?? (() => {});
-    this.setCurrentFilePath = setCurrentFilePath;
-    this.showGitCommit = showGitCommit;
-    this.showGitDiff = showGitDiff;
-    this.showGitFileHistory = showGitFileHistory;
-    this.showGitFilePreview = showGitFilePreview;
-    this.showGitHistory = showGitHistory;
-    this.syncMainChrome = syncMainChrome;
-    this.videoEmbed = videoEmbed;
+    this.onDocumentRequested = onDocumentRequested;
     this.workspaceCoordinator = workspaceCoordinator;
-    this.layoutController = layoutController;
-    this.pendingTreeRevealPath = null;
-    this.preserveSidebarTabRoutePath = null;
   }
 
-  async handleHashChange() {
+  async handleHashChange({ forceGovernance = false } = {}) {
     if (!this.getIsTabActive()) {
-      return;
+      return false;
     }
 
     const route = this.navigation.getHashRoute();
-    const nextFilePath = route.type === 'file' ? route.filePath : null;
-    const canLeave = await this.prepareActiveExcalidrawDisconnect(nextFilePath);
-    if (!canLeave) {
-      return;
-    }
-
-    if (route.type === 'empty') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.gitPanel.setSelection();
-      this.showEmptyState();
-      this.syncMainChrome({ mode: 'empty', title: 'CollabMD' });
-      return;
-    }
-
-    if (route.type === 'git-diff') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.setSidebarTab('git');
-      await this.showGitDiff(route);
-      return;
-    }
-
-    if (route.type === 'git-file-history') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.setSidebarTab('files');
-      await this.showGitFileHistory(route);
-      return;
-    }
-
-    if (route.type === 'git-file-preview') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.setSidebarTab('files');
-      await this.showGitFilePreview(route);
-      return;
-    }
-
-    if (route.type === 'git-history') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.setSidebarTab('git');
-      await this.showGitHistory();
-      return;
-    }
-
-    if (route.type === 'git-commit') {
-      this.requestPreviewRouteAnchor?.(null);
-      this.setSidebarTab('git');
-      await this.showGitCommit(route);
-      return;
-    }
-
-    if (this.preserveSidebarTabRoutePath === route.filePath) {
-      this.preserveSidebarTabRoutePath = null;
-    } else {
-      this.preserveSidebarTabRoutePath = null;
-      this.setSidebarTab('files');
-    }
-    const previousSession = this.workspaceCoordinator.getSession?.();
-    const didOpen = await this.openFile(route.filePath, { drawioMode: route.drawioMode || null });
-    if (!didOpen) {
-      return;
-    }
-    if (previousSession === this.workspaceCoordinator.getSession?.()) {
-      this.revealEditorMatch(route);
-    }
-    if (route.elementId) {
-      this.excalidrawEmbed?.openElement(
-        route.filePath,
-        route.elementId,
-        route.elementType,
-      );
-    }
-    this.requestPreviewRouteAnchor?.(route.anchor ?? null, route.filePath);
-  }
-
-  showEmptyState() {
-    this.gitDiffView.hide();
-    this.fileHistoryView?.hide?.();
-    this.workspaceCoordinator.cleanupSession();
-    this.clearStaticPreviewDocument?.();
-    this.setSession(null);
-    this.setSessionLoadToken(this.getSessionLoadToken() + 1);
-    this.clearInitialFileBootstrap();
-    this.resetPreviewMode();
-    this.elements.outlineToggle?.classList.remove('hidden');
-    this.elements.markdownToolbar?.classList.add('hidden');
-    this.setCurrentFilePath(null);
-    this.lobby.setCurrentFile(null);
-    this.fileExplorer.setActiveFile(null);
-
-    this.elements.emptyState?.classList.remove('hidden');
-    this.elements.editorPage?.classList.add('hidden');
-    this.elements.diffPage?.classList.add('hidden');
-    if (this.elements.previewContent) {
-      this.elements.previewContent.innerHTML = '';
-      this.elements.previewContent.dataset.renderPhase = 'ready';
-    }
-    this.videoEmbed?.reconcileEmbeds(this.elements.previewContent);
-    this.resetPreviewSurface();
-
-    this.renderAvatars();
-    this.renderPresence();
-    this.backlinksPanel.clear();
-
-    if (this.elements.activeFileName) {
-      this.elements.activeFileName.textContent = 'CollabMD';
-    }
-  }
-
-  showDiffState() {
-    this.fileHistoryView?.hide?.();
-    this.setSessionLoadToken(this.getSessionLoadToken() + 1);
-    this.clearInitialFileBootstrap();
-    this.clearStaticPreviewDocument?.();
-    this.workspaceCoordinator.cleanupSession();
-    this.setSession(null);
-    this.resetPreviewMode();
-    this.layoutController.reset();
-    this.setCurrentFilePath(null);
-    this.lobby.setCurrentFile(null);
-    this.fileExplorer.setActiveFile(null);
-
-    this.elements.emptyState?.classList.add('hidden');
-    this.elements.editorPage?.classList.add('hidden');
-    this.elements.diffPage?.classList.remove('hidden');
-    if (this.elements.previewContent) {
-      this.elements.previewContent.innerHTML = '';
-      this.elements.previewContent.dataset.renderPhase = 'ready';
-    }
-    this.videoEmbed?.reconcileEmbeds(this.elements.previewContent);
-    this.resetPreviewSurface();
-
-    this.elements.outlineToggle?.classList.add('hidden');
-    this.elements.markdownToolbar?.classList.add('hidden');
-
-    this.renderAvatars();
-    this.renderPresence();
-    this.backlinksPanel.clear();
-  }
-
-  showFileHistoryState(filePath) {
-    this.gitDiffView.hide();
-    this.setSessionLoadToken(this.getSessionLoadToken() + 1);
-    this.clearInitialFileBootstrap();
-    this.clearStaticPreviewDocument?.();
-    this.workspaceCoordinator.cleanupSession();
-    this.setSession(null);
-    this.resetPreviewMode();
-    this.layoutController.reset();
-    this.setCurrentFilePath(filePath);
-    this.lobby.setCurrentFile(null);
-    this.fileExplorer.setActiveFile(filePath);
-
-    this.elements.emptyState?.classList.add('hidden');
-    this.elements.editorPage?.classList.add('hidden');
-    this.elements.diffPage?.classList.remove('hidden');
-    if (this.elements.previewContent) {
-      this.elements.previewContent.innerHTML = '';
-      this.elements.previewContent.dataset.renderPhase = 'ready';
-    }
-    this.videoEmbed?.reconcileEmbeds(this.elements.previewContent);
-    this.resetPreviewSurface();
-
-    this.elements.outlineToggle?.classList.add('hidden');
-    this.elements.markdownToolbar?.classList.add('hidden');
-
-    this.renderAvatars();
-    this.renderPresence();
-    this.backlinksPanel.clear();
-  }
-
-  showPreviewOnlyState(filePath) {
-    this.gitDiffView.hide();
-    this.fileHistoryView?.hide?.();
-    this.setSessionLoadToken(this.getSessionLoadToken() + 1);
-    this.clearInitialFileBootstrap();
-    this.clearStaticPreviewDocument?.();
-    this.workspaceCoordinator.cleanupSession();
-    this.setSession(null);
-    this.resetPreviewMode();
-    this.layoutController.reset();
-    this.setCurrentFilePath(filePath);
-    this.lobby.setCurrentFile(null);
-    this.fileExplorer.setActiveFile(filePath);
-
-    this.elements.emptyState?.classList.add('hidden');
-    this.elements.editorPage?.classList.remove('hidden');
-    this.elements.diffPage?.classList.add('hidden');
-    if (this.elements.previewContent) {
-      this.elements.previewContent.innerHTML = '';
-      this.elements.previewContent.dataset.renderPhase = 'ready';
-    }
-    this.videoEmbed?.reconcileEmbeds(this.elements.previewContent);
-    this.resetPreviewSurface();
-
-    this.elements.markdownToolbar?.classList.add('hidden');
-
-    this.renderAvatars();
-    this.renderPresence();
-    this.backlinksPanel.clear();
-  }
-
-  async openFile(filePath, options = {}) {
-    const shouldRevealInTree = this.pendingTreeRevealPath === filePath;
-    if (shouldRevealInTree) {
-      this.pendingTreeRevealPath = null;
-    }
-
-    this.imageLightbox?.close?.();
-    this.gitPanel.setSelection();
-    this.gitDiffView.hide();
-    this.fileHistoryView?.hide?.();
-    this.clearStaticPreviewDocument?.();
-    this.syncMainChrome({ mode: 'editor' });
-    const didOpen = await this.workspaceCoordinator.openFile(filePath, options);
-    this.setSession(this.workspaceCoordinator.getSession());
-    if (didOpen === false) {
+    if (route.type !== 'file' || !isMarkdownFilePath(route.filePath)) {
+      this.workspaceCoordinator.cleanupSession();
+      await this.onDocumentRequested(null);
       return false;
     }
 
-    if (shouldRevealInTree) {
-      this.revealFileInTree(filePath, { clearSearch: true });
+    if (!this.getIsDocumentIndexReady()) {
+      return true;
     }
 
+    if (!this.hasIndexedDocument(route.filePath)) {
+      await this.workspaceCoordinator.openFile(route.filePath);
+      return false;
+    }
+    const previousSession = this.workspaceCoordinator.getSession();
+    await this.onDocumentRequested(route.filePath, { force: forceGovernance });
+    const didOpen = await this.workspaceCoordinator.openFile(route.filePath);
+    if (!didOpen) {
+      return false;
+    }
+    if (previousSession === this.workspaceCoordinator.getSession()) {
+      this.revealEditorMatch(route);
+    }
     return true;
   }
 
-  async prepareActiveExcalidrawDisconnect(nextFilePath = null) {
-    const activeFilePath = this.workspaceCoordinator.stateStore?.get?.('currentFilePath') || null;
-    if (
-      activeFilePath
-      && activeFilePath !== nextFilePath
-      && this.workspaceCoordinator.isExcalidrawFile?.(activeFilePath)
-    ) {
-      const canLeave = await this.excalidrawEmbed.prepareFileDisconnect(activeFilePath, {
-        timeoutMs: 10000,
-      });
-      if (!canLeave) {
-        this.navigation.navigateToFile(activeFilePath);
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  preserveSidebarTabForNextFileRoute(filePath) {
-    this.preserveSidebarTabRoutePath = filePath || null;
-  }
-
-  cleanupSession() {
-    this.workspaceCoordinator.cleanupSession();
-    this.setSession(this.workspaceCoordinator.getSession());
-  }
-
-  handleFileSelection(filePath, { closeSidebarOnMobile = false, revealInTree = false } = {}) {
-    const currentRoute = this.navigation.getHashRoute?.() ?? null;
-    const isCanonicalCurrentFileRoute = (
-      currentRoute?.type === 'file'
-      && currentRoute.filePath === filePath
-      && !currentRoute.drawioMode
-    );
-    if (revealInTree) {
-      this.pendingTreeRevealPath = filePath;
-      if (isCanonicalCurrentFileRoute) {
-        this.pendingTreeRevealPath = null;
-        this.revealFileInTree(filePath, { clearSearch: true });
-        return;
-      }
-    }
-
-    if (closeSidebarOnMobile && !revealInTree) {
-      this.closeSidebarOnMobile();
-    }
-
-    this.navigation.navigateToFile(filePath);
-  }
-
-  revealFileInTree(filePath, { clearSearch = false } = {}) {
-    this.setSidebarTab('files');
-    this.setSidebarVisibility(true);
-    this.fileExplorer.revealFile?.(filePath, { clearSearch });
-  }
-
-  revealEditorMatch(route = {}, session = this.workspaceCoordinator.getSession?.()) {
+  revealEditorMatch(route = {}, session = this.workspaceCoordinator.getSession()) {
     if (!Number.isFinite(route.line)) {
       return false;
     }
-
     return session?.revealSearchMatch?.({
       column: route.column,
       length: route.matchLength,
       line: route.line,
     }) ?? session?.scrollToLine?.(route.line, 0.2) ?? false;
-  }
-
-  resetPreviewSurface() {
-    this.imageLightbox?.close?.();
-    this.previewRenderer.setHydrationPaused(false);
-    this.drawioEmbed.setHydrationPaused(false);
-    this.excalidrawEmbed.setHydrationPaused(false);
-    this.videoEmbed?.detachForCommit();
-    this.scrollSyncController.setLargeDocumentMode(false);
-    this.scrollSyncController.invalidatePreviewBlocks();
   }
 }

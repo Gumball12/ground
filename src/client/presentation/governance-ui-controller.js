@@ -1,17 +1,49 @@
 const CAPABILITY_LABELS = Object.freeze({
   'conflict.resolve': 'Resolve conflicts',
-  'document.comment': 'Comment',
   'document.edit': 'Edit',
   'document.read': 'Read',
   'document.suggest': 'Suggest',
-  'grant.manage': 'Manage grants',
+  'grant.manage': 'Manage access',
 });
 
 const STATE_LABELS = Object.freeze({
   active: 'Active',
-  expired: 'Expired',
   pending: 'Pending',
   revoked: 'Revoked',
+});
+
+const ACTIVITY_SOURCE_LABELS = Object.freeze({
+  access_management: 'Access management',
+  document_editor: 'Document editor',
+  owner_decision: 'Owner decision',
+  system_reconciliation: 'System reconciliation',
+  webmcp_apply: 'WebMCP apply',
+  webmcp_proposal: 'WebMCP proposal',
+});
+
+const ACTIVITY_ACTION_LABELS = Object.freeze({
+  grant_assigned: 'Role assigned',
+  grant_changed: 'Role changed',
+  grant_revoked: 'Access revoked',
+});
+
+const STATUS_CONTENT = Object.freeze({
+  error: {
+    copy: 'CollabMD could not verify your Access. Retry without leaving this page.',
+    title: 'Unable to check access',
+  },
+  loading: {
+    copy: 'Checking your Role for this document.',
+    title: 'Checking access',
+  },
+  pending: {
+    copy: 'The Owner must assign you a Role. This page updates automatically.',
+    title: 'Waiting for access',
+  },
+  revoked: {
+    copy: 'Your Access was revoked. The Owner can assign you a Role again.',
+    title: 'Access revoked',
+  },
 });
 
 const titleCase = (value) => String(value || '')
@@ -33,48 +65,77 @@ const appendText = (parent, tagName, text, className = '') => {
   return element;
 };
 
-const activityMatches = (record, filter) => {
-  if (filter === 'access') {
-    return String(record.action).startsWith('grant_');
-  }
-  return record.actor?.kind === filter;
-};
+const connectionLabel = (status) => ({
+  connected: 'Connected',
+  connecting: 'Connecting',
+  disconnected: 'Disconnected',
+}[status] ?? 'Disconnected');
+
+const isOwner = (state) => state.session?.state === 'active'
+  && state.roles[state.session?.roleId]?.includes('grant.manage') === true;
 
 export class GovernanceUiController {
   constructor({
+    documentSurface,
     governanceRail,
+    governanceStatusCopy,
+    governanceStatusPanel,
+    governanceStatusRetry,
+    governanceStatusTitle,
     manageAccessButton,
     manageAccessDialog,
     onAssignRole = () => {},
     onResolveProposal = () => {},
+    onRetry = () => {},
     onRevoke = () => {},
     onSelectProposal = () => {},
     participantBar,
+    skipToEditor,
   }) {
+    this.documentSurface = documentSurface;
     this.governanceRail = governanceRail;
+    this.governanceStatusCopy = governanceStatusCopy;
+    this.governanceStatusPanel = governanceStatusPanel;
+    this.governanceStatusRetry = governanceStatusRetry;
+    this.governanceStatusTitle = governanceStatusTitle;
     this.manageAccessButton = manageAccessButton;
     this.manageAccessDialog = manageAccessDialog;
     this.onAssignRole = onAssignRole;
     this.onResolveProposal = onResolveProposal;
+    this.onRetry = onRetry;
     this.onRevoke = onRevoke;
     this.onSelectProposal = onSelectProposal;
     this.participantBar = participantBar;
+    this.skipToEditor = skipToEditor;
     this.activeTab = 'review';
-    this.activityFilters = new Set();
+    this.roleDrafts = new Map();
+    this.roleRequestStates = new Map();
+    this.authoritativeRoles = new Map();
     this.state = {
       activity: [],
+      connectionState: { status: 'disconnected', unreachable: false },
       participants: [],
       reviewGroups: [],
       roles: {},
       session: null,
+      shellState: { accessState: null, phase: 'loading' },
     };
 
     this.manageAccessButton?.addEventListener('click', () => {
-      this.manageAccessDialog?.showModal?.();
+      if (isOwner(this.state)) {
+        this.manageAccessDialog?.showModal?.();
+        this.manageAccessDialog?.querySelector('#manageAccessTitle')?.focus();
+      }
     });
     this.manageAccessDialog?.querySelector('[data-manage-access-close]')?.addEventListener('click', () => {
       this.manageAccessDialog?.close?.();
     });
+    this.manageAccessDialog?.addEventListener('close', () => {
+      if (this.manageAccessButton && !this.manageAccessButton.hidden) {
+        this.manageAccessButton.focus();
+      }
+    });
+    this.governanceStatusRetry?.addEventListener('click', () => this.onRetry());
     this.governanceRail?.querySelector('[role="tablist"]')?.addEventListener('click', (event) => {
       const tab = event.target.closest?.('[data-governance-tab]');
       if (tab) {
@@ -89,19 +150,50 @@ export class GovernanceUiController {
   render(state = {}) {
     this.state = {
       activity: Array.isArray(state.activity) ? state.activity : [],
+      connectionState: state.connectionState ?? { status: 'disconnected', unreachable: false },
       participants: Array.isArray(state.participants) ? state.participants : [],
       reviewGroups: Array.isArray(state.reviewGroups) ? state.reviewGroups : [],
       roles: state.roles && typeof state.roles === 'object' ? state.roles : {},
       session: state.session ?? null,
+      shellState: state.shellState ?? { accessState: null, phase: 'loading' },
     };
+    this.reconcileRoleDrafts();
 
+    const ready = this.state.shellState.phase === 'ready';
+    const accessState = this.state.shellState.accessState;
+    const active = ready && accessState === 'active';
+    const owner = active && isOwner(this.state);
+    const showParticipants = ready && ['active', 'pending', 'revoked'].includes(accessState);
+
+    this.renderStatus();
     if (this.participantBar) {
-      this.participantBar.hidden = false;
+      this.participantBar.hidden = !showParticipants;
+      if (showParticipants) {
+        this.renderParticipants();
+      } else {
+        this.participantBar.replaceChildren();
+      }
+    }
+    if (this.documentSurface) {
+      this.documentSurface.hidden = !active;
+      this.documentSurface.dataset.owner = String(owner);
+    }
+    if (this.skipToEditor) {
+      this.skipToEditor.hidden = !active;
+      this.skipToEditor.tabIndex = active ? 0 : -1;
     }
     if (this.governanceRail) {
-      this.governanceRail.hidden = false;
+      this.governanceRail.hidden = !owner;
     }
-    this.renderParticipants();
+    if (this.manageAccessButton) {
+      this.manageAccessButton.hidden = !owner;
+    }
+
+    if (!owner) {
+      this.manageAccessDialog?.close?.();
+      return;
+    }
+
     this.renderReview();
     this.renderActivity();
     this.renderRoles();
@@ -110,17 +202,48 @@ export class GovernanceUiController {
   }
 
   hide() {
+    this.participantBar?.replaceChildren();
     if (this.participantBar) {
       this.participantBar.hidden = true;
-      this.participantBar.replaceChildren();
+    }
+    if (this.documentSurface) {
+      this.documentSurface.hidden = true;
     }
     if (this.governanceRail) {
       this.governanceRail.hidden = true;
+    }
+    if (this.governanceStatusPanel) {
+      this.governanceStatusPanel.hidden = true;
+    }
+    if (this.skipToEditor) {
+      this.skipToEditor.hidden = true;
+      this.skipToEditor.tabIndex = -1;
     }
     if (this.manageAccessButton) {
       this.manageAccessButton.hidden = true;
     }
     this.manageAccessDialog?.close?.();
+  }
+
+  renderStatus() {
+    const { accessState, phase } = this.state.shellState;
+    const statusKey = phase === 'ready' ? accessState : phase;
+    const content = STATUS_CONTENT[statusKey];
+    if (this.governanceStatusPanel) {
+      this.governanceStatusPanel.hidden = !content;
+    }
+    if (!content) {
+      return;
+    }
+    if (this.governanceStatusTitle) {
+      this.governanceStatusTitle.textContent = content.title;
+    }
+    if (this.governanceStatusCopy) {
+      this.governanceStatusCopy.textContent = content.copy;
+    }
+    if (this.governanceStatusRetry) {
+      this.governanceStatusRetry.hidden = phase !== 'error';
+    }
   }
 
   handleTabKeydown(event) {
@@ -171,13 +294,18 @@ export class GovernanceUiController {
   }
 
   renderParticipants() {
-    if (!this.participantBar) {
-      return;
-    }
     const fragment = document.createDocumentFragment();
     const label = appendText(fragment, 'span', 'Participants', 'governance-kicker');
     label.id = 'participantBarLabel';
     this.participantBar.setAttribute('aria-labelledby', label.id);
+
+    const connection = appendText(
+      fragment,
+      'span',
+      connectionLabel(this.state.connectionState.status),
+      'governance-connection',
+    );
+    connection.dataset.governanceConnection = '';
 
     const list = createElement('div', { className: 'participant-list' });
     this.state.participants.forEach((participant) => {
@@ -186,11 +314,7 @@ export class GovernanceUiController {
     });
     fragment.appendChild(list);
     this.participantBar.replaceChildren(fragment);
-
-    const canManage = this.state.session?.state === 'active'
-      && this.state.roles[this.state.session?.roleId]?.includes('grant.manage') === true;
     if (this.manageAccessButton) {
-      this.manageAccessButton.hidden = !canManage;
       this.participantBar.appendChild(this.manageAccessButton);
     }
   }
@@ -208,7 +332,7 @@ export class GovernanceUiController {
       item,
       'span',
       participant.kind === 'ai' ? 'AI' : String(participant.displayName || '?').slice(0, 1).toUpperCase(),
-      'user-avatar governance-avatar',
+      'governance-avatar',
     );
     avatar.setAttribute('aria-hidden', 'true');
 
@@ -272,13 +396,24 @@ export class GovernanceUiController {
     select.dataset.proposalSelect = '';
     select.addEventListener('click', () => this.onSelectProposal(proposal.id));
     item.appendChild(select);
-    appendText(item, 'p', `${proposal.expectedText} → ${proposal.replacementText}`, 'proposal-change');
-    appendText(item, 'p', `By ${proposal.createdByDisplayName || 'Unknown'} · ${titleCase(proposal.status)}`, 'proposal-meta');
+    const change = createElement('p', { className: 'proposal-change' });
+    appendText(change, 'span', `Current: ${proposal.currentText ?? 'Unavailable'}`);
+    change.append(' · ');
+    appendText(change, 'span', `Proposed: ${proposal.replacementText}`);
+    item.appendChild(change);
+    appendText(
+      item,
+      'p',
+      `By ${proposal.createdByDisplayName || 'Unknown'} · ${proposal.createdByKind === 'ai' ? 'AI' : 'Human'} · Role at creation: ${titleCase(proposal.createdByRole || 'unknown')} · ${titleCase(proposal.status)}`,
+      'proposal-meta',
+    );
 
     const actions = createElement('div', { className: 'proposal-actions' });
-    const canResolve = this.state.session?.state === 'active'
-      && this.state.roles[this.state.session?.roleId]?.includes('conflict.resolve') === true;
-    for (const [resolution, label] of [['keep_current', 'Keep current'], ['apply_proposed', 'Apply']]) {
+    const canResolve = this.state.roles[this.state.session?.roleId]?.includes('conflict.resolve') === true;
+    const resolutions = unlocated
+      ? [['keep_current', 'Keep current']]
+      : [['keep_current', 'Keep current'], ['apply_proposed', 'Apply']];
+    for (const [resolution, label] of resolutions) {
       const button = createElement('button', {
         className: resolution === 'apply_proposed'
           ? 'ui-button ui-button--primary ui-button--compact'
@@ -287,7 +422,7 @@ export class GovernanceUiController {
       });
       button.type = 'button';
       button.dataset.proposalResolution = resolution;
-      button.disabled = !canResolve || (unlocated && resolution === 'apply_proposed');
+      button.disabled = !canResolve;
       button.addEventListener('click', () => {
         if (resolution === 'apply_proposed'
           && !window.confirm('Apply this proposed change to the document? This will replace the current text.')) {
@@ -307,43 +442,26 @@ export class GovernanceUiController {
       return;
     }
     panel.replaceChildren();
-    const filters = createElement('div', { className: 'activity-filters' });
-    filters.setAttribute('aria-label', 'Activity filters');
-    for (const [filter, label] of [['human', 'Human'], ['ai', 'AI'], ['access', 'Access']]) {
-      const button = createElement('button', { className: 'ui-chip-button', text: label });
-      button.type = 'button';
-      button.dataset.activityFilter = filter;
-      button.setAttribute('aria-pressed', String(this.activityFilters.has(filter)));
-      button.addEventListener('click', () => {
-        if (this.activityFilters.has(filter)) {
-          this.activityFilters.delete(filter);
-        } else {
-          this.activityFilters.add(filter);
-        }
-        this.renderActivity();
-      });
-      filters.appendChild(button);
-    }
-    panel.appendChild(filters);
-
-    const records = this.activityFilters.size === 0
-      ? this.state.activity
-      : this.state.activity.filter((record) => (
-        [...this.activityFilters].some((filter) => activityMatches(record, filter))
-      ));
     const list = createElement('ol', { className: 'activity-list' });
-    records.toReversed().forEach((record) => {
+    this.state.activity.toReversed().forEach((record) => {
       const item = createElement('li', { className: 'activity-item' });
       item.dataset.activityId = record.id;
       appendText(item, 'strong', record.actor?.displayName || 'Unknown');
       appendText(
         item,
         'span',
-        `${record.actor?.kind === 'ai' ? 'AI' : titleCase(record.actor?.kind || 'unknown')} · ${titleCase(record.actor?.roleId || 'unknown')}`,
+        `${record.actor?.kind === 'ai' ? 'AI' : 'Human'} · Page session: ${record.actor?.participantSessionId || 'unknown'}`,
         'activity-meta',
       );
-      appendText(item, 'span', titleCase(record.action));
-      appendText(item, 'span', `${titleCase(record.outcome)} · ${record.target}`, 'activity-meta');
+      appendText(item, 'span', `Role: ${titleCase(record.actor?.roleId || 'unknown')}`, 'activity-meta');
+      appendText(item, 'span', ACTIVITY_ACTION_LABELS[record.action] || titleCase(record.action));
+      appendText(
+        item,
+        'span',
+        `Source: ${ACTIVITY_SOURCE_LABELS[record.source] || titleCase(record.source || 'unknown')}`,
+        'activity-meta',
+      );
+      appendText(item, 'span', `Outcome: ${titleCase(record.outcome)} · Target: ${record.target}`, 'activity-meta');
       const createdAt = new Date(record.createdAt);
       const timestamp = appendText(
         item,
@@ -356,8 +474,8 @@ export class GovernanceUiController {
       }
       list.appendChild(item);
     });
-    if (records.length === 0) {
-      appendText(panel, 'p', 'No matching activity.', 'ui-empty-state ui-empty-state--compact');
+    if (this.state.activity.length === 0) {
+      appendText(panel, 'p', 'No activity yet.', 'ui-empty-state ui-empty-state--compact');
     } else {
       panel.appendChild(list);
     }
@@ -371,8 +489,7 @@ export class GovernanceUiController {
     panel.replaceChildren();
     const table = createElement('table', { className: 'role-capability-matrix' });
     table.id = 'roleCapabilityMatrix';
-    const caption = appendText(table, 'caption', 'Role capabilities');
-    caption.className = 'sr-only';
+    appendText(table, 'caption', 'Role capabilities', 'sr-only');
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
     appendText(headRow, 'th', 'Capability').scope = 'col';
@@ -409,6 +526,8 @@ export class GovernanceUiController {
     const roleIds = Object.keys(this.state.roles).filter((roleId) => roleId !== 'owner');
     this.state.participants.forEach((participant) => {
       const owner = participant.roleId === 'owner';
+      const requestState = this.roleRequestStates.get(participant.participantSessionId) ?? {};
+      const roleDraft = this.roleDrafts.get(participant.participantSessionId) ?? '';
       const row = createElement('div', { className: 'manage-access-row' });
       row.dataset.participantSessionId = participant.participantSessionId;
       row.dataset.owner = String(owner);
@@ -421,41 +540,113 @@ export class GovernanceUiController {
       roleControl.className = 'ui-input';
       roleControl.dataset.roleControl = '';
       roleControl.setAttribute('aria-label', `Role for ${participant.displayName}`);
-      roleControl.disabled = owner;
+      roleControl.disabled = owner || requestState.pending === true;
       const placeholder = appendText(roleControl, 'option', owner ? 'Owner' : 'Assign role');
       placeholder.value = '';
-      placeholder.selected = owner || !participant.roleId;
+      placeholder.selected = owner || !roleDraft;
       roleIds.forEach((roleId) => {
         const option = appendText(roleControl, 'option', titleCase(roleId));
         option.value = roleId;
-        option.selected = participant.roleId === roleId;
+        option.selected = roleDraft === roleId;
+      });
+      roleControl.addEventListener('change', () => {
+        this.roleDrafts.set(participant.participantSessionId, roleControl.value);
+        this.roleRequestStates.delete(participant.participantSessionId);
+        submit.disabled = !roleControl.value;
+        status.textContent = '';
       });
 
-      const expiryControl = document.createElement('input');
-      expiryControl.className = 'ui-input';
-      expiryControl.dataset.expiryControl = '';
-      expiryControl.type = 'number';
-      expiryControl.min = '1';
-      expiryControl.max = '1440';
-      expiryControl.value = '60';
-      expiryControl.disabled = owner;
-      expiryControl.setAttribute('aria-label', `Grant minutes for ${participant.displayName}`);
-      roleControl.addEventListener('change', () => {
-        if (roleControl.value) {
-          this.onAssignRole(participant.participantSessionId, roleControl.value, Number(expiryControl.value));
-        }
+      const submit = createElement('button', {
+        className: 'ui-button ui-button--primary ui-button--compact',
+        text: participant.state === 'active' ? 'Update role' : 'Assign role',
+      });
+      submit.type = 'button';
+      submit.dataset.roleSubmit = '';
+      submit.disabled = owner || requestState.pending === true || !roleDraft;
+      submit.addEventListener('click', () => {
+        void this.submitRole(participant);
       });
 
       const revoke = createElement('button', {
         className: 'ui-button ui-button--danger ui-button--compact',
-        text: owner ? 'Owner' : 'Revoke',
+        text: 'Revoke access',
       });
       revoke.type = 'button';
       revoke.dataset.revokeControl = '';
-      revoke.disabled = owner || participant.state !== 'active';
-      revoke.addEventListener('click', () => this.onRevoke(participant.participantSessionId));
-      row.append(roleControl, expiryControl, revoke);
+      revoke.disabled = requestState.pending === true;
+      revoke.addEventListener('click', () => {
+        void this.revokeRole(participant);
+      });
+      const status = appendText(row, 'p', requestState.error || requestState.success || '', 'manage-access-status');
+      status.dataset.roleInlineStatus = '';
+      status.setAttribute('aria-live', 'polite');
+      row.append(roleControl, submit);
+      if (!owner && participant.state === 'active') {
+        row.appendChild(revoke);
+      }
       list.appendChild(row);
     });
+  }
+
+  reconcileRoleDrafts() {
+    const participantIds = new Set();
+    this.state.participants.forEach((participant) => {
+      const participantSessionId = participant.participantSessionId;
+      const roleId = participant.roleId ?? '';
+      participantIds.add(participantSessionId);
+      if (!this.authoritativeRoles.has(participantSessionId)
+        || this.authoritativeRoles.get(participantSessionId) !== roleId) {
+        this.roleDrafts.set(participantSessionId, roleId);
+      }
+      this.authoritativeRoles.set(participantSessionId, roleId);
+    });
+    for (const participantSessionId of this.authoritativeRoles.keys()) {
+      if (!participantIds.has(participantSessionId)) {
+        this.authoritativeRoles.delete(participantSessionId);
+        this.roleDrafts.delete(participantSessionId);
+        this.roleRequestStates.delete(participantSessionId);
+      }
+    }
+  }
+
+  async submitRole(participant) {
+    const participantSessionId = participant.participantSessionId;
+    const roleId = this.roleDrafts.get(participantSessionId);
+    if (!roleId || participant.roleId === 'owner') {
+      return;
+    }
+    this.roleRequestStates.set(participantSessionId, { pending: true });
+    this.renderManageAccess();
+    try {
+      await this.onAssignRole(participantSessionId, roleId);
+      this.roleRequestStates.set(participantSessionId, { success: 'Role updated' });
+    } catch (error) {
+      const currentParticipant = this.state.participants.find((item) => (
+        item.participantSessionId === participantSessionId
+      ));
+      this.roleDrafts.set(participantSessionId, currentParticipant?.roleId ?? '');
+      this.roleRequestStates.set(participantSessionId, { error: error?.message || 'Failed to update Role' });
+    }
+    this.renderManageAccess();
+  }
+
+  async revokeRole(participant) {
+    if (participant.roleId === 'owner' || participant.state !== 'active') {
+      return;
+    }
+    if (!window.confirm(`Revoke access for ${participant.displayName || 'this participant'}? Unsynchronized local work may be discarded.`)) {
+      return;
+    }
+    const participantSessionId = participant.participantSessionId;
+    this.roleRequestStates.set(participantSessionId, { pending: true });
+    this.renderManageAccess();
+    try {
+      await this.onRevoke(participantSessionId);
+      this.roleRequestStates.set(participantSessionId, { success: 'Access revoked' });
+    } catch (error) {
+      this.roleDrafts.set(participantSessionId, participant.roleId ?? '');
+      this.roleRequestStates.set(participantSessionId, { error: error?.message || 'Failed to revoke access' });
+    }
+    this.renderManageAccess();
   }
 }

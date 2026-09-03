@@ -29,7 +29,16 @@ export class ToastController {
         return;
       }
       toast.classList.add('leaving');
-      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      let fallbackTimer = null;
+      const remove = () => {
+        if (fallbackTimer !== null) {
+          clearTimeout(fallbackTimer);
+        }
+        toast.remove();
+      };
+      toast.addEventListener('transitionend', remove, { once: true });
+      const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+      fallbackTimer = setTimeout(remove, reducedMotion ? 0 : 350);
     };
 
     if (normalizedOptions.actionLabel && typeof normalizedOptions.onAction === 'function') {

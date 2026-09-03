@@ -81,28 +81,24 @@ async function requireFreshCapability(governanceClient, name, path) {
   if (!result?.ok) {
     throw governanceError(result, capability);
   }
-  const snapshot = result.snapshot ?? governanceClient.snapshot;
+  const actor = result.actor;
+  const session = result.session;
   if (
-    snapshot?.state !== 'active'
-    || snapshot.documentPath !== path
-    || typeof snapshot.participantSessionId !== 'string'
-    || typeof snapshot.roleId !== 'string'
+    session?.state !== 'active'
+    || session.documentPath !== path
+    || typeof session.participantSessionId !== 'string'
+    || typeof session.roleId !== 'string'
+    || actor?.participantSessionId !== session.participantSessionId
+    || actor?.roleId !== session.roleId
+    || typeof actor.displayName !== 'string'
+    || typeof actor.kind !== 'string'
   ) {
     throw governanceError({
       code: 'GOVERNANCE_SESSION_INVALID',
       message: 'The current governance session is no longer active',
     }, capability);
   }
-  return snapshot;
-}
-
-function actorFromSnapshot(snapshot) {
-  return {
-    displayName: snapshot.displayName,
-    kind: snapshot.kind,
-    participantSessionId: snapshot.participantSessionId,
-    roleId: snapshot.roleId,
-  };
+  return actor;
 }
 
 export class WebMcpToolRegistry {
@@ -193,13 +189,13 @@ export class WebMcpToolRegistry {
           },
           execute: async (_input, { signal } = {}) => {
             throwIfAborted(signal);
-            const { kind, path, session } = this.getActiveContext({ expectedPath: registration.path });
             await requireFreshCapability(
               this.governanceClient,
               'collabmd_read_active_document',
-              path,
+              registration.path,
             );
             throwIfAborted(signal);
+            const { kind, path, session } = this.getActiveContext({ expectedPath: registration.path });
             const content = session.getText();
             if (content.length > MAX_DOCUMENT_CHARACTERS) {
               throw new Error(`Documents larger than ${MAX_DOCUMENT_CHARACTERS} characters are not available to agents`);
@@ -244,13 +240,13 @@ export class WebMcpToolRegistry {
             if (!input || typeof input.path !== 'string') {
               throw new Error('path, revision, and replacements are required');
             }
-            const { path, session } = this.getActiveContext({ expectedPath: input.path });
-            const snapshot = await requireFreshCapability(
+            const actor = await requireFreshCapability(
               this.governanceClient,
               'collabmd_apply_text_edits',
-              path,
+              input.path,
             );
             throwIfAborted(signal);
+            const { path, session } = this.getActiveContext({ expectedPath: input.path });
             if (typeof input.revision !== 'string') {
               throw new Error('path, revision, and replacements are required');
             }
@@ -265,7 +261,7 @@ export class WebMcpToolRegistry {
             }
 
             const result = session.applyGovernedTextEdits({
-              actor: actorFromSnapshot(snapshot),
+              actor,
               edits: replacements.map((edit) => ({ ...edit, revision: input.revision })),
             });
             const nextRevision = await createRevision(session.getText());
@@ -298,13 +294,13 @@ export class WebMcpToolRegistry {
             if (!input || typeof input.path !== 'string') {
               throw new Error('path, revision, oldText, and newText are required');
             }
-            const { path, session } = this.getActiveContext({ expectedPath: input.path });
-            const snapshot = await requireFreshCapability(
+            const actor = await requireFreshCapability(
               this.governanceClient,
               'collabmd_propose_text_edit',
-              path,
+              input.path,
             );
             throwIfAborted(signal);
+            const { path, session } = this.getActiveContext({ expectedPath: input.path });
             if (typeof input.revision !== 'string') {
               throw new Error('path, revision, oldText, and newText are required');
             }
@@ -321,7 +317,7 @@ export class WebMcpToolRegistry {
               throw new Error('The active document changed; read it again before proposing');
             }
             return session.proposeTextEdit({
-              actor: actorFromSnapshot(snapshot),
+              actor,
               newText,
               oldText,
               revision: input.revision,

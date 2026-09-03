@@ -221,7 +221,7 @@ test('ignores an old document response that completes after a document switch', 
   }
 });
 
-test('refresh invalidates a pre-disconnect poll before issuing its own request', async () => {
+test('refresh invalidates a pre-disconnect poll and suppresses its equal-version result', async () => {
   const storage = createStorage();
   const timers = [];
   const originalSetInterval = globalThis.setInterval;
@@ -279,7 +279,7 @@ test('refresh invalidates a pre-disconnect poll before issuing its own request',
       version: 1,
     }));
     assert.equal((await refreshing).participantSessionId, 'participant-1');
-    assert.equal(snapshots.length, 2);
+    assert.equal(snapshots.length, 1);
     assert.equal(timers[0].cleared, true);
   } finally {
     unsubscribe();

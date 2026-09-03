@@ -9,11 +9,10 @@ import { validateGovernanceManifest } from '../../src/server/config/governance-m
 
 test('default roles expose only the approved capabilities', () => {
   const manifest = validateGovernanceManifest({
-    defaultGrantMinutes: 60,
     roles: {
       owner: [...GOVERNANCE_CAPABILITIES],
-      editor: ['document.read', 'document.comment', 'document.suggest', 'document.edit'],
-      reviewer: ['document.read', 'document.comment', 'document.suggest'],
+      editor: ['document.read', 'document.suggest', 'document.edit'],
+      reviewer: ['document.read', 'document.suggest'],
     },
   });
 
@@ -23,7 +22,7 @@ test('default roles expose only the approved capabilities', () => {
 
 test('manifest validation rejects unknown capabilities', () => {
   assert.throws(
-    () => validateGovernanceManifest({ defaultGrantMinutes: 60, roles: { owner: ['document.destroy'] } }),
+    () => validateGovernanceManifest({ roles: { owner: ['document.destroy'] } }),
     /Unknown governance capability/,
   );
 });

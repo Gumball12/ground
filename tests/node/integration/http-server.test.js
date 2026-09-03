@@ -313,6 +313,7 @@ test('HTTP test resets keep collaboration and governance session lifecycles sepa
   const owner = await createGovernanceSession('Owner');
   const pending = await createGovernanceSession('Pending');
   assert.equal(pending.state, 'pending');
+  assert.equal(Object.hasOwn(pending, 'expiresAt'), false);
 
   assert.equal((await httpRequest(`${app.baseUrl}/api/test/reset-state`, { method: 'POST' })).statusCode, 200);
   const retained = await httpRequest(`${app.baseUrl}/api/governance/session`, {

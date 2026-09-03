@@ -3,811 +3,105 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="CollabMD — collaborative markdown vault. Edit markdown files together in realtime.">
-  <title>CollabMD — Collaborative Markdown Vault</title>
+  <meta name="description" content="CollabMD — a focused Role-governed collaborative Markdown workspace.">
+  <title>CollabMD — Governed Markdown Workspace</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='4' width='18' height='24' rx='3' fill='%23818cf8'/><rect x='12' y='4' width='18' height='24' rx='3' fill='%234f46e5' opacity='0.8'/><path d='M18 12h6M18 16h6M18 20h4' stroke='white' stroke-width='1.5' stroke-linecap='round'/></svg>">
   <script>
-    if (
-      window.location.hash.includes('file=')
-      || window.location.hash.includes('git-diff=')
-      || window.location.hash.includes('git-file-preview=')
-    ) {
+    if (window.location.hash.includes('file=')) {
       document.documentElement.setAttribute('data-initial-file-requested', 'true');
     }
   </script>
 </head>
 <body>
-
-    <a href="#editorContainer" class="sr-only skip-link" id="skipToEditor">Skip to editor</a>
-
-    <div class="app-shell">
-      <aside id="sidebar" class="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-brand">
-            <svg width="20" height="20" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="6" y="8" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.12"></rect>
-              <rect x="22" y="10" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.25"></rect>
-              <path d="M14 20l4 10 1.5-4 4-1.5L14 20z" fill="var(--color-primary)" opacity="0.7"></path>
-              <path d="M38 28l-4-10-1.5 4-4 1.5L38 28z" fill="var(--color-primary)"></path>
-            </svg>
-            <span class="sidebar-title">CollabMD</span>
-          </div>
-          <div class="sidebar-actions">
-            <button class="ui-icon-button sidebar-close-btn" id="sidebarClose" aria-label="Close sidebar" title="Close sidebar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-            <div class="sidebar-create-shell">
-              <button
-                class="ui-button ui-button--secondary ui-button--compact ui-button--pill sidebar-create-btn"
-                id="sidebarCreateBtn"
-                aria-label="Create"
-                aria-expanded="false"
-                aria-haspopup="menu"
-                title="Create file or folder"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                <span class="sidebar-create-btn-label">Create</span>
-              </button>
-            </div>
-            <button
-              class="ui-icon-button sidebar-options-btn"
-              id="fileExplorerOptionsBtn"
-              type="button"
-              aria-label="File explorer options"
-              aria-expanded="false"
-              aria-haspopup="menu"
-              title="File explorer options"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                <circle cx="12" cy="5" r="1"></circle>
-                <circle cx="12" cy="12" r="1"></circle>
-                <circle cx="12" cy="19" r="1"></circle>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="ui-nav-tabs" id="sidebarTabs" role="tablist" aria-label="Sidebar views">
-          <button class="ui-nav-tab active" id="filesSidebarTab" type="button" role="tab" aria-selected="true" aria-controls="fileTree" tabindex="0">
-            <span class="ui-nav-tab-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
-            </span>
-            <span class="ui-nav-tab-label">Files</span>
-          </button>
-          <button class="ui-nav-tab" id="commentsSidebarTab" type="button" role="tab" aria-selected="false" aria-controls="commentOverviewPanel" tabindex="-1">
-            <span class="ui-nav-tab-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-            </span>
-            <span class="ui-nav-tab-label">Comments</span>
-          </button>
-          <button class="ui-nav-tab hidden" id="gitSidebarTab" type="button" role="tab" aria-selected="false" aria-controls="gitPanel" tabindex="-1">
-            <span class="ui-nav-tab-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="18" cy="18" r="3"></circle>
-                <circle cx="6" cy="6" r="3"></circle>
-                <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
-                <path d="M6 9v12"></path>
-              </svg>
-            </span>
-            <span class="ui-nav-tab-label">Git</span>
-          </button>
-        </div>
-        <div class="sidebar-search" id="fileSearch">
-          <input
-            type="search"
-            class="ui-input sidebar-search-input"
-            id="fileSearchInput"
-            placeholder="Filter files by name or path…"
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Filter files by name or path"
-            aria-describedby="fileSearchStatus"
-          >
-          <div class="sidebar-search-status hidden" id="fileSearchStatus" role="status" aria-live="polite"></div>
-        </div>
-        <div class="sidebar-search hidden" id="gitSearch">
-          <input
-            type="text"
-            class="ui-input sidebar-search-input"
-            id="gitSearchInput"
-            placeholder="Search changes..."
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Search changed files"
-          >
-        </div>
-        <nav id="fileTree" class="file-tree" role="tabpanel" aria-labelledby="filesSidebarTab"></nav>
-        <section id="commentOverviewPanel" class="comment-overview-panel hidden" role="tabpanel" aria-labelledby="commentsSidebarTab"></section>
-        <div id="gitPanel" class="git-panel hidden" role="tabpanel" aria-labelledby="gitSidebarTab"></div>
-        <div
-          class="sidebar-resizer"
-          id="sidebarResizer"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          aria-controls="sidebar"
-          aria-valuemin="220"
-          aria-valuemax="420"
-          aria-valuenow="260"
-          tabindex="0"
-          title="Drag to resize sidebar"
-        ></div>
-      </aside>
-
-      <button
-        type="button"
-        class="sidebar-backdrop"
-        id="sidebarBackdrop"
-        aria-label="Close navigation"
-        aria-hidden="true"
-        hidden
-      ></button>
-
-      <main class="main-area" id="mainContent">
-        <header class="toolbar" role="banner">
-          <div class="toolbar-left">
-            <button class="ui-button ui-button--ghost ui-button--toolbar" id="sidebarToggle" aria-label="Toggle sidebar" title="Toggle sidebar">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-            <div class="toolbar-room-info">
-              <span class="toolbar-room-name" id="activeFileName">CollabMD</span>
-            </div>
-          </div>
-
-          <div class="toolbar-center" id="toolbarCenter">
-            <button
-              class="ui-button ui-button--secondary ui-button--compact toolbar-search-trigger"
-              id="toolbarSearchBtn"
-              type="button"
-              aria-label="Search files and text"
-              aria-controls="quickSwitcher"
-              aria-haspopup="dialog"
-              aria-keyshortcuts="Meta+K Control+K"
-              title="Search files and text (⌘K)"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="7"></circle>
-                <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
-              </svg>
-              <span class="toolbar-search-label">Search</span>
-              <kbd class="toolbar-search-kbd">⌘K</kbd>
-            </button>
-            <div class="ui-segmented-control view-toggle" id="toolbarViewToggle" role="group" aria-label="View mode">
-              <button class="ui-segmented-btn active view-btn" data-view="split" aria-label="Split view" aria-pressed="true" title="Split view">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                  <line x1="12" y1="3" x2="12" y2="21"></line>
-                </svg>
-              </button>
-              <button class="ui-segmented-btn view-btn" data-view="editor" aria-label="Editor only" aria-pressed="false" title="Editor only">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                  <line x1="8" y1="8" x2="16" y2="8"></line>
-                  <line x1="8" y1="12" x2="14" y2="12"></line>
-                  <line x1="8" y1="16" x2="12" y2="16"></line>
-                </svg>
-              </button>
-              <button class="ui-segmented-btn view-btn" data-view="preview" aria-label="Preview only" aria-pressed="false" title="Preview only">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="toolbar-right">
-            <button class="ui-button ui-button--ghost ui-button--compact hidden" id="reviewFileChangesBtn" type="button" aria-label="Review changes to this file" title="Review changes to this file">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="6" y1="3" x2="6" y2="15"></line>
-                <circle cx="18" cy="6" r="3"></circle>
-                <circle cx="6" cy="18" r="3"></circle>
-                <path d="M18 9a9 9 0 0 1-9 9"></path>
-              </svg>
-              <span class="ui-toolbar-button-label">Review changes</span>
-            </button>
-
-            <button class="ui-button ui-button--ghost ui-button--toolbar mobile-view-toggle" id="mobileViewToggle" aria-label="Toggle editor/preview" title="Toggle view">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-              <span class="ui-toolbar-button-label">Preview</span>
-            </button>
-
-            <div class="toolbar-status-cluster" aria-label="Workspace status">
-              <span class="ui-pill-badge ui-pill-badge--accent hidden toolbar-badge" id="toolbarDiffBadge">Diff</span>
-              <span class="ui-pill-badge ui-pill-badge--muted hidden toolbar-badge" id="gitOperationStatus" aria-live="polite" aria-atomic="true"></span>
-            </div>
-
-            <div class="toolbar-presence-cluster" id="toolbarPresence">
-              <div class="user-avatars" id="userAvatars"></div>
-              <button
-                type="button"
-                class="ui-pill-badge ui-pill-badge--muted toolbar-badge toolbar-badge-button toolbar-presence-count"
-                id="userCount"
-                aria-controls="presencePanel"
-                aria-expanded="false"
-                data-presence-panel-trigger="true"
-              ></button>
-            </div>
-
-            <section class="collaboration-popover presence-panel hidden" id="presencePanel" aria-label="Online users" aria-hidden="true">
-              <div class="presence-panel-header">
-                <div>
-                  <h2 class="presence-panel-title">Online now</h2>
-                  <p class="presence-panel-status" id="presencePanelStatus">Click someone to follow.</p>
-                </div>
-              </div>
-              <div class="presence-panel-list" id="presencePanelList"></div>
-            </section>
-
-            <div class="chat-container" id="chatContainer">
-              <button type="button" class="ui-button ui-button--ghost ui-button--toolbar chat-toggle-btn" id="chatToggleBtn" aria-label="Open team chat" aria-controls="chatPanel" aria-expanded="false" title="Team chat">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <span class="ui-toolbar-button-label">Chat</span>
-                <span class="ui-pill-badge ui-pill-badge--solid ui-pill-badge--count hidden chat-toggle-badge" id="chatToggleBadge">0</span>
-              </button>
-              <div class="toast-container chat-toast-container" id="chatToastContainer" aria-live="polite" aria-atomic="true"></div>
-
-              <section class="collaboration-popover chat-panel hidden" id="chatPanel" role="dialog" aria-labelledby="chatPanelTitle">
-                <div class="chat-panel-header">
-                  <div class="chat-panel-heading">
-                    <h2 class="chat-panel-title" id="chatPanelTitle">Team chat</h2>
-                    <p class="chat-panel-status" id="chatStatus" role="status" aria-live="polite" aria-atomic="true">Syncing...</p>
-                  </div>
-                  <div class="chat-panel-actions">
-                    <span class="ui-status-badge ui-status-badge--accent chat-notification-status hidden" id="chatNotificationStatus" role="status"></span>
-                    <button
-                      type="button"
-                      class="ui-button ui-button--ghost ui-button--compact chat-notification-action"
-                      id="chatNotificationBtn"
-                    >Enable desktop alerts</button>
-                    <button
-                      type="button"
-                      class="ui-icon-button chat-notification-mute-action hidden"
-                      id="chatNotificationMuteBtn"
-                      aria-label="Mute desktop alerts for one hour"
-                      aria-pressed="false"
-                      title="Mute desktop alerts for one hour"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                        <path class="chat-notification-mute-slash" d="m4 4 16 16"></path>
-                      </svg>
-                    </button>
-                    <button type="button" class="ui-icon-button chat-close-btn" id="chatCloseBtn" aria-label="Close team chat" title="Close team chat">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="ui-empty-state ui-empty-state--compact chat-empty-state" id="chatEmptyState">
-                  Messages are visible to everyone in this room.
-                </div>
-                <div class="chat-messages hidden" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions text"></div>
-
-                <form class="chat-form" id="chatForm">
-                  <input
-                    type="text"
-                    class="ui-input chat-input"
-                    id="chatInput"
-                    placeholder="Message the room..."
-                    autocomplete="off"
-                    spellcheck="true"
-                    maxlength="280"
-                    enterkeyhint="send"
-                    aria-label="Team chat message"
-                  >
-                  <button type="submit" class="ui-button ui-button--primary chat-send-btn">Send</button>
-                </form>
-              </section>
-            </div>
-
-            <button
-              class="ui-button ui-button--ghost ui-button--toolbar toolbar-overflow-toggle"
-              id="toolbarOverflowToggle"
-              aria-label="Open more actions"
-              aria-expanded="false"
-              title="More actions"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="1"></circle>
-                <circle cx="19" cy="12" r="1"></circle>
-                <circle cx="5" cy="12" r="1"></circle>
-              </svg>
-            </button>
-
-            <div class="toolbar-overflow-menu" id="toolbarOverflowMenu">
-              <button class="ui-button ui-button--ghost ui-button--toolbar hidden" id="fileHistoryBtn" aria-label="Open file history" title="View file history">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 12a9 9 0 1 0 3-6.7"></path>
-                  <path d="M3 4v5h5"></path>
-                  <path d="M12 7v5l3 3"></path>
-                </svg>
-                <span class="ui-toolbar-button-label" id="fileHistoryBtnLabel">History</span>
-              </button>
-
-              <button class="ui-button ui-button--ghost ui-button--toolbar ui-toolbar-button--name" id="editNameBtn" aria-label="Set name. Change display name" title="Change display name">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 20h9"></path>
-                  <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
-                </svg>
-                <span class="ui-toolbar-button-label ui-toolbar-button-text" id="currentUserName">Set name</span>
-              </button>
-
-              <button class="ui-button ui-button--ghost ui-button--toolbar" id="shareBtn" aria-label="Share. Copy link" title="Share link">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                </svg>
-                <span class="ui-toolbar-button-label">Share</span>
-              </button>
-
-              <button class="ui-button ui-button--ghost ui-button--toolbar toolbar-search-files-btn" id="searchFilesBtn" aria-label="Search files" title="Search files">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <span class="ui-toolbar-button-label">Search files</span>
-              </button>
-
-              <button class="ui-button ui-button--ghost ui-button--toolbar ui-button--toggle toolbar-vim-button" id="toggleVimModeBtn" aria-label="Enable Vim keybindings" aria-pressed="false" title="Enable Vim keybindings">
-                <span class="toolbar-vim-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-                    <path d="m7 9 3 3-3 3"></path>
-                    <path d="M13 15h4"></path>
-                  </svg>
-                </span>
-                <span class="ui-toolbar-button-label">Vim</span>
-                <span class="ui-pill-badge ui-pill-badge--muted toolbar-vim-state" id="vimModeToggleLabel">Off</span>
-              </button>
-
-              <details class="toolbar-overflow-group hidden" id="exportMenuGroup">
-                <summary class="ui-button ui-button--ghost ui-button--toolbar toolbar-overflow-group-toggle" aria-label="Export options" title="Export">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <path d="M12 18v-6"></path>
-                    <path d="m9 15 3 3 3-3"></path>
-                  </svg>
-                  <span class="ui-toolbar-button-label">Export</span>
-                </summary>
-                <div class="toolbar-overflow-submenu">
-                  <button class="ui-button ui-button--ghost ui-button--toolbar" id="exportHtmlBtn" aria-label="Export HTML" title="Export HTML">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="m8 9-3 3 3 3"></path>
-                      <path d="m16 9 3 3-3 3"></path>
-                      <path d="m14 5-4 14"></path>
-                    </svg>
-                    <span class="ui-toolbar-button-label">Export HTML</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--toolbar" id="exportDocxBtn" aria-label="Export DOCX" title="Export DOCX">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <path d="M8 13h2l1.2 2 1.6-4 1.2 2H18"></path>
-                    </svg>
-                    <span class="ui-toolbar-button-label">Export DOCX</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--toolbar" id="exportPdfBtn" aria-label="Print or save PDF" title="Print / Save PDF">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M6 9V2h12v7"></path>
-                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                      <rect x="6" y="14" width="12" height="8"></rect>
-                    </svg>
-                    <span class="ui-toolbar-button-label">Print / Save PDF</span>
-                  </button>
-                </div>
-              </details>
-
-              <button class="ui-button ui-button--ghost ui-button--toolbar toolbar-theme-button" id="themeToggleBtn" data-theme-toggle aria-label="Toggle theme" title="Toggle theme">
-                <span class="toolbar-theme-icon" data-theme-toggle-icon aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="5"></circle>
-                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
-                  </svg>
-                </span>
-                <span class="ui-toolbar-button-label">Theme</span>
-                <span class="ui-pill-badge ui-pill-badge--muted toolbar-theme-state" data-theme-toggle-state>Dark</span>
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <div id="emptyState" class="empty-state">
-          <div class="empty-state-content">
-            <div class="empty-state-logo" aria-hidden="true">
-              <svg width="48" height="48" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="8" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.12"></rect>
-                <rect x="22" y="10" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.25"></rect>
-                <path d="M14 20l4 10 1.5-4 4-1.5L14 20z" fill="var(--color-primary)" opacity="0.7"></path>
-                <path d="M38 28l-4-10-1.5 4-4 1.5L38 28z" fill="var(--color-primary)"></path>
-              </svg>
-            </div>
-            <h2 class="empty-state-title">Welcome to CollabMD</h2>
-            <p class="empty-state-desc">Open a file from the sidebar, or get started quickly:</p>
-            <div class="empty-state-actions">
-              <button class="ui-button ui-button--primary empty-state-btn" id="emptyStateNewFileBtn">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                Create
-              </button>
-              <button class="ui-button ui-button--secondary empty-state-btn" id="emptyStateSearchBtn">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                Search everything
-                <kbd class="empty-state-kbd">⌘K</kbd>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div id="editor-page" class="editor-page hidden">
-          <section id="participantBar" class="participant-bar" aria-label="Governed document Participants" hidden>
-            <button type="button" class="ui-button ui-button--secondary ui-button--compact" id="manageAccessBtn" hidden>Manage access</button>
-          </section>
-          <div class="editor-layout" id="editorLayout" data-view="split">
-            <div class="editor-pane" id="editorPane">
-              <div class="pane-header">
-                <div class="pane-header-meta">
-                  <span class="pane-label">Editor</span>
-                  <span class="pane-label-meta" id="lineInfo">Ln 1, Col 1</span>
-                </div>
-                <div class="pane-header-actions">
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle mobile-editor-find-btn" id="editorFindBtn" aria-label="Find in file" title="Find in file">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                      <circle cx="11" cy="11" r="7"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                    <span class="ui-action-label">Find</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle hidden" id="commentSelectionBtn" aria-label="Comment current line or selection" title="Comment current line or selection">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    <span class="ui-action-label">Comment</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle" id="editorFormatBtn" aria-label="Format document" title="Format document">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M4 7h10"></path>
-                      <path d="M4 12h16"></path>
-                      <path d="M4 17h10"></path>
-                    </svg>
-                    <span class="ui-action-label">Format</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle" id="toggleWrapBtn" aria-label="Disable line wrap" title="Disable line wrap">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M3 6h14a4 4 0 1 1 0 8H9"></path>
-                      <path d="m9 10-4 4 4 4"></path>
-                      <path d="M3 18h7"></path>
-                    </svg>
-                    <span id="wrapToggleLabel">Wrap on</span>
-                  </button>
-                </div>
-              </div>
-              <div id="markdownToolbar" class="markdown-toolbar hidden" role="toolbar" aria-label="Markdown formatting"></div>
-              <div id="editorContainer" class="editor-container">
-                <div class="editor-loading" id="editorLoading" role="status" aria-live="polite" aria-label="Loading file…">
-                  <div class="skeleton-line skeleton-line--title skeleton-line--break"></div>
-                  <div class="skeleton-line skeleton-line--full"></div>
-                  <div class="skeleton-line skeleton-line--ninety"></div>
-                  <div class="skeleton-line skeleton-line--ninety-five"></div>
-                  <div class="skeleton-line skeleton-line--eighty skeleton-line--break"></div>
-                  <div class="skeleton-line skeleton-line--full"></div>
-                  <div class="skeleton-line skeleton-line--eighty-five"></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize editor and preview" aria-controls="editorPane previewPane" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50"></div>
-
-            <div class="preview-pane" id="previewPane">
-              <div class="pane-header">
-                <span class="pane-label">Preview</span>
-                <div class="pane-header-actions">
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle hidden" id="htmlPreviewMaximize" aria-label="Maximize HTML preview" title="Maximize HTML preview"></button>
-                  <div id="backlinksHeaderPanel" class="backlinks-panel backlinks-panel-header hidden" data-backlinks-variant="header">
-                    <button type="button" class="backlinks-header" aria-expanded="false">
-                      <svg class="backlinks-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
-                      <span class="backlinks-toggle">0 Linked Mentions</span>
-                      <span class="backlinks-count"></span>
-                    </button>
-                    <div class="backlinks-body" aria-hidden="true" inert>
-                      <div class="backlinks-list"></div>
-                    </div>
-                  </div>
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle hidden" id="commentsToggle" aria-label="Toggle comments" title="Toggle comments">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    <span class="ui-action-label">Comments</span>
-                  </button>
-                  <button class="ui-button ui-button--ghost ui-button--compact ui-button--toggle" id="outlineToggle" aria-label="Toggle outline" aria-controls="outlinePanel" aria-expanded="false" title="Toggle outline">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                      <line x1="3" y1="6" x2="21" y2="6"></line>
-                      <line x1="3" y1="12" x2="15" y2="12"></line>
-                      <line x1="3" y1="18" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div class="preview-body">
-                <div id="previewContainer" class="preview-container">
-                  <div id="previewContent" class="preview-content"></div>
-                  <div id="backlinksInlinePanel" class="backlinks-panel backlinks-panel-inline hidden">
-                    <button type="button" class="backlinks-header" aria-expanded="false">
-                      <svg class="backlinks-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
-                      <span class="backlinks-toggle">0 Linked Mentions</span>
-                      <span class="backlinks-count"></span>
-                    </button>
-                    <div class="backlinks-body" aria-hidden="true" inert>
-                      <div class="backlinks-list"></div>
-                    </div>
-                  </div>
-                </div>
-                <div id="backlinksPanel" class="backlinks-panel-layer hidden">
-                  <div class="backlinks-panel backlinks-panel-dock" data-backlinks-variant="dock">
-                    <button type="button" class="backlinks-header" aria-expanded="false">
-                      <svg class="backlinks-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
-                      <span class="backlinks-toggle">0 Linked Mentions</span>
-                      <span class="backlinks-count"></span>
-                    </button>
-                    <div class="backlinks-body" aria-hidden="true" inert>
-                      <div class="backlinks-list"></div>
-                    </div>
-                  </div>
-                </div>
-                <aside id="commentsDrawer" class="comments-drawer hidden" aria-label="Comments">
-                  <div class="comments-drawer-header">
-                    <span class="comments-drawer-title">Comments</span>
-                  </div>
-                  <div id="commentsDrawerEmpty" class="comments-drawer-empty ui-empty-state ui-empty-state--compact">
-                    <p class="ui-empty-state-title">No comments yet</p>
-                    <p class="ui-empty-state-copy">Select text in the editor or use a preview bubble to start a thread.</p>
-                  </div>
-                  <div id="commentsDrawerList" class="comments-drawer-list"></div>
-                </aside>
-                <aside id="outlinePanel" class="outline-panel hidden" aria-label="Document outline" aria-hidden="true">
-                  <div class="outline-header">
-                    <span class="outline-title">Outline</span>
-                    <button class="ui-icon-button outline-close-btn" id="outlineClose" type="button" aria-label="Close outline" title="Close outline">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                  <nav id="outlineNav" class="outline-nav"></nav>
-                </aside>
-              </div>
-            </div>
-          </div>
-          <aside id="governanceRail" class="governance-rail" aria-label="Document governance" hidden>
-            <div class="ui-nav-tabs governance-tabs" role="tablist" aria-label="Governance views">
-              <button class="ui-nav-tab active" type="button" data-governance-tab="review" aria-controls="governanceReviewPanel">Review</button>
-              <button class="ui-nav-tab" type="button" data-governance-tab="activity" aria-controls="governanceActivityPanel">Activity</button>
-              <button class="ui-nav-tab" type="button" data-governance-tab="roles" aria-controls="governanceRolesPanel">Roles</button>
-            </div>
-            <section id="governanceReviewPanel" class="governance-panel" data-governance-panel="review"></section>
-            <section id="governanceActivityPanel" class="governance-panel" data-governance-panel="activity" hidden></section>
-            <section id="governanceRolesPanel" class="governance-panel" data-governance-panel="roles" hidden></section>
-          </aside>
-        </div>
-
-        <div id="diff-page" class="diff-page hidden">
-          <div class="diff-toolbar">
-            <div class="diff-toolbar-left">
-              <div class="diff-file-nav">
-                <button class="ui-icon-button ui-icon-button--action" id="diffPrevBtn" type="button" disabled aria-label="Previous changed file">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                  </svg>
-                </button>
-                <span class="diff-file-indicator" id="diffFileIndicator">0 / 0 files</span>
-                <button class="ui-icon-button ui-icon-button--action" id="diffNextBtn" type="button" disabled aria-label="Next changed file">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-              </div>
-              <div class="diff-toolbar-actions">
-                <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface hidden diff-back-btn" id="diffBackToHistoryBtn" type="button">
-                  Back to history
-                </button>
-                <div class="diff-toolbar-actions-group diff-toolbar-actions-group-git" id="diffGitActionsGroup" role="group" aria-label="Git file actions">
-                  <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface" id="diffPrimaryActionBtn" type="button" disabled>
-                    Include in commit
-                  </button>
-                  <button class="ui-button ui-button--primary ui-button--action ui-button--wide" id="diffCommitBtn" type="button" disabled>
-                    Commit included files
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="diff-toolbar-right">
-              <div class="diff-stats" id="diffStats">
-                <span class="ui-stat-token ui-stat-token--add diff-stats-add">+0</span>
-                <span class="ui-stat-token ui-stat-token--del diff-stats-del">-0</span>
-              </div>
-              <div class="ui-segmented-control hidden diff-layout-toggle" id="diffLayoutToggle" role="group" aria-label="Commit diff layout">
-                <button class="ui-segmented-btn diff-layout-btn" data-diff-layout="stacked" type="button" aria-pressed="false">Stacked</button>
-                <button class="ui-segmented-btn active diff-layout-btn" data-diff-layout="focused" type="button" aria-pressed="true">Focused</button>
-              </div>
-              <div class="ui-segmented-control diff-mode-toggle" role="group" aria-label="Diff view mode">
-                <button class="ui-segmented-btn active diff-mode-btn" data-diff-mode="unified" type="button" aria-pressed="true">Unified</button>
-                <button class="ui-segmented-btn diff-mode-btn" data-diff-mode="split" type="button" aria-pressed="false">Split</button>
-              </div>
-              <span class="diff-toolbar-actions-divider" id="diffToolbarDivider" aria-hidden="true"></span>
-              <div class="diff-toolbar-actions-group" id="diffEditorActionsGroup" role="group" aria-label="Navigation actions">
-                <button class="ui-button ui-button--secondary ui-button--action ui-button--wide ui-button--surface diff-open-editor-btn" id="diffOpenEditorBtn" type="button" disabled>
-                  Open in editor
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="diff-scroll" id="diffScroll">
-            <div class="diff-content" id="diffContent"></div>
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <dialog class="app-dialog" id="displayNameDialog" aria-labelledby="displayNameTitle">
-      <form class="app-dialog-form" id="displayNameForm" method="dialog">
-        <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="displayNameTitle">Update display name</h2>
-          <p class="app-dialog-copy" id="displayNameCopy">Your name will be visible to everyone editing this vault.</p>
-        </div>
-        <label class="app-dialog-field" for="displayNameInput">
-          <span class="app-dialog-label">Name</span>
-          <input type="text" class="ui-input" id="displayNameInput" name="displayName" maxlength="24" autocomplete="nickname" spellcheck="false" required>
-        </label>
-        <div class="app-dialog-actions">
-          <button type="button" class="ui-button ui-button--secondary" id="displayNameCancel">Cancel</button>
-          <button type="submit" class="ui-button ui-button--primary" id="displayNameSubmit">Save name</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="app-dialog manage-access-dialog" id="manageAccessDialog" aria-labelledby="manageAccessTitle">
-      <div class="app-dialog-form">
-        <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="manageAccessTitle">Manage access</h2>
-          <p class="app-dialog-copy">Assign a Role and expiry, or revoke an active Grant immediately.</p>
-        </div>
-        <div class="manage-access-list" data-manage-access-list></div>
-        <div class="app-dialog-actions">
-          <button type="button" class="ui-button ui-button--secondary" data-manage-access-close>Close</button>
-        </div>
+  <div class="focused-product-shell">
+    <header class="focused-product-header" role="banner">
+      <div class="focused-product-brand">
+        <svg width="22" height="22" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="6" y="8" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.12"></rect>
+          <rect x="22" y="10" width="28" height="38" rx="4" stroke="var(--color-primary)" stroke-width="2" fill="var(--color-primary)" fill-opacity="0.25"></rect>
+          <path d="M14 20l4 10 1.5-4 4-1.5L14 20z" fill="var(--color-primary)" opacity="0.7"></path>
+          <path d="M38 28l-4-10-1.5 4-4 1.5L38 28z" fill="var(--color-primary)"></path>
+        </svg>
+        <span>CollabMD</span>
       </div>
-    </dialog>
+      <h1 class="focused-document-title" id="activeFileName">Governed workspace</h1>
+    </header>
 
-    <dialog class="app-dialog" id="fileActionDialog" aria-labelledby="fileActionTitle">
-      <form class="app-dialog-form" id="fileActionForm" method="dialog">
-        <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="fileActionTitle">Create file</h2>
-          <p class="app-dialog-copy" id="fileActionCopy">Add a new file to the vault.</p>
-        </div>
-        <label class="app-dialog-field" id="fileActionField" for="fileActionInput">
-          <span class="app-dialog-label" id="fileActionLabel">Path</span>
-          <input type="text" class="ui-input" id="fileActionInput" name="fileActionValue" autocomplete="off" spellcheck="false" required>
-          <span class="app-dialog-hint" id="fileActionHint" hidden></span>
-        </label>
-        <p class="app-dialog-note" id="fileActionNote" hidden></p>
-        <div class="app-dialog-actions">
-          <button type="button" class="ui-button ui-button--secondary" id="fileActionCancel">Cancel</button>
-          <button type="submit" class="ui-button ui-button--primary" id="fileActionSubmit">Create</button>
-        </div>
-      </form>
-    </dialog>
+    <main class="focused-product-main" id="mainContent">
+      <section id="participantBar" class="participant-bar" aria-label="Document Participants" hidden>
+        <button type="button" class="ui-button ui-button--secondary ui-button--compact" id="manageAccessBtn" hidden>Manage access</button>
+      </section>
 
-    <dialog class="app-dialog" id="gitCommitDialog" aria-labelledby="gitCommitTitle">
-      <form class="app-dialog-form" id="gitCommitForm" method="dialog">
-        <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="gitCommitTitle">Commit included files</h2>
-          <p class="app-dialog-copy" id="gitCommitCopy">All included changes will be committed.</p>
+      <section id="governanceStatusPanel" class="governance-status-panel" hidden aria-live="polite">
+        <div class="governance-status-card">
+          <span class="governance-status-icon" aria-hidden="true"></span>
+          <h2 data-governance-status-title></h2>
+          <p data-governance-status-copy></p>
+          <button type="button" class="ui-button ui-button--secondary" data-governance-retry hidden>Retry</button>
         </div>
-        <label class="app-dialog-field" for="gitCommitInput">
-          <span class="app-dialog-label">What changed?</span>
-          <input type="text" class="ui-input" id="gitCommitInput" name="gitCommitMessage" autocomplete="off" spellcheck="true" aria-describedby="gitCommitHint" required>
-          <span class="app-dialog-hint" id="gitCommitHint">This becomes the Git commit message.</span>
-        </label>
-        <div class="app-dialog-actions">
-          <button type="button" class="ui-button ui-button--secondary" id="gitCommitCancel">Cancel</button>
-          <button type="submit" class="ui-button ui-button--primary" id="gitCommitSubmit">Commit included files</button>
-        </div>
-      </form>
-    </dialog>
+      </section>
 
-    <dialog class="app-dialog" id="gitResetDialog" aria-labelledby="gitResetTitle">
-      <form class="app-dialog-form" method="dialog">
-        <div class="app-dialog-header">
-          <h2 class="app-dialog-title" id="gitResetTitle">Reset file</h2>
-          <p class="app-dialog-copy" id="gitResetCopy">Restore this file from the current checked-out branch. If that branch does not contain the file, it will be deleted locally.</p>
+      <section id="editor-page" class="focused-document-surface" hidden>
+        <a href="#editorContainer" class="sr-only skip-link" id="skipToEditor">Skip to editor</a>
+        <div class="focused-editor-shell">
+          <div id="editorContainer" class="editor-container" aria-label="Markdown editor"></div>
         </div>
-        <div class="app-dialog-field">
-          <label class="app-dialog-label" for="gitResetFileName">File</label>
-          <input class="ui-input app-dialog-input" id="gitResetFileName" type="text" readonly>
-        </div>
-        <div class="app-dialog-note is-danger">
-          Local file content and staged changes for this path will be discarded.
-        </div>
-        <div class="app-dialog-actions">
-          <button class="ui-button ui-button--secondary" id="gitResetCancel" type="button">Cancel</button>
-          <button class="ui-button ui-button--danger" id="gitResetSubmit" type="button">Reset file</button>
-        </div>
-      </form>
-    </dialog>
+        <aside id="governanceRail" class="governance-rail" aria-label="Document governance" hidden>
+          <div class="ui-nav-tabs governance-tabs" role="tablist" aria-label="Governance views">
+            <button id="governanceReviewTab" class="ui-nav-tab active" type="button" data-governance-tab="review" aria-controls="governanceReviewPanel">Review</button>
+            <button id="governanceActivityTab" class="ui-nav-tab" type="button" data-governance-tab="activity" aria-controls="governanceActivityPanel">Activity</button>
+            <button id="governanceRolesTab" class="ui-nav-tab" type="button" data-governance-tab="roles" aria-controls="governanceRolesPanel">Roles</button>
+          </div>
+          <section id="governanceReviewPanel" class="governance-panel" data-governance-panel="review" aria-labelledby="governanceReviewTab"></section>
+          <section id="governanceActivityPanel" class="governance-panel" data-governance-panel="activity" aria-labelledby="governanceActivityTab" hidden></section>
+          <section id="governanceRolesPanel" class="governance-panel" data-governance-panel="roles" aria-labelledby="governanceRolesTab" hidden></section>
+        </aside>
+      </section>
+    </main>
+  </div>
 
-    <dialog class="tab-lock-overlay" id="tabLockOverlay" aria-labelledby="tabLockTitle">
-      <div class="tab-lock-card">
-        <span class="tab-lock-kicker">Single active tab</span>
-        <h2 class="tab-lock-title" id="tabLockTitle">This vault is active in another tab</h2>
-        <p class="tab-lock-copy" id="tabLockCopy">To avoid duplicate presence and chat, only one tab can stay connected at a time. Use the other tab, or take over the session here.</p>
-        <div class="tab-lock-actions">
-          <button type="button" class="ui-button ui-button--primary ui-button--lg" id="tabLockTakeoverBtn">Take over here</button>
-        </div>
+  <dialog class="app-dialog" id="displayNameDialog" aria-labelledby="displayNameTitle">
+    <form class="app-dialog-form" id="displayNameForm" method="dialog">
+      <div class="app-dialog-header">
+        <h2 class="app-dialog-title" id="displayNameTitle">Update display name</h2>
+        <p class="app-dialog-copy" id="displayNameCopy">Your name will be visible to everyone editing this workspace.</p>
       </div>
-    </dialog>
+      <label class="app-dialog-field" for="displayNameInput">
+        <span class="app-dialog-label">Name</span>
+        <input type="text" class="ui-input" id="displayNameInput" name="displayName" maxlength="24" autocomplete="nickname" spellcheck="false" required>
+      </label>
+      <div class="app-dialog-actions">
+        <button type="button" class="ui-button ui-button--secondary" id="displayNameCancel">Cancel</button>
+        <button type="submit" class="ui-button ui-button--primary" id="displayNameSubmit">Save name</button>
+      </div>
+    </form>
+  </dialog>
 
-    <div class="toast-container" id="toastContainer"></div>
-
-    <div class="qs-overlay" id="quickSwitcher" role="dialog" aria-modal="true" aria-labelledby="quickSwitcherTitle" aria-hidden="true">
-      <div class="qs-modal">
-        <h2 class="sr-only" id="quickSwitcherTitle">Search files and text</h2>
-        <div class="qs-mode-tabs" role="tablist" aria-label="Search mode">
-          <button class="qs-mode-tab active" id="quickSwitcherFilesTab" type="button" role="tab" aria-controls="quickSwitcherResults" aria-selected="true" data-qs-mode="files">Files</button>
-          <button class="qs-mode-tab" id="quickSwitcherTextTab" type="button" role="tab" aria-controls="quickSwitcherResults" aria-selected="false" data-qs-mode="text">Text</button>
-        </div>
-        <div class="qs-input-wrap">
-          <svg class="qs-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" class="qs-input" id="quickSwitcherInput" role="combobox" placeholder="Search files..." aria-label="Search files" aria-controls="quickSwitcherResults" aria-describedby="quickSwitcherHint quickSwitcherScope" aria-autocomplete="list" aria-expanded="false" autocomplete="off" spellcheck="false">
-          <kbd class="qs-kbd">esc</kbd>
-        </div>
-        <div class="qs-scope hidden" id="quickSwitcherScope" role="note" aria-hidden="true">Exact, case-insensitive text in Markdown, Base, Mermaid, PlantUML, Draw.io, and Excalidraw files. Images are excluded.</div>
-        <div class="qs-results" id="quickSwitcherResults" role="listbox" aria-label="Search results" aria-busy="false" tabindex="-1"></div>
-        <div class="qs-hint" id="quickSwitcherHint" role="status" aria-live="polite" aria-atomic="true">Type to search files</div>
-        <div class="qs-footer">
-          <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
-          <span><kbd>↵</kbd> Open</span>
-          <span><kbd>Tab</kbd> Switch mode</span>
-        </div>
+  <dialog class="app-dialog manage-access-dialog" id="manageAccessDialog" aria-labelledby="manageAccessTitle">
+    <div class="app-dialog-form">
+      <div class="app-dialog-header">
+        <h2 class="app-dialog-title" id="manageAccessTitle" tabindex="-1">Manage access</h2>
+        <p class="app-dialog-copy">Assign or update a Role, or revoke Access immediately.</p>
+      </div>
+      <div class="manage-access-list" data-manage-access-list></div>
+      <div class="app-dialog-actions">
+        <button type="button" class="ui-button ui-button--secondary" data-manage-access-close>Close</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="tab-lock-overlay" id="tabLockOverlay" aria-labelledby="tabLockTitle">
+    <div class="tab-lock-card">
+      <span class="tab-lock-kicker">Single active tab</span>
+      <h2 class="tab-lock-title" id="tabLockTitle">This workspace is active in another tab</h2>
+      <p class="tab-lock-copy" id="tabLockCopy">Only one tab can keep this live session connected. Use the other tab, or take over here.</p>
+      <div class="tab-lock-actions">
+        <button type="button" class="ui-button ui-button--primary ui-button--lg" id="tabLockTakeoverBtn">Take over here</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
   <script vite-ignore src="./app-config.js"></script>
   <script type="module" src="./main-entry.js"></script>
 </body>

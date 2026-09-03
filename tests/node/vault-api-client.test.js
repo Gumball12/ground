@@ -34,7 +34,6 @@ test('VaultApiClient prefixes vault endpoints with the configured base path', as
   const client = new VaultApiClient();
 
   await client.readTree();
-  await client.readCommentOverview();
   await client.readFile('notes/today.md');
   await client.createFile({ content: '# Today\n', path: 'notes/today.md' });
   await client.renameFile({ newPath: 'notes/tomorrow.md', oldPath: 'notes/today.md' });
@@ -63,7 +62,6 @@ test('VaultApiClient prefixes vault endpoints with the configured base path', as
     })),
     [
       { body: null, headers: null, method: 'GET', url: '/app/api/files' },
-      { body: null, headers: null, method: 'GET', url: '/app/api/comments/overview' },
       { body: null, headers: null, method: 'GET', url: '/app/api/file?path=notes%2Ftoday.md' },
       { body: { content: '# Today\n', path: 'notes/today.md' }, headers: { 'Content-Type': 'application/json' }, method: 'POST', url: '/app/api/file' },
       {

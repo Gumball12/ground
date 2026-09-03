@@ -4,8 +4,8 @@ import test from 'node:test';
 import { TabActivityLock } from '../../src/client/infrastructure/tab-activity-lock.js';
 import { uiFeatureTabActivityMethods } from '../../src/client/application/app-shell/ui-feature-tab-activity.js';
 
-const createStorage = () => {
-  const values = new Map();
+const createStorage = (initial = {}) => {
+  const values = new Map(Object.entries(initial));
   return {
     getItem: (key) => values.get(key) ?? null,
     removeItem: (key) => values.delete(key),
@@ -39,11 +39,21 @@ test('different participant scopes can activate on the same origin', () => {
   });
 });
 
-test('a duplicate tab in one participant scope remains blocked', () => {
+test('a duplicate tab with cloned governance and prior tab storage remains blocked', () => {
   withBrowser(() => {
+    const clonedState = {
+      'collabmd-governance-session': JSON.stringify({
+        credential: 'owner-credential',
+        documentPath: 'README.md',
+        participantSessionId: 'writer-session',
+      }),
+      'collabmd-tab-id': 'cloned-tab-id',
+    };
+    window.sessionStorage = createStorage(clonedState);
     const first = new TabActivityLock({ scope: 'writer-session' });
-    window.sessionStorage = createStorage();
+    window.sessionStorage = createStorage(clonedState);
     const duplicate = new TabActivityLock({ scope: 'writer-session' });
+    assert.notEqual(first.tabId, duplicate.tabId);
     assert.equal(first.tryAcquire(), true);
     assert.equal(duplicate.tryAcquire(), false);
   });

@@ -57,9 +57,30 @@ function lineNumberAt(content, index) {
   return content.slice(0, index).split('\n').length;
 }
 
+function unlocatedAnchorForConflict(oldText) {
+  const detachedDoc = new Y.Doc();
+  const detachedText = detachedDoc.getText('codemirror');
+  detachedText.insert(0, 'x');
+  const anchor = {
+    anchorEnd: Y.relativePositionToJSON(
+      Y.createRelativePositionFromTypeIndex(detachedText, 1, -1),
+    ),
+    anchorEndLine: 1,
+    anchorKind: 'text',
+    anchorQuote: oldText,
+    anchorStart: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(detachedText, 0)),
+    anchorStartLine: 1,
+  };
+  detachedDoc.destroy();
+  return anchor;
+}
+
 function anchorForConflict(ytext, content, oldText) {
-  const from = Math.max(content.indexOf(oldText), 0);
-  const to = Math.min(from + oldText.length, content.length);
+  const from = content.indexOf(oldText);
+  if (from === -1) {
+    return unlocatedAnchorForConflict(oldText);
+  }
+  const to = from + oldText.length;
   return {
     anchorEnd: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, to)),
     anchorEndLine: lineNumberAt(content, to),
@@ -108,8 +129,10 @@ export class EditorSession {
     this.localEditBurst = null;
     this.localEditBurstTimer = null;
     this.destroying = false;
+    const governanceSnapshot = this.governed ? this.getGovernanceSnapshot() : null;
 
     this.collaborationClient = new EditorCollaborationClient({
+      governanceSnapshot,
       localUser,
       onAwarenessChange: (users) => this.onAwarenessChange?.(users),
       onConnectionChange: (state) => {
@@ -275,6 +298,7 @@ export class EditorSession {
         action: 'direct_edit_applied',
         actor,
         outcome: 'applied',
+        source: 'document_editor',
         target: 'document',
       });
     }, LOCAL_EDIT_ORIGIN);
@@ -289,9 +313,8 @@ export class EditorSession {
       clearTimeout(this.localEditBurstTimer);
       this.localEditBurstTimer = null;
     }
-    const { actor } = this.localEditBurst;
     this.localEditBurst = null;
-    return this.appendLocalEditActivity(actor);
+    return true;
   }
 
   handleLocalEdit(action) {
@@ -309,7 +332,11 @@ export class EditorSession {
     }
 
     context.ydoc.transact(() => {
-      revalidateOpenProposals(context, { actor, origin: LOCAL_EDIT_ORIGIN });
+      revalidateOpenProposals(context, {
+        actor,
+        origin: LOCAL_EDIT_ORIGIN,
+        source: 'document_editor',
+      });
     }, LOCAL_EDIT_ORIGIN);
 
     if (action !== 'native') {
@@ -317,7 +344,10 @@ export class EditorSession {
       return this.appendLocalEditActivity(actor);
     }
 
-    this.localEditBurst ??= { actor };
+    if (!this.localEditBurst) {
+      this.localEditBurst = true;
+      this.appendLocalEditActivity(actor);
+    }
     if (this.localEditBurstTimer !== null) {
       clearTimeout(this.localEditBurstTimer);
     }
@@ -343,11 +373,11 @@ export class EditorSession {
     return this.connectionFrozen;
   }
 
-  reconnectAfterGovernanceValidation() {
+  reconnectAfterGovernanceValidation(governanceSnapshot) {
     if (!this.connectionFrozen) {
       return false;
     }
-    this.collaborationClient.reconnect();
+    this.collaborationClient.reconnect(governanceSnapshot);
     return true;
   }
 
@@ -357,6 +387,10 @@ export class EditorSession {
 
   getText() {
     return this.collaborationClient.getText() || this.viewAdapter.getText();
+  }
+
+  hasUnsynchronizedLocalChanges() {
+    return this.collaborationClient.hasUnsynchronizedLocalChanges();
   }
 
   getScrollContainer() {
@@ -534,14 +568,20 @@ export class EditorSession {
           baseRevision: edit.revision,
           expectedText: edit.oldText,
           replacementText: edit.newText,
+          source: 'webmcp_apply',
         }));
-        const revalidation = revalidateOpenProposals(context, { actor, origin: GOVERNED_EDIT_ORIGIN });
+        const revalidation = revalidateOpenProposals(context, {
+          actor,
+          origin: GOVERNED_EDIT_ORIGIN,
+          source: 'webmcp_apply',
+        });
         const revalidatedById = new Map(revalidation.changed.map((proposal) => [proposal.id, proposal]));
         conflictProposals = conflictProposals.map((proposal) => revalidatedById.get(proposal.id) ?? proposal);
         appendActivity(activity, {
           action: 'text_edits_conflicted',
           actor,
           outcome: 'conflict',
+          source: 'webmcp_apply',
           target: 'document',
         });
         return;
@@ -553,11 +593,16 @@ export class EditorSession {
           ytext.insert(change.from, change.newText);
         }
       }
-      revalidateOpenProposals(context, { actor, origin: GOVERNED_EDIT_ORIGIN });
+      revalidateOpenProposals(context, {
+        actor,
+        origin: GOVERNED_EDIT_ORIGIN,
+        source: 'webmcp_apply',
+      });
       appendActivity(activity, {
         action: 'text_edits_applied',
         actor,
         outcome: 'applied',
+        source: 'webmcp_apply',
         target: 'document',
       });
     }, GOVERNED_EDIT_ORIGIN);
@@ -588,6 +633,7 @@ export class EditorSession {
       baseRevision: revision,
       expectedText: oldText,
       replacementText: newText,
+      source: 'webmcp_proposal',
     });
   }
 

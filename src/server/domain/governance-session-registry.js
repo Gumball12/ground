@@ -4,9 +4,15 @@ import { hasCapability } from '../../domain/governance-contract.js';
 
 const digestCredential = (credential) => createHash('sha256').update(credential).digest('hex');
 
-const isGrantDuration = (value) => Number.isInteger(value) && value >= 1 && value <= 1440;
+const actorFromParticipant = (participant) => ({
+  displayName: participant.displayName,
+  kind: participant.kind,
+  participantSessionId: participant.participantSessionId,
+  roleId: participant.roleId,
+});
 
 export class GovernanceSessionRegistry {
+  #accessListeners = new Set();
   #credentials = new Map();
   #manifest;
   #now;
@@ -24,6 +30,31 @@ export class GovernanceSessionRegistry {
     this.#rooms.clear();
   }
 
+  onAccessChanged(listener) {
+    if (typeof listener !== 'function') {
+      return () => {};
+    }
+
+    this.#accessListeners.add(listener);
+    return () => this.#accessListeners.delete(listener);
+  }
+
+  isConnectionCurrent({ documentPath, participantSessionId, version } = {}) {
+    if (!Number.isSafeInteger(version)) {
+      return false;
+    }
+
+    const room = this.#rooms.get(documentPath);
+    if (room === undefined || room.version !== version) {
+      return false;
+    }
+
+    const participant = room.participants.find((candidate) => (
+      candidate.participantSessionId === participantSessionId
+    ));
+    return participant !== undefined && this.#stateOf(participant) === 'active';
+  }
+
   createSession({ documentPath, displayName, kind }) {
     const credential = this.#randomBytes(32).toString('base64url');
     const participantSessionId = randomUUID();
@@ -39,10 +70,10 @@ export class GovernanceSessionRegistry {
     const participant = {
       displayName,
       documentPath,
-      expiresAt: undefined,
       issuedAt: isOwner ? createdAt : undefined,
       joinedAt: createdAt,
       kind,
+      lastAccessTransition: undefined,
       participantSessionId,
       revokedAt: undefined,
       roleId: isOwner ? 'owner' : undefined,
@@ -56,15 +87,14 @@ export class GovernanceSessionRegistry {
 
   getSnapshot(credential) {
     const session = this.#getSession(credential);
-    return session === undefined ? undefined : this.#snapshot(session.room, session.participant, this.#now());
+    return session === undefined ? undefined : this.#snapshot(session.room, session.participant);
   }
 
   assignRole(ownerCredential, {
     participantSessionId,
     roleId,
-    expiresInMinutes = this.#manifest.defaultGrantMinutes,
   }) {
-    const { room } = this.#requireOwner(ownerCredential);
+    const { participant: owner, room } = this.#requireOwner(ownerCredential);
     const participant = room.participants.find((candidate) => candidate.participantSessionId === participantSessionId);
 
     if (participant === undefined) {
@@ -76,21 +106,30 @@ export class GovernanceSessionRegistry {
     if (!Object.hasOwn(this.#manifest.roles, roleId) || roleId === 'owner') {
       throw new RangeError('Unknown assignable governance role.');
     }
-    if (!isGrantDuration(expiresInMinutes)) {
-      throw new RangeError('Grant duration must be an integer between 1 and 1440 minutes.');
+    if (this.#stateOf(participant) === 'active' && participant.roleId === roleId) {
+      return this.#transitionResponse(room, participant, participant.lastAccessTransition);
     }
 
+    const action = this.#stateOf(participant) === 'active' ? 'grant_changed' : 'grant_assigned';
     const issuedAt = this.#now();
-    participant.expiresAt = issuedAt + (expiresInMinutes * 60_000);
     participant.issuedAt = issuedAt;
     participant.revokedAt = undefined;
     participant.roleId = roleId;
     room.version += 1;
-    return this.#snapshot(room, participant, issuedAt);
+    participant.lastAccessTransition = this.#createAccessTransition({
+      action,
+      actor: owner,
+      createdAt: issuedAt,
+      outcome: 'changed',
+      room,
+      target: participant,
+    });
+    this.#emitAccessChanged(room, participant);
+    return this.#transitionResponse(room, participant, participant.lastAccessTransition);
   }
 
   revoke(ownerCredential, participantSessionId) {
-    const { room } = this.#requireOwner(ownerCredential);
+    const { participant: owner, room } = this.#requireOwner(ownerCredential);
     const participant = room.participants.find((candidate) => candidate.participantSessionId === participantSessionId);
 
     if (participant === undefined) {
@@ -99,14 +138,28 @@ export class GovernanceSessionRegistry {
     if (participant.roleId === 'owner') {
       throw new TypeError('Owner role cannot be revoked.');
     }
-    if (participant.roleId === undefined || participant.revokedAt !== undefined) {
+    if (this.#stateOf(participant) === 'revoked'
+      && participant.lastAccessTransition?.action === 'grant_revoked') {
+      return this.#transitionResponse(room, participant, participant.lastAccessTransition);
+    }
+    if (participant.roleId === undefined) {
       throw new RangeError('Participant has no active grant.');
     }
 
     const revokedAt = this.#now();
     participant.revokedAt = revokedAt;
+    participant.roleId = undefined;
     room.version += 1;
-    return this.#snapshot(room, participant, revokedAt);
+    participant.lastAccessTransition = this.#createAccessTransition({
+      action: 'grant_revoked',
+      actor: owner,
+      createdAt: revokedAt,
+      outcome: 'revoked',
+      room,
+      target: participant,
+    });
+    this.#emitAccessChanged(room, participant);
+    return this.#transitionResponse(room, participant, participant.lastAccessTransition);
   }
 
   authorize(credential, { documentPath, capability } = {}) {
@@ -115,12 +168,34 @@ export class GovernanceSessionRegistry {
       return { ok: false };
     }
 
-    const checkedAt = this.#now();
-    if (this.#stateOf(session.participant, checkedAt) !== 'active') {
-      return { ok: false };
+    const state = this.#stateOf(session.participant);
+    const sessionMetadata = {
+      documentPath: session.room.documentPath,
+      participantSessionId: session.participant.participantSessionId,
+      roleId: session.participant.roleId,
+      state,
+    };
+    if (state !== 'active') {
+      return { ok: false, session: sessionMetadata };
     }
 
-    return { ok: hasCapability(this.#manifest, session.participant.roleId, capability) };
+    return {
+      actor: actorFromParticipant(session.participant),
+      ok: hasCapability(this.#manifest, session.participant.roleId, capability),
+      session: sessionMetadata,
+    };
+  }
+
+  #createAccessTransition({ action, actor, createdAt, outcome, room, target }) {
+    return Object.freeze({
+      action,
+      actor: Object.freeze(actorFromParticipant(actor)),
+      createdAt,
+      id: `access-${target.participantSessionId}-${room.version}`,
+      outcome,
+      source: 'access_management',
+      target: target.participantSessionId,
+    });
   }
 
   #getSession(credential) {
@@ -140,6 +215,21 @@ export class GovernanceSessionRegistry {
     return participant === undefined ? undefined : { participant, room };
   }
 
+  #emitAccessChanged(room, participant) {
+    const event = {
+      documentPath: room.documentPath,
+      participantSessionId: participant.participantSessionId,
+      version: room.version,
+    };
+    for (const listener of this.#accessListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error('[governance] Access-change listener failed:', error.message);
+      }
+    }
+  }
+
   #requireOwner(credential) {
     const session = this.#getSession(credential);
     if (session === undefined || session.participant.roleId !== 'owner') {
@@ -148,16 +238,15 @@ export class GovernanceSessionRegistry {
     return session;
   }
 
-  #snapshot(room, participant, at) {
+  #snapshot(room, participant) {
     const toSnapshotParticipant = (candidate) => ({
       displayName: candidate.displayName,
-      expiresAt: candidate.expiresAt,
       joinedAt: candidate.joinedAt,
       kind: candidate.kind,
       participantSessionId: candidate.participantSessionId,
       revokedAt: candidate.revokedAt,
       roleId: candidate.roleId,
-      state: this.#stateOf(candidate, at),
+      state: this.#stateOf(candidate),
     });
     const currentParticipant = toSnapshotParticipant(participant);
 
@@ -173,15 +262,19 @@ export class GovernanceSessionRegistry {
     };
   }
 
-  #stateOf(participant, at) {
-    if (participant.roleId === undefined) {
-      return 'pending';
-    }
+  #transitionResponse(room, participant, transition) {
+    return {
+      ...this.#snapshot(room, participant),
+      transition,
+    };
+  }
+
+  #stateOf(participant) {
     if (participant.revokedAt !== undefined) {
       return 'revoked';
     }
-    if (participant.expiresAt !== undefined && at >= participant.expiresAt) {
-      return 'expired';
+    if (participant.roleId === undefined) {
+      return 'pending';
     }
     return 'active';
   }

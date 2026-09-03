@@ -1,74 +1,48 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { gitFeature } from '../../src/client/application/app-shell/git-feature.js';
 import { governanceFeature } from '../../src/client/application/app-shell/governance-feature.js';
-import { uiFeatureIdentityMethods } from '../../src/client/application/app-shell/ui-feature-identity.js';
-import { uiFeatureShellMethods } from '../../src/client/application/app-shell/ui-feature-shell.js';
-import { uiFeatureSidebarMethods } from '../../src/client/application/app-shell/ui-feature-sidebar.js';
-import { uiFeatureToolbarMethods } from '../../src/client/application/app-shell/ui-feature-toolbar.js';
-import { ensureQuickSwitcherInstance } from '../../src/client/application/quick-switcher-loader.js';
-import { GovernanceUiController } from '../../src/client/presentation/governance-ui-controller.js';
+import { uiFeatureTabActivityMethods } from '../../src/client/application/app-shell/ui-feature-tab-activity.js';
+import { CollabMdAppShell } from '../../src/client/bootstrap/collabmd-app-shell.js';
+import { createProposal } from '../../src/domain/governance-proposals.js';
 
-function createSidebarContext({ gitRepoAvailable = true, mobile = false } = {}) {
+const mountFocusedShell = () => {
   document.body.innerHTML = `
-    <aside id="sidebar"><div id="sidebar-resizer"></div></aside>
-    <button id="sidebar-backdrop" hidden></button>
-    <button id="files-tab"></button>
-    <button id="comments-tab"></button>
-    <button id="git-tab"></button>
-    <section id="fileTree"></section>
-    <section id="commentOverviewPanel"></section>
-    <section id="gitPanel"></section>
-    <div id="file-search"></div>
-    <div id="git-search"></div>
+    <h1 id="activeFileName"></h1>
+    <section id="participantBar" hidden>
+      <button type="button" id="manageAccessBtn" hidden>Manage access</button>
+    </section>
+    <section id="governanceStatusPanel" hidden>
+      <h2 data-governance-status-title></h2>
+      <p data-governance-status-copy></p>
+      <button type="button" data-governance-retry hidden>Retry</button>
+    </section>
+    <section id="editor-page" hidden>
+      <a id="skipToEditor" href="#editorContainer"></a>
+      <div id="editorContainer"></div>
+    </section>
+    <aside id="governanceRail" hidden>
+      <div role="tablist">
+        <button type="button" data-governance-tab="review">Review</button>
+        <button type="button" data-governance-tab="activity">Activity</button>
+        <button type="button" data-governance-tab="roles">Roles</button>
+      </div>
+      <section data-governance-panel="review"></section>
+      <section data-governance-panel="activity"></section>
+      <section data-governance-panel="roles"></section>
+    </aside>
+    <dialog id="manageAccessDialog">
+      <div data-manage-access-list></div>
+      <button type="button" data-manage-access-close>Close</button>
+    </dialog>
+    <dialog id="displayNameDialog">
+      <form id="displayNameForm"><input id="displayNameInput"></form>
+      <button id="displayNameCancel"></button>
+    </dialog>
+    <dialog id="tabLockOverlay"><button id="tabLockTakeoverBtn"></button></dialog>
+    <div id="toastContainer"></div>
   `;
-
-  const context = {
-    activeSidebarTab: 'files',
-    elements: {
-      fileSearch: document.getElementById('file-search'),
-      filesSidebarTab: document.getElementById('files-tab'),
-      commentsSidebarTab: document.getElementById('comments-tab'),
-      commentOverviewPanel: document.getElementById('commentOverviewPanel'),
-      gitSearch: document.getElementById('git-search'),
-      gitSidebarTab: document.getElementById('git-tab'),
-      sidebar: document.getElementById('sidebar'),
-      sidebarBackdrop: document.getElementById('sidebar-backdrop'),
-      sidebarResizer: document.getElementById('sidebar-resizer'),
-    },
-    gitPanel: {
-      setActive: vi.fn(),
-    },
-    refreshCommentOverviewForSidebarOpen: vi.fn(),
-    gitRepoAvailable,
-    mobileBreakpointQuery: { matches: mobile },
-    preferences: {
-      getSidebarVisible: () => null,
-      setSidebarVisible: vi.fn(),
-    },
-  };
-
-  Object.assign(context, uiFeatureSidebarMethods);
-  return context;
-}
-
-function createGovernanceContext({ credential = '', snapshot = null } = {}) {
-  const context = {
-    commentUi: { setReviewGroups: vi.fn() },
-    currentFilePath: 'README.md',
-    elements: {},
-    getGovernanceReviewGroups: () => [],
-    governanceClient: { credential },
-    governanceSnapshot: snapshot,
-    governanceUi: { hide: vi.fn(), render: vi.fn() },
-    isGovernedMode: () => true,
-    toastController: { show: vi.fn() },
-  };
-  Object.assign(context, governanceFeature);
-  context.governanceRequest = vi.fn(async () => ({ roles: {} }));
-  return context;
-}
+};
 
 const ownerParticipant = Object.freeze({
   displayName: 'Mina',
@@ -88,93 +62,89 @@ const pendingParticipant = Object.freeze({
   state: 'pending',
 });
 
-function lifecycleSnapshot(participants, current = ownerParticipant) {
-  return {
-    ...current,
-    documentPath: 'README.md',
-    participants,
-  };
-}
+const lifecycleSnapshot = (participants, current = ownerParticipant) => ({
+  ...current,
+  documentPath: 'README.md',
+  participants,
+});
 
-function createGovernanceLifecycleContext(snapshot, ydoc = new Y.Doc()) {
+const accessTransition = ({
+  action = 'grant_assigned',
+  id = 'access-writer-session-3',
+  outcome = 'changed',
+} = {}) => ({
+  action,
+  actor: {
+    displayName: 'Authoritative Owner',
+    kind: 'human',
+    participantSessionId: 'authoritative-owner-session',
+    roleId: 'owner',
+  },
+  createdAt: 3_000,
+  id,
+  outcome,
+  source: 'access_management',
+  target: 'writer-session',
+});
+
+const createGovernanceContext = ({ credential = '', snapshot = null } = {}) => {
+  const context = {
+    connectionState: { status: 'connected', unreachable: false },
+    currentFilePath: 'README.md',
+    elements: {},
+    getGovernanceReviewGroups: () => [],
+    governanceClient: { credential },
+    governanceLoad: { documentPath: 'README.md', error: null, phase: 'ready' },
+    governanceSnapshot: snapshot,
+    governanceUi: { render: vi.fn() },
+    toastController: { show: vi.fn() },
+  };
+  Object.assign(context, governanceFeature);
+  context.governanceRequest = vi.fn(async () => ({ roles: {} }));
+  return context;
+};
+
+const createGovernanceLifecycleContext = (snapshot, ydoc = new Y.Doc()) => {
   const context = createGovernanceContext({ credential: 'owner-credential', snapshot });
   const activity = ydoc.getArray('governanceActivity');
   context.session = {
     getGovernanceContext: () => ({ activity, ydoc }),
   };
   return { activity, context, ydoc };
-}
+};
 
-const activityDetails = (activity) => activity.toArray().map((record) => ({
-  action: record.action,
-  actor: record.actor,
-  createdAt: record.createdAt,
-  outcome: record.outcome,
-  target: record.target,
-}));
-
-function createDeferred() {
-  return Promise.withResolvers();
-}
-
-function setGovernanceSession(context, { credential, documentPath, participantSessionId }) {
+const switchGovernanceSession = (context, {
+  credential,
+  documentPath,
+  participantSessionId,
+  roleId = 'editor',
+}) => {
   context.currentFilePath = documentPath;
   context.governanceClient.credential = credential;
+  context.governanceLoad = { documentPath, error: null, phase: 'ready' };
   context.governanceSnapshot = {
+    capabilities: ['document.read'],
     documentPath,
     participantSessionId,
     participants: [],
+    roleId,
+    state: 'active',
   };
-}
+};
 
-function useRealGovernanceUi(context) {
-  document.body.innerHTML = `
-    <section id="participant-bar"></section>
-    <aside id="governance-rail">
-      <div role="tablist">
-        <button type="button" data-governance-tab="review">Review</button>
-        <button type="button" data-governance-tab="activity">Activity</button>
-        <button type="button" data-governance-tab="roles">Roles</button>
-      </div>
-      <section data-governance-panel="review"></section>
-      <section data-governance-panel="activity"></section>
-      <section data-governance-panel="roles"></section>
-    </aside>
-    <button id="manage-access" type="button">Manage access</button>
-    <dialog id="manage-access-dialog">
-      <div data-manage-access-list></div>
-      <button type="button" data-manage-access-close>Close</button>
-    </dialog>
-  `;
-  const controller = new GovernanceUiController({
-    governanceRail: document.getElementById('governance-rail'),
-    manageAccessButton: document.getElementById('manage-access'),
-    manageAccessDialog: document.getElementById('manage-access-dialog'),
-    participantBar: document.getElementById('participant-bar'),
-  });
-  context.elements.governanceRail = document.getElementById('governance-rail');
-  context.governanceUi = controller;
-  return controller;
-}
-
-function startDeferredRolesSessionSwitch() {
+const startDeferredRolesSessionSwitch = () => {
   const context = createGovernanceContext({
     credential: 'credential-a',
-    snapshot: {
-      documentPath: 'README.md',
-      participantSessionId: 'session-a',
-      participants: [],
-    },
+    snapshot: lifecycleSnapshot([ownerParticipant]),
   });
-  const sessionA = createDeferred();
-  const sessionB = createDeferred();
-  const render = vi.spyOn(useRealGovernanceUi(context), 'render');
+  const sessionA = Promise.withResolvers();
+  const sessionB = Promise.withResolvers();
   context.governanceRequest
     .mockReturnValueOnce(sessionA.promise)
     .mockReturnValueOnce(sessionB.promise);
   context.renderGovernanceUi();
   const requestA = context._governanceRolesPromise;
-  setGovernanceSession(context, {
+  switchGovernanceSession(context, {
     credential: 'credential-b',
     documentPath: 'notes.md',
     participantSessionId: 'session-b',
@@ -182,1575 +152,559 @@ function startDeferredRolesSessionSwitch() {
   context.renderGovernanceUi();
   return {
     context,
-    render,
     requestA,
     requestB: context._governanceRolesPromise,
     sessionA,
     sessionB,
   };
-}
+};
 
-describe('uiFeature browser helpers', () => {
-  afterEach(() => {
-    window.getSelection()?.removeAllRanges();
-    document.body.innerHTML = '';
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
+afterEach(() => {
+  document.body.innerHTML = '';
+  vi.restoreAllMocks();
+});
+
+describe('focused app shell browser behavior', () => {
+  it('keeps a non-visual WorkspaceSync document index for editor wiki links', () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    shell.workspaceSync.onTreeChange([
+      { name: 'README.md', path: 'README.md', type: 'markdown' },
+      {
+        children: [
+          { name: 'guide.md', path: 'docs/guide.md', type: 'markdown' },
+        ],
+        name: 'docs',
+        path: 'docs',
+        type: 'directory',
+      },
+      { name: 'image.png', path: 'README.assets/image.png', type: 'image' },
+    ]);
+
+    expect(shell.workspaceCoordinator.getFileList()).toEqual(['README.md', 'docs/guide.md']);
+    expect(shell.workspaceCoordinator.getVaultFileList()).toEqual([
+      'README.md',
+      'docs/guide.md',
+      'README.assets/image.png',
+    ]);
+    expect(shell).not.toHaveProperty('fileExplorer');
+    expect(document.querySelector('#fileTree')).toBeNull();
   });
 
-  it('keeps Vim mode off by default and persists the opt-in toggle', () => {
-    document.body.innerHTML = '<button id="vim-toggle"></button><span id="vim-label"></span>';
-    const context = {
-      elements: {
-        toggleVimModeButton: document.getElementById('vim-toggle'),
-        vimModeToggleLabel: document.getElementById('vim-label'),
-      },
-      preferences: {
-        getVimModeEnabled: () => false,
-        setVimModeEnabled: vi.fn(),
-      },
-      session: {
-        isVimModeEnabled: () => false,
-        setVimMode: vi.fn(),
-      },
-    };
-    Object.assign(context, uiFeatureShellMethods);
-
-    context.syncVimModeToggle();
-    expect(context.elements.vimModeToggleLabel.textContent).toBe('Off');
-    expect(context.elements.toggleVimModeButton.getAttribute('aria-pressed')).toBe('false');
-
-    context.toggleVimMode();
-
-    expect(context.session.setVimMode).toHaveBeenCalledWith(true);
-    expect(context.preferences.setVimModeEnabled).toHaveBeenCalledWith(true);
-    expect(context.elements.vimModeToggleLabel.textContent).toBe('On');
-    expect(context.elements.toggleVimModeButton.getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('hides unsupported workspace controls but keeps presence available in governed mode', () => {
-    document.body.innerHTML = `
-      <aside id="sidebar"></aside>
-      <div id="diff-page"></div>
-      <div id="file-search"></div>
-      <button id="toolbar-search"></button>
-      <button id="search-files"></button>
-      <button id="git-tab"></button>
-      <button id="history" hidden></button>
-      <button id="review"></button>
-      <div id="backlinks"></div>
-      <div id="backlinks-header"></div>
-      <div id="backlinks-inline"></div>
-      <div id="quick-switcher"></div>
-      <div id="toolbar-presence"></div>
-    `;
-    const context = {
-      elements: {
-        backlinksHeaderPanel: document.getElementById('backlinks-header'),
-        backlinksInlinePanel: document.getElementById('backlinks-inline'),
-        backlinksPanel: document.getElementById('backlinks'),
-        diffPage: document.getElementById('diff-page'),
-        fileHistoryButton: document.getElementById('history'),
-        fileSearch: document.getElementById('file-search'),
-        gitSidebarTab: document.getElementById('git-tab'),
-        quickSwitcher: document.getElementById('quick-switcher'),
-        reviewFileChangesButton: document.getElementById('review'),
-        searchFilesButton: document.getElementById('search-files'),
-        sidebar: document.getElementById('sidebar'),
-        toolbarPresence: document.getElementById('toolbar-presence'),
-        toolbarSearchButton: document.getElementById('toolbar-search'),
-      },
-    };
-    const { toolbarPresence, ...unsupportedElements } = context.elements;
-
-    governanceFeature.syncGovernedSurfaces.call(context, true);
-
-    Object.values(unsupportedElements).forEach((element) => {
-      expect(element.hidden).toBe(true);
-      expect(element.inert).toBe(true);
+  it('resumes the focused route after the initial WorkspaceSync index reset', async () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    shell.workspaceRouteController.handleHashChange = vi.fn(async () => {
+      expect(shell.documentIndex.flatFiles).toContain('README.md');
     });
-    expect(toolbarPresence.hidden).toBe(false);
-    expect(toolbarPresence.inert).toBe(false);
-    expect(document.body).toHaveAttribute('data-governed', 'true');
 
-    governanceFeature.syncGovernedSurfaces.call(context, false);
+    shell.workspaceSync.onTreeChange([
+      { name: 'README.md', path: 'README.md', type: 'markdown' },
+    ], { reset: true });
 
-    expect(context.elements.sidebar.hidden).toBe(false);
-    expect(context.elements.sidebar.inert).toBe(false);
-    expect(context.elements.fileHistoryButton.hidden).toBe(true);
-    expect(context.elements.fileHistoryButton.inert).toBe(false);
-    expect(document.body).not.toHaveAttribute('data-governed');
+    await vi.waitFor(() => expect(shell.workspaceRouteController.handleHashChange).toHaveBeenCalledOnce());
   });
 
-  it('does not request Roles before the current governance session and credential exist', () => {
+  it('forces governance restoration before a previously inactive tab reopens its route', () => {
+    const context = {
+      hideTabLockOverlay: vi.fn(),
+      isTabActive: false,
+      promptForDisplayNameIfNeeded: vi.fn(),
+      webMcpTools: { refresh: vi.fn() },
+      workspaceRouteController: { handleHashChange: vi.fn() },
+      workspaceSync: { connect: vi.fn(), provider: {} },
+    };
+
+    uiFeatureTabActivityMethods.handleTabActivated.call(context);
+
+    expect(context.workspaceRouteController.handleHashChange).toHaveBeenCalledWith({
+      forceGovernance: true,
+    });
+  });
+
+  it('fails governance initialization closed while retaining the requested document for Retry', async () => {
+    const error = new Error('offline');
+    const context = {
+      createTabActivityLock: vi.fn(),
+      currentFilePath: 'README.md',
+      getStoredUserName: () => 'Mina',
+      governanceClient: {
+        destroy: vi.fn(),
+        restoreOrCreate: vi.fn(async () => {
+          throw error;
+        }),
+      },
+      governanceSnapshot: { documentPath: 'stale.md', state: 'active' },
+      renderGovernanceUi: vi.fn(),
+      runtimeConfig: { participantKind: 'human' },
+      tabActivityLock: { destroy: vi.fn() },
+      workspaceCoordinator: { cleanupSession: vi.fn() },
+    };
+
+    await uiFeatureTabActivityMethods.initializeGovernanceTabActivity.call(context, 'README.md');
+
+    expect(context.governanceLoad).toEqual({
+      documentPath: 'README.md',
+      error,
+      phase: 'error',
+    });
+    expect(context.governanceSnapshot).toBeNull();
+    expect(context.workspaceCoordinator.cleanupSession).toHaveBeenCalledTimes(2);
+    expect(context.renderGovernanceUi).toHaveBeenCalled();
+  });
+
+  it('marks governance ready before opening the active editor session', async () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant]);
+    const nextTabLock = {
+      initialize: vi.fn(),
+      tryActivate: vi.fn(),
+    };
+    const context = {
+      applyGovernanceSnapshotTransition: vi.fn(async () => {}),
+      createTabActivityLock: vi.fn(() => nextTabLock),
+      currentFilePath: 'README.md',
+      getStoredUserName: () => 'Mina',
+      governanceClient: {
+        restoreOrCreate: vi.fn(async () => snapshot),
+      },
+      governanceSnapshot: null,
+      renderGovernanceUi: vi.fn(),
+      runtimeConfig: { participantKind: 'human' },
+      tabActivityLock: { destroy: vi.fn() },
+      workspaceCoordinator: { cleanupSession: vi.fn() },
+    };
+
+    await uiFeatureTabActivityMethods.initializeGovernanceTabActivity.call(context, 'README.md');
+
+    expect(context.governanceLoad).toEqual({
+      documentPath: 'README.md',
+      error: null,
+      phase: 'ready',
+    });
+    expect(context.applyGovernanceSnapshotTransition).toHaveBeenCalledWith(null, snapshot);
+    expect(nextTabLock.initialize).toHaveBeenCalledOnce();
+    expect(nextTabLock.tryActivate).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks focused route membership before retrying governance', () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    shell.currentFilePath = 'README.md';
+    shell.governanceLoad = {
+      documentPath: 'README.md',
+      error: new Error('offline'),
+      phase: 'error',
+    };
+    shell.workspaceRouteController.handleHashChange = vi.fn();
+    shell.initializeGovernanceTabActivity = vi.fn();
+
+    shell.renderGovernanceUi();
+    document.querySelector('[data-governance-retry]').click();
+
+    expect(shell.workspaceRouteController.handleHashChange).toHaveBeenCalledWith({
+      forceGovernance: true,
+    });
+    expect(shell.initializeGovernanceTabActivity).not.toHaveBeenCalled();
+  });
+
+  it('retains display-name onboarding with a direct local editor identity', () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    shell.elements.displayNameInput.value = '  Mina  ';
+    const setPreference = vi.spyOn(shell.preferences, 'setUserName');
+
+    shell.handleDisplayNameSubmit();
+
+    expect(setPreference).toHaveBeenCalledWith('Mina');
+    expect(shell.localUser.name).toBe('Mina');
+    expect(shell.elements.displayNameDialog.open).toBe(false);
+    expect(shell).not.toHaveProperty('lobby');
+    expect(shell).not.toHaveProperty('chatIsOpen');
+  });
+
+  it('does not request Roles before the ready governance session and credential exist', () => {
     const context = createGovernanceContext();
+
+    context.renderGovernanceUi();
+
+    expect(context.governanceRequest).not.toHaveBeenCalled();
+    expect(context.governanceUi.render).toHaveBeenCalledWith(expect.objectContaining({
+      shellState: { accessState: null, phase: 'loading' },
+    }));
+  });
+
+  it('does not request Owner Role metadata for a pending Access state', () => {
+    const snapshot = {
+      ...pendingParticipant,
+      documentPath: 'README.md',
+      participants: [ownerParticipant, pendingParticipant],
+    };
+    const context = createGovernanceContext({ credential: 'pending-credential', snapshot });
 
     context.renderGovernanceUi();
 
     expect(context.governanceRequest).not.toHaveBeenCalled();
   });
 
-  it('records Owner and new Participant joins once across repeat observation and reload', () => {
+  it('loads Roles for the ready current session and rerenders the Owner surface', async () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant]);
+    const context = createGovernanceContext({ credential: 'owner-credential', snapshot });
+    context.governanceRequest = vi.fn(async () => ({
+      roles: { owner: ['document.read', 'grant.manage'] },
+    }));
+
+    context.renderGovernanceUi();
+    await context._governanceRolesPromise;
+
+    expect(context.governanceRequest).toHaveBeenCalledWith('/api/governance/roles');
+    expect(context.governanceRoles).toEqual({ owner: ['document.read', 'grant.manage'] });
+    expect(context.governanceUi.render).toHaveBeenLastCalledWith(expect.objectContaining({
+      roles: { owner: ['document.read', 'grant.manage'] },
+      shellState: { accessState: 'active', phase: 'ready' },
+    }));
+  });
+
+  it('makes a failed Roles request explicitly retryable for the same session', async () => {
+    const context = createGovernanceContext({
+      credential: 'owner-credential',
+      snapshot: lifecycleSnapshot([ownerParticipant]),
+    });
+    context.governanceRequest
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ roles: { owner: ['document.read', 'grant.manage'] } });
+
+    context.renderGovernanceUi();
+    await context._governanceRolesPromise;
+
+    expect(context.governanceRequest).toHaveBeenCalledTimes(1);
+
+    context.renderGovernanceUi();
+    expect(context.governanceRequest).toHaveBeenCalledTimes(1);
+
+    const [message, toastOptions] = context.toastController.show.mock.calls[0];
+    expect(message).toBe('Access controls could not be loaded.');
+    expect(toastOptions).toEqual(expect.objectContaining({
+      actionLabel: 'Retry',
+      dismissible: true,
+      duration: 0,
+      tone: 'error',
+    }));
+
+    const oldSessionRetry = toastOptions.onAction;
+    oldSessionRetry();
+    await context._governanceRolesPromise;
+
+    expect(context.governanceRequest).toHaveBeenCalledTimes(2);
+    expect(context.governanceRoles).toEqual({ owner: ['document.read', 'grant.manage'] });
+    expect(context.toastController.show).toHaveBeenCalledOnce();
+
+    switchGovernanceSession(context, {
+      credential: 'credential-b',
+      documentPath: 'notes.md',
+      participantSessionId: 'session-b',
+    });
+    context.governanceRequest.mockResolvedValueOnce({ roles: { editor: ['document.read'] } });
+    context.renderGovernanceUi();
+    await context._governanceRolesPromise;
+    oldSessionRetry();
+
+    expect(context.governanceRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it('ignores a stale Roles success after a newer session loads', async () => {
+    const fixture = startDeferredRolesSessionSwitch();
+    fixture.sessionB.resolve({ roles: { editor: ['document.read'] } });
+    await fixture.requestB;
+    fixture.sessionA.resolve({ roles: { owner: ['document.read', 'grant.manage'] } });
+    await fixture.requestA;
+
+    expect(fixture.context.governanceRoles).toEqual({ editor: ['document.read'] });
+    expect(fixture.context.governanceUi.render).toHaveBeenLastCalledWith(expect.objectContaining({
+      roles: { editor: ['document.read'] },
+      session: expect.objectContaining({ documentPath: 'notes.md' }),
+    }));
+  });
+
+  it('ignores a stale Roles failure without contaminating a newer session', async () => {
+    const fixture = startDeferredRolesSessionSwitch();
+    fixture.sessionB.resolve({ roles: { editor: ['document.read'] } });
+    await fixture.requestB;
+    fixture.sessionA.reject(new Error('stale offline'));
+    await fixture.requestA;
+
+    expect(fixture.context.governanceRoles).toEqual({ editor: ['document.read'] });
+    expect(fixture.context.toastController.show).not.toHaveBeenCalled();
+    expect(fixture.context._governanceRolesAttemptedKey).toBe('notes.md::session-b');
+  });
+});
+
+describe('focused governance lifecycle behavior', () => {
+  it('records Participant joins once with the mandatory Activity source', () => {
     const snapshot = lifecycleSnapshot([ownerParticipant, pendingParticipant]);
     const { activity, context, ydoc } = createGovernanceLifecycleContext(snapshot);
 
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
-
-    expect(activityDetails(activity)).toEqual([
-      {
-        action: 'participant_joined',
-        actor: {
-          displayName: 'Mina',
-          kind: 'human',
-          participantSessionId: 'owner-session',
-          roleId: 'owner',
-        },
-        createdAt: 1_000,
-        outcome: 'joined',
-        target: 'owner-session',
-      },
-      {
-        action: 'participant_joined',
-        actor: {
-          displayName: 'Writer',
-          kind: 'ai',
-          participantSessionId: 'writer-session',
-          roleId: 'pending',
-        },
-        createdAt: 2_000,
-        outcome: 'joined',
-        target: 'writer-session',
-      },
-    ]);
-
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+    context.appendGovernanceLifecycleActivity(snapshot);
+    context.appendGovernanceLifecycleActivity(snapshot);
     const reloaded = createGovernanceLifecycleContext(snapshot, ydoc);
-    governanceFeature.appendGovernanceLifecycleActivity.call(reloaded.context, snapshot);
+    reloaded.context.appendGovernanceLifecycleActivity(snapshot);
 
-    expect(activity).toHaveLength(2);
-  });
-
-  it('records each Grant expiry cycle once', () => {
-    const activeWriter = { ...pendingParticipant, expiresAt: 61_000, roleId: 'editor', state: 'active' };
-    const active = lifecycleSnapshot([ownerParticipant, activeWriter]);
-    const { activity, context, ydoc } = createGovernanceLifecycleContext(active);
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, active);
-    const firstExpired = lifecycleSnapshot([
-      ownerParticipant,
-      { ...activeWriter, state: 'expired' },
-    ]);
-
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, firstExpired);
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, firstExpired);
-
-    const regrantedWriter = { ...activeWriter, expiresAt: 121_000 };
-    const regranted = lifecycleSnapshot([ownerParticipant, regrantedWriter]);
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, regranted);
-    const secondExpired = lifecycleSnapshot([
-      ownerParticipant,
-      { ...regrantedWriter, state: 'expired' },
-    ]);
-
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, secondExpired);
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, secondExpired);
-    const reloaded = createGovernanceLifecycleContext(secondExpired, ydoc);
-    governanceFeature.appendGovernanceLifecycleActivity.call(reloaded.context, secondExpired);
-
-    expect(activityDetails(activity).filter((record) => record.action === 'grant_expired')).toEqual([
-      {
-        action: 'grant_expired',
-        actor: {
-          displayName: 'Writer',
-          kind: 'ai',
-          participantSessionId: 'writer-session',
-          roleId: 'editor',
-        },
-        createdAt: 61_000,
-        outcome: 'expired',
-        target: 'writer-session',
-      },
-      {
-        action: 'grant_expired',
-        actor: {
-          displayName: 'Writer',
-          kind: 'ai',
-          participantSessionId: 'writer-session',
-          roleId: 'editor',
-        },
-        createdAt: 121_000,
-        outcome: 'expired',
-        target: 'writer-session',
-      },
+    expect(activity.toArray()).toHaveLength(2);
+    expect(activity.toArray()).toEqual([
+      expect.objectContaining({ source: 'access_management', target: 'owner-session' }),
+      expect.objectContaining({ source: 'access_management', target: 'writer-session' }),
     ]);
   });
 
-  it('records join and expiry when the first observation is already expired', () => {
-    const expiredWriter = {
-      ...pendingParticipant,
-      expiresAt: 61_000,
-      roleId: 'reviewer',
-      state: 'expired',
-    };
-    const snapshot = lifecycleSnapshot([ownerParticipant, expiredWriter]);
+  it('records each successful explicit Access command once and skips same-Role Activity', async () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant, pendingParticipant]);
     const { activity, context } = createGovernanceLifecycleContext(snapshot);
+    const editor = { ...pendingParticipant, roleId: 'editor', state: 'active' };
+    const reviewer = { ...pendingParticipant, roleId: 'reviewer', state: 'active' };
+    const revoked = { ...pendingParticipant, roleId: undefined, state: 'revoked' };
+    const refreshedSnapshots = [
+      lifecycleSnapshot([ownerParticipant, editor]),
+      lifecycleSnapshot([ownerParticipant, reviewer]),
+      lifecycleSnapshot([ownerParticipant, reviewer]),
+      lifecycleSnapshot([ownerParticipant, revoked]),
+    ];
+    context.governanceClient.refresh = vi.fn(async () => {
+      const next = refreshedSnapshots.shift();
+      context.governanceSnapshot = next;
+      return next;
+    });
+    context.governanceRequest = vi.fn()
+      .mockResolvedValueOnce({ transition: accessTransition() })
+      .mockResolvedValueOnce({
+        transition: accessTransition({ action: 'grant_changed', id: 'access-writer-session-4' }),
+      })
+      .mockResolvedValueOnce({
+        transition: accessTransition({ action: 'grant_changed', id: 'access-writer-session-4' }),
+      })
+      .mockResolvedValueOnce({
+        transition: accessTransition({ action: 'grant_revoked', id: 'access-writer-session-5', outcome: 'revoked' }),
+      });
 
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+    await context.assignGovernanceRole('writer-session', 'editor');
+    await context.assignGovernanceRole('writer-session', 'reviewer');
+    await context.assignGovernanceRole('writer-session', 'reviewer');
+    await context.revokeGovernanceGrant('writer-session');
 
-    expect(activity.toArray().map((record) => `${record.action}:${record.target}`)).toEqual([
-      'participant_joined:owner-session',
-      'participant_joined:writer-session',
-      'grant_expired:writer-session',
+    expect(context.governanceRequest).toHaveBeenCalledWith(
+      '/api/governance/grants/writer-session',
+      expect.objectContaining({ body: JSON.stringify({ roleId: 'editor' }), method: 'PUT' }),
+    );
+    expect(activity.toArray().filter((record) => record.action.startsWith('grant_'))).toEqual([
+      expect.objectContaining({
+        action: 'grant_assigned',
+        source: 'access_management',
+        target: 'writer-session',
+      }),
+      expect.objectContaining({
+        action: 'grant_changed',
+        source: 'access_management',
+        target: 'writer-session',
+      }),
+      expect.objectContaining({
+        action: 'grant_revoked',
+        source: 'access_management',
+        target: 'writer-session',
+      }),
     ]);
+    expect(context.governanceClient.refresh).toHaveBeenCalledTimes(4);
   });
 
   it('does not append lifecycle Activity from a non-Owner client', () => {
-    const writer = { ...pendingParticipant, expiresAt: 61_000, roleId: 'editor', state: 'expired' };
+    const writer = { ...pendingParticipant, roleId: 'editor', state: 'active' };
     const snapshot = lifecycleSnapshot([ownerParticipant, writer], writer);
     const { activity, context } = createGovernanceLifecycleContext(snapshot);
 
-    governanceFeature.appendGovernanceLifecycleActivity.call(context, snapshot);
+    context.appendGovernanceLifecycleActivity(snapshot);
 
     expect(activity).toHaveLength(0);
   });
+});
 
-  it('waits for governance transition session readiness before appending lifecycle Activity', async () => {
-    const snapshot = lifecycleSnapshot([ownerParticipant]);
-    const { activity, context, ydoc } = createGovernanceLifecycleContext(snapshot);
-    const ready = Promise.withResolvers();
-    context.session = null;
-    context.workspaceCoordinator = {
-      async applyGovernanceTransition() {
-        await ready.promise;
-        context.session = {
-          getGovernanceContext: () => ({ activity, ydoc }),
-        };
-      },
+describe('authoritative governance replay', () => {
+  it('rerenders Review when the persisted Proposal array changes without a governance poll', () => {
+    const ydoc = new Y.Doc();
+    const governanceContext = {
+      activity: ydoc.getArray('governanceActivity'),
+      comments: ydoc.getArray('comments'),
+      ydoc,
+      ytext: ydoc.getText('codemirror'),
     };
+    const context = createGovernanceContext({
+      credential: 'owner-credential',
+      snapshot: lifecycleSnapshot([ownerParticipant]),
+    });
+    context.renderGovernanceUi = vi.fn();
 
-    const handling = governanceFeature.applyGovernanceSnapshotTransition.call(context, null, snapshot);
-    expect(activity).toHaveLength(0);
+    context.bindGovernanceSession({ getGovernanceContext: () => governanceContext });
+    context.renderGovernanceUi.mockClear();
+    governanceContext.comments.push([new Y.Map()]);
 
-    ready.resolve();
-    await handling;
-
-    expect(activity.toArray().map((record) => record.action)).toEqual(['participant_joined']);
+    expect(context.renderGovernanceUi).toHaveBeenCalledOnce();
   });
 
-  it('retries a failed Roles request on the next same-session render and restores controls', async () => {
-    const roles = { owner: ['conflict.resolve', 'grant.manage'] };
-    const context = createGovernanceContext({
-      credential: 'credential-a',
-      snapshot: {
+  it('binds Proposal observers after editor initialization creates the Yjs context', () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    const ydoc = new Y.Doc();
+    const governanceContext = {
+      activity: ydoc.getArray('governanceActivity'),
+      comments: ydoc.getArray('comments'),
+      ydoc,
+      ytext: ydoc.getText('codemirror'),
+    };
+    let initializedContext = null;
+    const session = { getGovernanceContext: () => initializedContext };
+    shell.renderGovernanceUi = vi.fn();
+
+    shell.workspaceCoordinator.onSessionAssigned(session);
+    initializedContext = governanceContext;
+    shell.workspaceCoordinator.onFileOpenReady(session);
+    shell.renderGovernanceUi.mockClear();
+    governanceContext.comments.push([new Y.Map()]);
+
+    expect(shell.renderGovernanceUi).toHaveBeenCalledOnce();
+  });
+
+  it('routes a retryable GovernanceClient transition through one fail-closed writer', async () => {
+    mountFocusedShell();
+    const shell = new CollabMdAppShell();
+    const snapshot = {
+      ...lifecycleSnapshot([ownerParticipant]),
+      capabilities: ['document.read', 'document.edit'],
+      version: 1,
+    };
+    shell.currentFilePath = 'README.md';
+    shell.governanceLoad = { documentPath: 'README.md', error: null, phase: 'ready' };
+    shell.governanceSnapshot = snapshot;
+    shell.governanceClient.credential = 'owner-credential';
+    shell.governanceClient.currentVersion = 1;
+    shell.governanceClient.documentPath = 'README.md';
+    shell.governanceClient.snapshot = snapshot;
+    shell.governanceClient.fetchImpl = vi.fn(async () => new Response(
+      JSON.stringify({ error: 'Temporary failure' }),
+      { status: 503 },
+    ));
+    shell.applyGovernanceSnapshotTransition = vi.fn(async () => {});
+
+    await expect(shell.governanceClient.refresh())
+      .rejects.toMatchObject({ code: 'GOVERNANCE_RETRYABLE' });
+
+    expect(shell.applyGovernanceSnapshotTransition).toHaveBeenCalledOnce();
+    expect(shell.applyGovernanceSnapshotTransition).toHaveBeenCalledWith(
+      snapshot,
+      expect.objectContaining({
+        capabilities: [],
         documentPath: 'README.md',
-        participantSessionId: 'session-a',
-        participants: [],
+        state: 'retryable-error',
+      }),
+    );
+    expect(shell.governanceLoad.phase).toBe('error');
+    expect(shell.governanceSnapshot).toBeNull();
+    shell.governanceClient.destroy();
+  });
+
+  it('deduplicates an Access transition after real Yjs replay and refresh retry', async () => {
+    const snapshot = lifecycleSnapshot([ownerParticipant, pendingParticipant]);
+    const first = createGovernanceLifecycleContext(snapshot);
+    const transition = accessTransition();
+    first.context.governanceRequest = vi.fn(async () => ({ transition }));
+    first.context.governanceClient.refresh = vi.fn(async () => {
+      throw new Error('Refresh failed after acknowledgement');
+    });
+
+    await expect(first.context.assignGovernanceRole('writer-session', 'editor'))
+      .rejects.toThrow('Refresh failed after acknowledgement');
+    expect(first.activity.toArray()).toEqual([
+      expect.objectContaining({
+        actor: transition.actor,
+        id: transition.id,
+        target: 'writer-session',
+      }),
+    ]);
+
+    const replayedDoc = new Y.Doc();
+    Y.applyUpdate(replayedDoc, Y.encodeStateAsUpdate(first.ydoc));
+    const replayed = createGovernanceLifecycleContext(snapshot, replayedDoc);
+    replayed.context.governanceRequest = vi.fn(async () => ({ transition }));
+    replayed.context.governanceClient.refresh = vi.fn(async () => {
+      const next = lifecycleSnapshot([
+        ownerParticipant,
+        { ...pendingParticipant, roleId: 'editor', state: 'active' },
+      ]);
+      replayed.context.governanceSnapshot = next;
+      return next;
+    });
+
+    await replayed.context.assignGovernanceRole('writer-session', 'editor');
+
+    expect(replayed.activity.toArray()).toHaveLength(1);
+    expect(replayed.activity.get(0)).toEqual(expect.objectContaining({
+      actor: transition.actor,
+      id: transition.id,
+    }));
+  });
+
+  it('uses the server-authoritative authorization actor for Owner decisions', async () => {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    ytext.insert(0, 'before');
+    const governanceContext = {
+      activity: ydoc.getArray('governanceActivity'),
+      comments: ydoc.getArray('comments'),
+      ydoc,
+      ytext,
+    };
+    const anchor = {
+      anchorEnd: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, 6)),
+      anchorEndLine: 1,
+      anchorKind: 'text',
+      anchorQuote: 'before',
+      anchorStart: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, 0)),
+      anchorStartLine: 1,
+    };
+    const proposal = createProposal(governanceContext, {
+      actor: {
+        displayName: 'Reviewer',
+        kind: 'ai',
+        participantSessionId: 'reviewer-session',
+        roleId: 'reviewer',
+      },
+      anchor,
+      baseRevision: 'revision-1',
+      expectedText: 'before',
+      replacementText: 'after',
+      source: 'webmcp_proposal',
+    });
+    const snapshot = lifecycleSnapshot([ownerParticipant]);
+    const context = createGovernanceContext({ credential: 'owner-credential', snapshot });
+    const authoritativeActor = {
+      displayName: 'Owner from server',
+      kind: 'human',
+      participantSessionId: 'authoritative-owner-session',
+      roleId: 'owner',
+    };
+    context.governanceClient.authorize = vi.fn(async () => ({
+      actor: authoritativeActor,
+      ok: true,
+      session: {
+        documentPath: 'README.md',
+        participantSessionId: authoritativeActor.participantSessionId,
         roleId: 'owner',
         state: 'active',
       },
-    });
-    context.getGovernanceReviewGroups = () => [{
-      from: 0,
-      proposals: [{
-        createdByDisplayName: 'Reviewer',
-        expectedText: 'before',
-        id: 'proposal-1',
-        replacementText: 'after',
-        status: 'open',
-      }],
-      to: 1,
-      unlocated: false,
-    }];
-    context.governanceRequest
-      .mockRejectedValueOnce(new Error('roles unavailable'))
-      .mockResolvedValueOnce({ roles });
-    useRealGovernanceUi(context);
-
-    context.renderGovernanceUi();
-    const firstRequest = context._governanceRolesPromise;
-    context.renderGovernanceUi();
-    expect(context.governanceRequest).toHaveBeenCalledTimes(1);
-    await firstRequest;
-
-    expect(document.getElementById('manage-access').hidden).toBe(true);
-    expect(document.querySelector('[data-proposal-resolution="apply_proposed"]').disabled).toBe(true);
-    expect(context.toastController.show).toHaveBeenCalledTimes(1);
-
-    context.renderGovernanceUi();
-    const retry = context._governanceRolesPromise;
-
-    expect(context.governanceRequest).toHaveBeenCalledTimes(2);
-    await retry;
-
-    expect(context.governanceRoles).toEqual(roles);
-    expect(document.getElementById('manage-access').hidden).toBe(false);
-    expect(document.querySelector('[data-proposal-resolution="apply_proposed"]').disabled).toBe(false);
-    expect(context.toastController.show).toHaveBeenCalledTimes(1);
-  });
-
-  it('ignores a stale Roles success after the next session renders its matrix', async () => {
-    const rolesA = { owner: ['grant.manage'] };
-    const rolesB = { reviewer: ['document.read'] };
-    const { context, render, requestA, requestB, sessionA, sessionB } = startDeferredRolesSessionSwitch();
-    sessionB.resolve({ roles: rolesB });
-    await requestB;
-    const renderCountAfterB = render.mock.calls.length;
-
-    sessionA.resolve({ roles: rolesA });
-    await requestA;
-
-    expect(context.governanceRoles).toEqual(rolesB);
-    expect(render).toHaveBeenCalledTimes(renderCountAfterB);
-    expect(document.getElementById('roleCapabilityMatrix').textContent).toContain('Reviewer');
-    expect(document.getElementById('roleCapabilityMatrix').textContent).not.toContain('Owner');
-  });
-
-  it('ignores a stale Roles failure without toasting or unlocking the next session retry', async () => {
-    const rolesB = { editor: ['document.edit'] };
-    const { context, requestA, requestB, sessionA, sessionB } = startDeferredRolesSessionSwitch();
-
-    sessionA.reject(new Error('session A failed late'));
-    await requestA;
-
-    expect(context._governanceRolesAttemptedKey).toBe('notes.md::session-b');
-    context.renderGovernanceUi();
-
-    expect(context.toastController.show).not.toHaveBeenCalled();
-    expect(context.governanceRequest).toHaveBeenCalledTimes(2);
-
-    sessionB.resolve({ roles: rolesB });
-    await requestB;
-
-    expect(context.governanceRoles).toEqual(rolesB);
-    expect(document.getElementById('roleCapabilityMatrix').textContent).toContain('Editor');
-  });
-
-  it('switches sidebar tabs and updates visibility state', () => {
-    const context = createSidebarContext();
-
-    context.setSidebarTab('git');
-
-    expect(context.activeSidebarTab).toBe('git');
-    expect(context.elements.gitSidebarTab.classList.contains('active')).toBe(true);
-    expect(context.elements.gitSidebarTab).toHaveAttribute('aria-selected', 'true');
-    expect(context.elements.gitSidebarTab).toHaveAttribute('tabindex', '0');
-    expect(context.elements.filesSidebarTab).toHaveAttribute('aria-selected', 'false');
-    expect(context.elements.filesSidebarTab).toHaveAttribute('tabindex', '-1');
-    expect(document.getElementById('gitPanel').classList.contains('hidden')).toBe(false);
-    expect(context.gitPanel.setActive).toHaveBeenCalledWith(true);
-  });
-
-  it('switches to the comments sidebar tab and refreshes the overview', () => {
-    const context = createSidebarContext();
-
-    context.setSidebarTab('comments');
-
-    expect(context.activeSidebarTab).toBe('comments');
-    expect(context.elements.commentsSidebarTab.classList.contains('active')).toBe(true);
-    expect(document.getElementById('commentOverviewPanel').classList.contains('hidden')).toBe(false);
-    expect(document.getElementById('fileTree').classList.contains('hidden')).toBe(true);
-    expect(context.gitPanel.setActive).toHaveBeenCalledWith(false);
-    expect(context.refreshCommentOverviewForSidebarOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it('refreshes Git status during startup so the Git menu can be revealed', async () => {
-    document.body.innerHTML = `
-      <div id="sidebar-tabs" class="hidden"></div>
-      <button id="git-tab" class="hidden"></button>
-    `;
-    const status = { isGitRepo: true, summary: { changedFiles: 0 } };
-    const handleHashChange = vi.fn();
-    let context;
-    const refreshGitStatus = vi.fn(async () => {
-      context.handleGitRepoChange(true, status);
-      return status;
-    });
-    context = {
-      activeSidebarTab: 'files',
-      bindEvents: vi.fn(),
-      createResizeHandler: () => vi.fn(),
-      currentFilePath: 'README.md',
-      elements: {
-        chatInput: document.createElement('textarea'),
-        gitSidebarTab: document.getElementById('git-tab'),
-        sidebarTabs: document.getElementById('sidebar-tabs'),
-      },
-      fileExplorer: {
-        initialize: vi.fn(),
-        refresh: vi.fn(async () => {}),
-      },
-      fileHistoryView: {
-        initialize: vi.fn(),
-      },
-      gitDiffView: {
-        initialize: vi.fn(),
-        setRepoStatus: vi.fn(),
-      },
-      gitPanel: {
-        initialize: vi.fn(),
-        refresh: refreshGitStatus,
-      },
-      gitRepoAvailable: false,
-      handleGitRepoChange: gitFeature.handleGitRepoChange,
-      initializeExportBridge: vi.fn(),
-      initializeGovernanceTabActivity: vi.fn(),
-      initializePreviewLayoutObserver: vi.fn(),
-      initializeVersionMonitoring: vi.fn(),
-      initializeVisualViewportBinding: vi.fn(),
-      isTabActive: true,
-      layoutController: {
-        initialize: vi.fn(),
-      },
-      lobbyChatMessageMaxLength: 500,
-      navigation: {
-        getHashRoute: () => ({ type: 'file' }),
-      },
-      outlineController: {
-        initialize: vi.fn(),
-      },
-      previewRenderer: {
-        applyTheme: vi.fn(),
-        scheduleWorkerPrewarm: vi.fn(),
-      },
-      renderChat: vi.fn(),
-      restoreSidebarState: vi.fn(),
-      runtimeConfig: { gitEnabled: true },
-      scheduleEditorSessionPrewarm: vi.fn(),
-      scrollSyncController: {
-        initialize: vi.fn(),
-      },
-      syncCurrentUserName: vi.fn(),
-      syncFileHistoryButton: vi.fn(),
-      syncReviewFileChangesButton: vi.fn(),
-      syncIdentityManagementUi: vi.fn(),
-      syncToolbarOverflowVisibility: vi.fn(),
-      syncVimModeToggle: vi.fn(),
-      syncWrapToggle: vi.fn(),
-      tabActivityLock: {
-        initialize: vi.fn(),
-        tryActivate: vi.fn(),
-      },
-      themeController: {
-        getTheme: () => 'dark',
-        initialize: vi.fn(),
-      },
-      workspaceRouteController: {
-        handleHashChange,
-      },
-    };
-    uiFeatureShellMethods.initialize.call(context);
-    await context.fileExplorerReadyPromise;
-
-    expect(context.fileExplorer.refresh).toHaveBeenCalledTimes(1);
-    expect(context.gitPanel.initialize).toHaveBeenCalledTimes(1);
-    expect(context.gitPanel.refresh).toHaveBeenCalledWith({ force: true });
-    expect(context.gitDiffView.initialize).toHaveBeenCalledTimes(1);
-    expect(context.fileHistoryView.initialize).toHaveBeenCalledTimes(1);
-    expect(context.elements.sidebarTabs.classList.contains('hidden')).toBe(false);
-    expect(context.elements.gitSidebarTab.classList.contains('hidden')).toBe(false);
-    expect(handleHashChange).toHaveBeenCalledTimes(1);
-  });
-
-  it('reveals the Git tab when repo status detection reports a Git repository', () => {
-    document.body.innerHTML = `
-      <div id="sidebar-tabs" class="hidden"></div>
-      <button id="git-tab" class="hidden"></button>
-    `;
-    const status = { summary: { changedFiles: 2 } };
-    const context = {
-      activeSidebarTab: 'files',
-      currentFilePath: 'README.md',
-      elements: {
-        gitSidebarTab: document.getElementById('git-tab'),
-        sidebarTabs: document.getElementById('sidebar-tabs'),
-      },
-      gitDiffView: {
-        setRepoStatus: vi.fn(),
-      },
-      navigation: {
-        getHashRoute: () => ({ type: 'file' }),
-      },
-      setSidebarTab: vi.fn(),
-      syncFileHistoryButton: vi.fn(),
-      syncReviewFileChangesButton: vi.fn(),
-    };
-    Object.assign(context, {
-      handleGitRepoChange: gitFeature.handleGitRepoChange,
-    });
-
-    context.handleGitRepoChange(true, status);
-
-    expect(context.gitRepoAvailable).toBe(true);
-    expect(context.elements.sidebarTabs.classList.contains('hidden')).toBe(false);
-    expect(context.elements.gitSidebarTab.classList.contains('hidden')).toBe(false);
-    expect(context.elements.gitSidebarTab.classList.contains('has-changes')).toBe(true);
-    expect(context.gitDiffView.setRepoStatus).toHaveBeenCalledWith(status);
-  });
-
-  it('shows Review changes for an open file in a Git repository', () => {
-    document.body.innerHTML = '<button id="review-file-changes" class="hidden"></button>';
-    const button = document.getElementById('review-file-changes');
-    const context = {
-      currentFilePath: 'README.md',
-      elements: { reviewFileChangesButton: button },
-      gitRepoAvailable: true,
-    };
-
-    gitFeature.syncReviewFileChangesButton.call(context);
-    expect(button.classList.contains('hidden')).toBe(false);
-
-    gitFeature.syncReviewFileChangesButton.call(context, { mode: 'diff' });
-    expect(button.classList.contains('hidden')).toBe(true);
-  });
-
-  it('collapses the sidebar for mobile restores', () => {
-    const context = createSidebarContext({ mobile: true });
-
-    context.restoreSidebarState();
-
-    expect(context.elements.sidebar.classList.contains('collapsed')).toBe(true);
-    expect(context.elements.sidebar.hidden).toBe(true);
-    expect(context.elements.sidebarBackdrop.hidden).toBe(true);
-  });
-
-  it('syncs the mobile sidebar backdrop with drawer visibility', () => {
-    const context = createSidebarContext({ mobile: true });
-
-    context.applySidebarVisibility(true);
-
-    expect(context.elements.sidebar.hidden).toBe(false);
-    expect(context.elements.sidebarBackdrop.hidden).toBe(false);
-    expect(context.elements.sidebarBackdrop.getAttribute('aria-hidden')).toBe('false');
-
-    context.applySidebarVisibility(false);
-
-    expect(context.elements.sidebarBackdrop.hidden).toBe(true);
-    expect(context.elements.sidebarBackdrop.getAttribute('aria-hidden')).toBe('true');
-  });
-
-  it('resizes the desktop sidebar from the keyboard', () => {
-    const context = createSidebarContext();
-    context.initializeSidebarResizer();
-
-    context.elements.sidebarResizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-
-    expect(context.elements.sidebar.style.getPropertyValue('--sidebar-width')).toBe('276px');
-    expect(context.elements.sidebarResizer.getAttribute('aria-valuenow')).toBe('276');
-  });
-
-  it('opens the display name dialog and persists submitted names', () => {
-    document.body.innerHTML = `
-      <dialog id="display-name-dialog"></dialog>
-      <input id="display-name-input">
-      <h2 id="display-name-title"></h2>
-      <p id="display-name-copy"></p>
-      <button id="display-name-cancel"></button>
-      <button id="display-name-submit"></button>
-      <span id="current-user-name"></span>
-      <button id="edit-name-button"></button>
-    `;
-
-    const dialog = document.getElementById('display-name-dialog');
-    dialog.showModal = () => {
-      dialog.open = true;
-    };
-    dialog.close = () => {
-      dialog.open = false;
-    };
-
-    const context = {
-      _hasPromptedForDisplayName: false,
-      elements: {
-        currentUserName: document.getElementById('current-user-name'),
-        displayNameCancel: document.getElementById('display-name-cancel'),
-        displayNameCopy: document.getElementById('display-name-copy'),
-        displayNameDialog: dialog,
-        displayNameInput: document.getElementById('display-name-input'),
-        displayNameSubmit: document.getElementById('display-name-submit'),
-        displayNameTitle: document.getElementById('display-name-title'),
-        editNameButton: document.getElementById('edit-name-button'),
-      },
-      excalidrawEmbed: { updateLocalUser: vi.fn() },
-      globalUsers: [],
-      getCurrentUser: () => ({ name: 'Alice' }),
-      getCurrentUserName: () => 'Alice',
-      getStoredUserName: () => '',
-      isIdentityManagedByAuth: () => false,
-      isTabActive: true,
-      lobby: {
-        getLocalUser: () => ({ name: 'Bob' }),
-        setUserName: vi.fn(),
-      },
-      preferences: {
-        getUserName: () => 'Bob',
-        setUserName: vi.fn(),
-      },
-      renderChat: vi.fn(),
-      session: {
-        getLocalUser: () => ({ name: 'Bob' }),
-        setUserName: () => 'Bob',
-      },
-      syncCurrentUserName: uiFeatureIdentityMethods.syncCurrentUserName,
-      toastController: { show: vi.fn() },
-    };
-
-    Object.assign(context, uiFeatureIdentityMethods);
-
-    context.openDisplayNameDialog({ mode: 'onboarding' });
-    expect(dialog.open).toBe(true);
-    expect(context.elements.displayNameSubmit.textContent).toBe('Continue');
-
-    context.elements.displayNameInput.value = 'Bob';
-    context.handleDisplayNameSubmit();
-
-    expect(context.preferences.setUserName).toHaveBeenCalledWith('Bob');
-    expect(context.lobby.setUserName).toHaveBeenCalledWith('Bob');
-    expect(dialog.open).toBe(false);
-  });
-
-  it('dispatches markdown toolbar actions and image uploads through the toolbar helpers', async () => {
-    document.body.innerHTML = '<div id="editor-container"></div><div id="markdown-toolbar"></div>';
-    const context = {
-      currentFilePath: 'README.md',
-      elements: {
-        editorContainer: document.getElementById('editor-container'),
-        markdownToolbar: document.getElementById('markdown-toolbar'),
-      },
-      fileExplorer: { refresh: vi.fn(async () => {}) },
-      handleToolbarImageInsert: uiFeatureToolbarMethods.handleToolbarImageInsert,
-      session: {
-        applyMarkdownToolbarAction: vi.fn(() => true),
-        insertText: vi.fn(),
-        runEditorCommand: vi.fn(() => true),
-      },
-      toastController: { show: vi.fn() },
-      vaultApiClient: {
-        uploadImageAttachment: vi.fn(async () => ({ markdown: '![img](image.png)', path: 'image.png' })),
-      },
-    };
-
-    Object.assign(context, uiFeatureToolbarMethods);
-    context.renderMarkdownToolbar();
-
-    expect(document.querySelector('.markdown-toolbar-popover [data-markdown-block-action="paragraph"]')).not.toBeNull();
-    expect(document.querySelector('.markdown-toolbar-popover [data-markdown-block-action="heading-6"]')).not.toBeNull();
-    expect(document.querySelector('[data-editor-command="undo"]')).not.toBeNull();
-    expect(document.querySelector('[data-editor-command="indentMore"]')).not.toBeNull();
-
-    context.applyMarkdownToolbarAction('bold');
-    expect(context.session.applyMarkdownToolbarAction).toHaveBeenCalledWith('bold');
-
-    const undoButton = context.elements.markdownToolbar.querySelector('[data-editor-command="undo"]');
-    context.handleMarkdownToolbarClick({ preventDefault() {}, target: undoButton });
-    expect(context.session.runEditorCommand).toHaveBeenCalledWith('undo');
-
-    const inserted = await context.handleEditorImageInsert(new File(['x'], 'image.png', { type: 'image/png' }));
-    expect(inserted).toBe(true);
-    expect(context.fileExplorer.refresh).toHaveBeenCalled();
-    expect(context.session.insertText).toHaveBeenCalledWith('![img](image.png)');
-  });
-
-  it('opens the block menu and dispatches explicit heading actions from the rendered toolbar', () => {
-    document.body.innerHTML = '<div id="editor-container"></div><div id="markdown-toolbar"></div>';
-
-    const context = {
-      currentFilePath: 'README.md',
-      elements: {
-        editorContainer: document.getElementById('editor-container'),
-        markdownToolbar: document.getElementById('markdown-toolbar'),
-      },
-      session: {
-        applyMarkdownToolbarAction: vi.fn(() => true),
-        insertText: vi.fn(),
-      },
-      toastController: { show: vi.fn() },
-    };
-
-    Object.assign(context, uiFeatureToolbarMethods);
-    context.renderMarkdownToolbar();
-
-    const toggle = context.elements.markdownToolbar.querySelector('[data-markdown-block-menu-toggle]');
-    context.handleMarkdownToolbarClick({ preventDefault() {}, target: toggle });
-    expect(context.isMarkdownBlockMenuOpen()).toBe(true);
-    expect(document.querySelector('.markdown-toolbar-popover')).not.toBeNull();
-
-    const headingItem = document.querySelector('.markdown-toolbar-popover [data-markdown-block-action="heading-3"]');
-    context.handleMarkdownToolbarClick({ preventDefault() {}, target: headingItem });
-
-    expect(context.session.applyMarkdownToolbarAction).toHaveBeenCalledWith('heading-3');
-    expect(context.elements.markdownToolbar.querySelector('[data-markdown-block-trigger-label]').textContent).toBe('H3');
-    expect(context.isMarkdownBlockMenuOpen()).toBe(false);
-  });
-
-  it('toggles the mobile toolbar overflow menu state', () => {
-    document.body.innerHTML = `
-      <div class="toolbar-right">
-        <button id="toolbar-overflow-toggle"></button>
-        <div id="toolbar-overflow-menu"></div>
-      </div>
-    `;
-
-    const context = {
-      elements: {
-        toolbarOverflowMenu: document.getElementById('toolbar-overflow-menu'),
-        toolbarOverflowToggle: document.getElementById('toolbar-overflow-toggle'),
-      },
-      isMobileViewport: () => true,
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    context.toggleToolbarOverflowMenu();
-    expect(context.toolbarOverflowOpen).toBe(true);
-    expect(context.elements.toolbarOverflowToggle.getAttribute('aria-expanded')).toBe('true');
-    expect(context.elements.toolbarOverflowToggle.closest('.toolbar-right').classList.contains('is-overflow-open')).toBe(true);
-
-    context.closeToolbarOverflowMenu();
-    expect(context.toolbarOverflowOpen).toBe(false);
-    expect(context.elements.toolbarOverflowToggle.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  it('keeps the overflow menu open when toggling Vim mode', () => {
-    document.body.innerHTML = `
-      <div class="toolbar-right">
-        <button id="toolbar-overflow-toggle"></button>
-        <div id="toolbar-overflow-menu">
-          <button id="vim-toggle"><span id="vim-label">Off</span></button>
-        </div>
-      </div>
-    `;
-
-    const context = {
-      toolbarOverflowOpen: true,
-      elements: {
-        toolbarOverflowMenu: document.getElementById('toolbar-overflow-menu'),
-        toolbarOverflowToggle: document.getElementById('toolbar-overflow-toggle'),
-        toggleVimModeButton: document.getElementById('vim-toggle'),
-        vimModeToggleLabel: document.getElementById('vim-label'),
-      },
-      preferences: {
-        getVimModeEnabled: () => false,
-        setVimModeEnabled: vi.fn(),
-      },
-      session: {
-        isVimModeEnabled: () => false,
-        setVimMode: vi.fn(),
-      },
-      toggleQuickSwitcher: vi.fn(),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.bindEvents();
-
-    context.elements.toggleVimModeButton.click();
-
-    expect(context.toolbarOverflowOpen).toBe(true);
-    expect(context.elements.vimModeToggleLabel.textContent).toBe('On');
-
-    context.handleDocumentPointerDown({ target: document.body });
-
-    expect(context.toolbarOverflowOpen).toBe(false);
-  });
-
-  it('opens quick switcher from the mobile overflow search files action', () => {
-    document.body.innerHTML = '<button id="search-files"></button>';
-
-    const context = {
-      elements: {
-        searchFilesButton: document.getElementById('search-files'),
-      },
-      toggleQuickSwitcher: vi.fn(async () => {}),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.closeToolbarOverflowMenu = vi.fn();
-    context.bindEvents();
-
-    context.elements.searchFilesButton.click();
-
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(1);
-    expect(context.closeToolbarOverflowMenu).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens quick switcher from the top toolbar search action', () => {
-    document.body.innerHTML = '<button id="toolbar-search"></button>';
-
-    const context = {
-      elements: {
-        toolbarSearchButton: document.getElementById('toolbar-search'),
-      },
-      toggleQuickSwitcher: vi.fn(async () => {}),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.closeToolbarOverflowMenu = vi.fn();
-    context.bindEvents();
-
-    context.elements.toolbarSearchButton.click();
-
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(1);
-    expect(context.closeToolbarOverflowMenu).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens editor search from the mobile find button', () => {
-    document.body.innerHTML = '<button id="editor-find"></button>';
-
-    const context = {
-      elements: {
-        editorFindButton: document.getElementById('editor-find'),
-      },
-      runEditorCommand: vi.fn(),
-      toggleQuickSwitcher: vi.fn(async () => {}),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.bindEvents();
-
-    context.elements.editorFindButton.click();
-
-    expect(context.runEditorCommand).toHaveBeenCalledWith('openSearch');
-  });
-
-  it('formats the current document from the editor button', async () => {
-    document.body.innerHTML = '<button id="editor-format"></button>';
-    const formatDocument = vi.fn(async () => 'formatted');
-    const show = vi.fn();
-    const context = {
-      currentFilePath: 'README.md',
-      elements: {
-        editorFormatButton: document.getElementById('editor-format'),
-      },
-      session: { formatDocument },
-      toastController: { show },
-      toggleQuickSwitcher: vi.fn(async () => {}),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.bindEvents();
-    context.elements.editorFormatButton.click();
-    await vi.waitFor(() => expect(show).toHaveBeenCalledWith('Document formatted'));
-
-    expect(formatDocument).toHaveBeenCalledWith('README.md');
-    expect(context.elements.editorFormatButton.disabled).toBe(false);
-  });
-
-  it('syncs app shell viewport css vars from visualViewport metrics', () => {
-    const context = {};
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    const originalVisualViewport = window.visualViewport;
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: {
-        height: 512,
-        offsetTop: 24,
-      },
-    });
-
-    try {
-      context.syncVisualViewportBounds();
-      expect(document.documentElement.style.getPropertyValue('--app-viewport-height')).toBe('512px');
-      expect(document.documentElement.style.getPropertyValue('--app-viewport-offset-top')).toBe('24px');
-    } finally {
-      Object.defineProperty(window, 'visualViewport', {
-        configurable: true,
-        value: originalVisualViewport,
-      });
-      document.documentElement.style.removeProperty('--app-viewport-height');
-      document.documentElement.style.removeProperty('--app-viewport-offset-top');
-    }
-  });
-
-  it('binds global handlers for chat dismissal and keyboard shortcuts', () => {
-    document.body.innerHTML = `
-      <div id="chat-container"><button id="chat-inner"></button></div>
-      <form id="chat-form"></form>
-      <button id="chat-toggle"></button>
-      <button id="share-button"></button>
-      <button id="file-history"></button>
-      <button id="review-file-changes"></button>
-      <button id="edit-name"></button>
-      <button id="display-name-cancel"></button>
-      <button id="git-commit-cancel"></button>
-      <button id="git-reset-cancel"></button>
-      <button id="git-reset-submit"></button>
-      <dialog id="git-commit-dialog"></dialog>
-      <dialog id="git-reset-dialog"></dialog>
-      <div id="markdown-toolbar"></div>
-      <form id="display-name-form"></form>
-      <form id="git-commit-form"></form>
-      <button id="tab-lock-takeover"></button>
-      <button id="toggle-wrap"></button>
-      <div id="preview-content"></div>
-      <button id="sidebar-toggle"></button>
-      <button id="sidebar-close"></button>
-      <button id="files-tab"></button>
-      <button id="git-tab"></button>
-    `;
-
-    const context = {
-      chatIsOpen: true,
-      closeChatPanel: vi.fn(),
-      currentFilePath: 'README.md',
-      elements: {
-        chatContainer: document.getElementById('chat-container'),
-        chatForm: document.getElementById('chat-form'),
-        chatToggleButton: document.getElementById('chat-toggle'),
-        displayNameCancel: document.getElementById('display-name-cancel'),
-        displayNameForm: document.getElementById('display-name-form'),
-        editNameButton: document.getElementById('edit-name'),
-        emptyStateNewFileBtn: null,
-        emptyStateSearchBtn: null,
-        fileHistoryButton: document.getElementById('file-history'),
-        filesSidebarTab: document.getElementById('files-tab'),
-        gitCommitCancel: document.getElementById('git-commit-cancel'),
-        gitCommitDialog: document.getElementById('git-commit-dialog'),
-        gitCommitForm: document.getElementById('git-commit-form'),
-        gitCommitInput: document.createElement('input'),
-        gitCommitSubmit: document.createElement('button'),
-        gitResetCancel: document.getElementById('git-reset-cancel'),
-        gitResetDialog: document.getElementById('git-reset-dialog'),
-        gitResetFileName: document.createElement('input'),
-        gitResetSubmit: document.getElementById('git-reset-submit'),
-        gitSearch: document.createElement('div'),
-        gitSidebarTab: document.getElementById('git-tab'),
-        markdownToolbar: document.getElementById('markdown-toolbar'),
-        previewContent: document.getElementById('preview-content'),
-        reviewFileChangesButton: document.getElementById('review-file-changes'),
-        shareButton: document.getElementById('share-button'),
-        sidebarClose: document.getElementById('sidebar-close'),
-        sidebarToggle: document.getElementById('sidebar-toggle'),
-        tabLockTakeoverButton: document.getElementById('tab-lock-takeover'),
-        toggleWrapButton: document.getElementById('toggle-wrap'),
-      },
-      gitRepoAvailable: true,
-      handleChatSubmit: vi.fn(),
-      handleDisplayNameSubmit: vi.fn(),
-      handleFileHistorySelection: vi.fn(),
-      handleGitCommitSubmit: vi.fn(),
-      handleGitDiffSelection: vi.fn(),
-      handleGitFileHistorySelection: vi.fn(),
-      handleGitResetSubmit: vi.fn(),
-      handleHashChange: vi.fn(),
-      handleTabTakeover: vi.fn(),
-      handleToolbarImageInsert: vi.fn(),
-      handleWikiLinkClick: vi.fn(),
-      navigation: { getHashRoute: () => ({ type: 'empty' }) },
-      openDisplayNameDialog: vi.fn(),
-      setSidebarTab: vi.fn(),
-      toggleChatPanel: vi.fn(),
-      toggleLineWrapping: vi.fn(),
-      toggleQuickSwitcher: vi.fn(async () => {}),
-      toggleSidebar: vi.fn(),
-      copyCurrentLink: vi.fn(async () => {}),
-      closeSidebarOnMobile: vi.fn(),
-      applyMarkdownToolbarAction: vi.fn(),
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.bindEvents();
-
-    context.elements.reviewFileChangesButton.click();
-    expect(context.handleGitDiffSelection).toHaveBeenCalledWith('README.md', {
-      closeSidebarOnMobile: true,
-      scope: 'all',
-    });
-
-    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    expect(context.closeChatPanel).toHaveBeenCalledTimes(1);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'k' }));
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(1);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'K' }));
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(2);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true,
-      code: 'KeyK',
-      key: 'Unidentified',
-      metaKey: true,
     }));
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(3);
+    context.session = { getGovernanceContext: () => governanceContext };
+    context.renderGovernanceUi = vi.fn();
 
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true,
-      key: 'K',
-      metaKey: true,
-      shiftKey: true,
+    await context.resolveGovernanceProposal(proposal.id, 'keep_current');
+
+    expect(governanceContext.activity.toArray().at(-1)).toEqual(expect.objectContaining({
+      actor: authoritativeActor,
+      source: 'owner_decision',
     }));
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(3);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true,
-      ctrlKey: true,
-      key: 'k',
-      repeat: true,
-    }));
-    expect(context.toggleQuickSwitcher).toHaveBeenCalledTimes(3);
-  });
-
-  it('resets the quick switcher loader after a lazy import failure', async () => {
-    const loadError = new Error('chunk failed');
-    class TestQuickSwitcher {
-      constructor(options) {
-        this.options = options;
-      }
-    }
-
-    const context = {
-      fileExplorer: { flatFiles: ['README.md'] },
-      isMobileViewport: () => true,
-      loadQuickSwitcherController: vi.fn()
-        .mockRejectedValueOnce(loadError)
-        .mockResolvedValueOnce(TestQuickSwitcher),
-      quickSwitcher: null,
-      quickSwitcherModulePromise: null,
-      toastController: { show: vi.fn() },
-      workspaceRouteController: {
-        handleFileSelection: vi.fn(),
-      },
-    };
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await expect(ensureQuickSwitcherInstance(context)).rejects.toThrow('chunk failed');
-
-    expect(context.quickSwitcherModulePromise).toBeNull();
-    expect(context.toastController.show).toHaveBeenCalledWith('Failed to load file search. Try again.', {
-      dismissible: true,
-    });
-    expect(consoleError).toHaveBeenCalled();
-
-    const quickSwitcher = await ensureQuickSwitcherInstance(context);
-
-    expect(context.loadQuickSwitcherController).toHaveBeenCalledTimes(2);
-    expect(quickSwitcher).toBeInstanceOf(TestQuickSwitcher);
-    expect(quickSwitcher.options.getFileList()).toEqual(['README.md']);
-    quickSwitcher.options.onFileSelect('docs/guide.md');
-    expect(context.workspaceRouteController.handleFileSelection).toHaveBeenCalledWith('docs/guide.md', {
-      closeSidebarOnMobile: true,
-      revealInTree: false,
-    });
-  });
-
-  it('toggles preview task items from preview clicks without hijacking wiki links', () => {
-    document.body.innerHTML = `
-      <div id="preview-content">
-        <ul>
-          <li class="task-list-item" data-source-line="7">
-            <input type="checkbox" data-task-checkbox="true">
-            First todo
-          </li>
-          <li class="task-list-item" data-source-line="8">
-            <input type="checkbox" data-task-checkbox="true">
-            Read <a href="https://example.com/docs">docs</a>
-          </li>
-        </ul>
-        <a class="wiki-link" data-wiki-target="README" href="#README">README</a>
-      </div>
-    `;
-
-    const context = {
-      elements: {
-        previewContent: document.getElementById('preview-content'),
-      },
-      handlePreviewContentClick: uiFeatureShellMethods.handlePreviewContentClick,
-      session: {
-        toggleTaskListItem: vi.fn(() => true),
-      },
-      wikiLinkFileController: {
-        handleWikiLinkClick: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    context.bindEvents();
-
-    const checkbox = context.elements.previewContent.querySelector('input[type="checkbox"]');
-    checkbox.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-    expect(context.session.toggleTaskListItem).toHaveBeenCalledWith(7);
-    expect(checkbox.checked).toBe(false);
-
-    const externalLink = context.elements.previewContent.querySelector('li[data-source-line="8"] a');
-    const externalClick = {
-      preventDefault: vi.fn(),
-      target: externalLink,
-    };
-    context.handlePreviewContentClick(externalClick);
-
-    expect(context.session.toggleTaskListItem).toHaveBeenCalledTimes(1);
-    expect(externalClick.preventDefault).not.toHaveBeenCalled();
-
-    const wikiLink = context.elements.previewContent.querySelector('a.wiki-link');
-    wikiLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-    expect(context.wikiLinkFileController.handleWikiLinkClick).toHaveBeenCalledWith('README');
-    expect(context.session.toggleTaskListItem).toHaveBeenCalledTimes(1);
-
-    context.session.toggleTaskListItem.mockClear();
-    const taskItem = context.elements.previewContent.querySelector('li[data-source-line="7"]');
-    const taskText = Array.from(taskItem.childNodes)
-      .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.includes('First todo'));
-    const range = document.createRange();
-    const start = taskText.textContent.indexOf('First todo');
-    range.setStart(taskText, start);
-    range.setEnd(taskText, start + 'First todo'.length);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-
-    taskItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-    expect(context.session.toggleTaskListItem).not.toHaveBeenCalled();
-  });
-
-  it('scrolls preview fragment links through shared heading navigation without intercepting app hash routes', () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content">
-          <p>
-            <a id="jump-link" href="#section-a">Jump</a>
-            <a id="top-link" href="#top">Top</a>
-            <a id="route-link" href="#file=other.md">Route</a>
-            <a id="reserved-heading-link" href="#file">File heading</a>
-          </p>
-          <h2 id="section-a">Section A</h2>
-          <h2 id="file">File</h2>
-        </div>
-      </div>
-    `;
-
-    const previewContainer = document.getElementById('previewContainer');
-    const previewContent = document.getElementById('preview-content');
-    const targetHeading = document.getElementById('section-a');
-    const reservedHeading = document.getElementById('file');
-    const scrollTo = vi.fn();
-    previewContainer.scrollTo = scrollTo;
-
-    const context = {
-      elements: {
-        previewContainer,
-        previewContent,
-      },
-      outlineController: {
-        navigateToHeading: vi.fn(() => true),
-      },
-      scrollSyncController: {
-        suspendSync: vi.fn(),
-      },
-      session: {
-        toggleTaskListItem: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    const fragmentClick = {
-      preventDefault: vi.fn(),
-      target: document.getElementById('jump-link'),
-    };
-    context.handlePreviewContentClick(fragmentClick);
-
-    expect(fragmentClick.preventDefault).toHaveBeenCalledTimes(1);
-    expect(context.outlineController.navigateToHeading).toHaveBeenCalledWith(targetHeading, 'section-a', { behavior: 'smooth' });
-    expect(context.scrollSyncController.suspendSync).not.toHaveBeenCalled();
-    expect(scrollTo).not.toHaveBeenCalled();
-
-    const reservedHeadingClick = {
-      preventDefault: vi.fn(),
-      target: document.getElementById('reserved-heading-link'),
-    };
-    context.handlePreviewContentClick(reservedHeadingClick);
-
-    expect(reservedHeadingClick.preventDefault).toHaveBeenCalledTimes(1);
-    expect(context.outlineController.navigateToHeading).toHaveBeenCalledWith(reservedHeading, 'file', { behavior: 'smooth' });
-
-    const topClick = {
-      preventDefault: vi.fn(),
-      target: document.getElementById('top-link'),
-    };
-    context.handlePreviewContentClick(topClick);
-
-    expect(topClick.preventDefault).toHaveBeenCalledTimes(1);
-    expect(context.scrollSyncController.suspendSync).toHaveBeenCalledWith(250);
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' });
-
-    const routeClick = {
-      preventDefault: vi.fn(),
-      target: document.getElementById('route-link'),
-    };
-    context.handlePreviewContentClick(routeClick);
-
-    expect(routeClick.preventDefault).not.toHaveBeenCalled();
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-  });
-
-  it('adds preview code copy buttons and copies only the code content', async () => {
-    document.body.innerHTML = `
-      <div id="preview-content">
-        <pre><code class="language-json"><span>{</span>\n  "customerId": "string"\n}</code></pre>
-      </div>
-    `;
-
-    const previewContent = document.getElementById('preview-content');
-    const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-    const context = {
-      elements: { previewContent },
-      toastController: { show: vi.fn() },
-    };
-    Object.assign(context, uiFeatureShellMethods);
-
-    context.syncPreviewCodeCopyButtons();
-
-    const button = previewContent.querySelector('.preview-code-copy-button');
-    expect(previewContent.querySelectorAll('.preview-code-copy-button')).toHaveLength(1);
-    expect(button.getAttribute('aria-label')).toBe('Copy code');
-
-    const clickEvent = { preventDefault: vi.fn(), target: button };
-    context.handlePreviewContentClick(clickEvent);
-    await vi.waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('{\n  "customerId": "string"\n}');
-      expect(context.toastController.show).toHaveBeenCalledWith('Code copied');
-    });
-
-    expect(clickEvent.preventDefault).toHaveBeenCalledTimes(1);
-  });
-
-  it('folds heading sections while preserving nested folds', () => {
-    document.body.innerHTML = `
-      <div id="preview-content" class="preview-content">
-        <h1>Document</h1>
-        <h2>Section A</h2>
-        <p id="section-a-content">A content</p>
-        <h3>Section B</h3>
-        <p id="section-b-content">B content</p>
-        <h2>Section C</h2>
-        <p id="section-c-content">C content</p>
-      </div>
-    `;
-
-    const previewContent = document.getElementById('preview-content');
-    const context = {
-      elements: { previewContent },
-      refreshCommentUiLayout: vi.fn(),
-      schedulePreviewLayoutSync: vi.fn(),
-      scrollSyncController: { invalidatePreviewBlocks: vi.fn() },
-    };
-    Object.assign(context, uiFeatureShellMethods);
-    context.syncPreviewHeadingFoldButtons();
-
-    const [sectionA, sectionB, sectionC] = previewContent.querySelectorAll('h2, h3');
-    const clickFold = (heading) => context.handlePreviewContentClick({
-      preventDefault: vi.fn(),
-      target: heading.querySelector('.preview-heading-fold-button'),
-    });
-    const sectionBButton = sectionB.querySelector('.preview-heading-fold-button');
-    clickFold(sectionB);
-
-    expect(sectionBButton.getAttribute('aria-expanded')).toBe('false');
-    expect(sectionBButton.getAttribute('aria-label')).toBe('Expand Section B');
-    expect(document.getElementById('section-b-content').hidden).toBe(true);
-    expect(sectionC.hidden).toBe(false);
-
-    clickFold(sectionA);
-
-    expect(document.getElementById('section-a-content').hidden).toBe(true);
-    expect(sectionB.hidden).toBe(true);
-    expect(sectionC.hidden).toBe(false);
-
-    clickFold(sectionA);
-
-    expect(document.getElementById('section-a-content').hidden).toBe(false);
-    expect(sectionB.hidden).toBe(false);
-    expect(document.getElementById('section-b-content').hidden).toBe(true);
-
-    clickFold(sectionA);
-    expect(sectionB.hidden).toBe(true);
-
-    expect(context.unfoldPreviewHeading(sectionB)).toBe(true);
-    expect(sectionA.dataset.previewHeadingCollapsed).toBeUndefined();
-    expect(sectionB.dataset.previewHeadingCollapsed).toBeUndefined();
-    expect(document.getElementById('section-a-content').hidden).toBe(false);
-    expect(document.getElementById('section-b-content').hidden).toBe(false);
-    expect(context.scrollSyncController.invalidatePreviewBlocks).toHaveBeenCalledTimes(5);
-  });
-
-  it('copies preview heading links and applies pending route anchors', async () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content" data-render-phase="ready">
-          <h2 id="section-a" data-source-line="12">Section A</h2>
-          <h3 id="section-b">Approach E: Push MongoDB to enable <code>Live Migration Service</code> on Jakarta cluster</h3>
-        </div>
-      </div>
-    `;
-
-    const previewContainer = document.getElementById('previewContainer');
-    const previewContent = document.getElementById('preview-content');
-    const targetHeading = document.getElementById('section-a');
-    const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-
-    const context = {
-      _pendingPreviewRouteAnchor: null,
-      currentDrawioMode: null,
-      currentFilePath: 'MongoDB/migration-plan.md',
-      elements: {
-        previewContainer,
-        previewContent,
-      },
-      outlineController: {
-        navigateToHeading: vi.fn(() => true),
-      },
-      scrollSyncController: {
-        suspendSync: vi.fn(),
-      },
-      session: {
-        scrollToLine: vi.fn(),
-        toggleTaskListItem: vi.fn(),
-      },
-      toastController: {
-        show: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-    window.location.hash = 'file=MongoDB%2Fmigration-plan.md';
-
-    context.syncPreviewHeadingLinkButtons();
-    const button = previewContent.querySelector('#section-a .preview-heading-link-button');
-    expect(button).not.toBeNull();
-    expect(button.getAttribute('aria-label')).toBe('Copy link to Section A');
-
-    const complexHeadingButton = previewContent.querySelector('#section-b .preview-heading-link-button');
-    expect(complexHeadingButton).not.toBeNull();
-    expect(complexHeadingButton.getAttribute('aria-label')).toBe('Copy link to Approach E: Push MongoDB to enable Live Migration Service on Jakarta cluster');
-
-    const clickEvent = {
-      preventDefault: vi.fn(),
-      target: button,
-    };
-    context.handlePreviewContentClick(clickEvent);
-
-    expect(clickEvent.preventDefault).toHaveBeenCalledTimes(1);
-    const expectedUrl = new URL(window.location.href);
-    expectedUrl.hash = '#file=MongoDB%2Fmigration-plan.md&anchor=section-a';
-    expect(writeText).toHaveBeenCalledWith(expectedUrl.toString());
-
-    writeText.mockClear();
-    await context.copyPreviewHeadingLink('section-a');
-    expect(writeText).toHaveBeenCalledWith(expectedUrl.toString());
-    expect(context.toastController.show).toHaveBeenCalledWith('Section link copied');
-
-    context.requestPreviewRouteAnchor('section-a', 'MongoDB/migration-plan.md');
-    expect(context.outlineController.navigateToHeading).toHaveBeenCalledWith(targetHeading, 'section-a', { behavior: 'auto' });
-    expect(context.session.scrollToLine).not.toHaveBeenCalled();
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'section-a',
-      applied: true,
-      filePath: 'MongoDB/migration-plan.md',
-    });
-  });
-
-  it('keeps pending route anchors until the first preview render commits', () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content" data-render-phase="shell"></div>
-      </div>
-    `;
-
-    const previewContainer = document.getElementById('previewContainer');
-    const previewContent = document.getElementById('preview-content');
-    const scrollTo = vi.fn();
-    previewContainer.scrollTo = scrollTo;
-    previewContainer.getBoundingClientRect = () => ({ top: 100 });
-
-    const context = {
-      _pendingPreviewRouteAnchor: null,
-      currentFilePath: 'MongoDB/migration-plan.md',
-      elements: {
-        previewContainer,
-        previewContent,
-      },
-      scrollSyncController: {
-        suspendSync: vi.fn(),
-      },
-      session: {
-        scrollToLine: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    expect(context.requestPreviewRouteAnchor('section-a', 'MongoDB/migration-plan.md')).toBe(false);
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'section-a',
-      applied: false,
-      filePath: 'MongoDB/migration-plan.md',
-    });
-
-    previewContent.dataset.renderPhase = 'ready';
-    previewContent.innerHTML = '<h2 id="section-a" data-source-line="12">Section A</h2>';
-    const targetHeading = document.getElementById('section-a');
-    targetHeading.getBoundingClientRect = () => ({ top: 340, height: 28 });
-
-    expect(context.applyPendingPreviewRouteAnchor({ behavior: 'auto' })).toBe(true);
-    expect(context.session.scrollToLine).toHaveBeenCalledWith(12, 0);
-    expect(scrollTo).toHaveBeenCalled();
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'section-a',
-      applied: true,
-      appliedCount: 1,
-      filePath: 'MongoDB/migration-plan.md',
-    });
-  });
-
-  it('reapplies active route anchors after delayed preview layout changes', () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content" data-render-phase="ready">
-          <h2 id="section-a" data-source-line="12">Section A</h2>
-        </div>
-      </div>
-    `;
-
-    const previewContainer = document.getElementById('previewContainer');
-    const targetHeading = document.getElementById('section-a');
-    const scrollTo = vi.fn();
-    previewContainer.scrollTo = scrollTo;
-    previewContainer.scrollTop = 0;
-    previewContainer.getBoundingClientRect = () => ({ top: 100 });
-    targetHeading.getBoundingClientRect = () => ({ top: 340, height: 28 });
-
-    const context = {
-      _pendingPreviewRouteAnchor: null,
-      currentFilePath: 'MongoDB/migration-plan.md',
-      elements: {
-        previewContainer,
-        previewContent: document.getElementById('preview-content'),
-      },
-      scrollSyncController: {
-        suspendSync: vi.fn(),
-      },
-      session: {
-        scrollToLine: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    expect(context.requestPreviewRouteAnchor('section-a', 'MongoDB/migration-plan.md')).toBe(true);
-    targetHeading.getBoundingClientRect = () => ({ top: 580, height: 28 });
-
-    expect(context.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: false })).toBe(true);
-    expect(scrollTo).toHaveBeenCalledTimes(2);
-    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: 'auto', top: 480 });
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'section-a',
-      applied: true,
-      appliedCount: 2,
-    });
-  });
-
-  it('allows render completion to correct slow route anchor hydration once the settle window expired', () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content" data-render-phase="ready">
-          <h2 id="section-a" data-source-line="12">Section A</h2>
-        </div>
-      </div>
-    `;
-
-    const previewContainer = document.getElementById('previewContainer');
-    const targetHeading = document.getElementById('section-a');
-    const scrollTo = vi.fn();
-    previewContainer.scrollTo = scrollTo;
-    previewContainer.scrollTop = 0;
-    previewContainer.getBoundingClientRect = () => ({ top: 100 });
-    targetHeading.getBoundingClientRect = () => ({ top: 420, height: 28 });
-
-    const context = {
-      _pendingPreviewRouteAnchor: {
-        anchorId: 'section-a',
-        applied: true,
-        appliedCount: 1,
-        filePath: 'MongoDB/migration-plan.md',
-        stabilizeUntil: 0,
-      },
-      currentFilePath: 'MongoDB/migration-plan.md',
-      elements: {
-        previewContainer,
-        previewContent: document.getElementById('preview-content'),
-      },
-      scrollSyncController: {
-        suspendSync: vi.fn(),
-      },
-      session: {
-        scrollToLine: vi.fn(),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    expect(context.applyPendingPreviewRouteAnchor({ behavior: 'auto' })).toBe(false);
-    expect(scrollTo).not.toHaveBeenCalled();
-
-    context._pendingPreviewRouteAnchor = {
-      anchorId: 'section-a',
-      applied: true,
-      appliedCount: 1,
-      filePath: 'MongoDB/migration-plan.md',
-      stabilizeUntil: 0,
-    };
-
-    expect(context.applyPendingPreviewRouteAnchor({ allowExpired: true, behavior: 'auto' })).toBe(true);
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: 'auto', top: 320 });
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      applied: true,
-      appliedCount: 2,
-      anchorId: 'section-a',
-    });
-  });
-
-  it('clears missing pending route anchors only after a committed preview render', () => {
-    document.body.innerHTML = `
-      <div id="previewContainer">
-        <div id="preview-content" data-render-phase="ready"></div>
-      </div>
-    `;
-
-    const context = {
-      _pendingPreviewRouteAnchor: null,
-      currentFilePath: 'MongoDB/migration-plan.md',
-      elements: {
-        previewContent: document.getElementById('preview-content'),
-      },
-    };
-
-    Object.assign(context, uiFeatureShellMethods);
-
-    expect(context.requestPreviewRouteAnchor('missing-section', 'MongoDB/migration-plan.md')).toBe(false);
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'missing-section',
-      applied: false,
-      filePath: 'MongoDB/migration-plan.md',
-    });
-
-    expect(context.applyPendingPreviewRouteAnchor({ behavior: 'auto' })).toBe(false);
-    expect(context._pendingPreviewRouteAnchor).toMatchObject({
-      anchorId: 'missing-section',
-      applied: false,
-      filePath: 'MongoDB/migration-plan.md',
-    });
-
-    expect(context.applyPendingPreviewRouteAnchor({ behavior: 'auto', clearMissing: true })).toBe(false);
-    expect(context._pendingPreviewRouteAnchor).toBeNull();
   });
 });

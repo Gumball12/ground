@@ -10,10 +10,8 @@ export const validateGovernanceManifest = (manifest) => {
     throw new TypeError('Governance manifest must be an object with roles.');
   }
 
-  if (!Number.isInteger(manifest.defaultGrantMinutes)
-    || manifest.defaultGrantMinutes < 1
-    || manifest.defaultGrantMinutes > 1440) {
-    throw new RangeError('defaultGrantMinutes must be an integer between 1 and 1440.');
+  if (Object.hasOwn(manifest, 'defaultGrantMinutes')) {
+    throw new TypeError('defaultGrantMinutes is not supported by the focused governance manifest.');
   }
 
   if (!Object.hasOwn(manifest.roles, 'owner')) {

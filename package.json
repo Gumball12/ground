@@ -49,7 +49,6 @@
     "test:e2e:evidence": "npm run build && playwright test --config=playwright.evidence.config.js",
     "test:e2e:governance:prebuilt": "playwright test tests/e2e/governance.spec.js",
     "test:e2e:prebuilt": "playwright test",
-    "test:excalidraw:stress": "node scripts/run-excalidraw-reliability-stress.mjs",
     "test:guardrails": "node --test tests/node/guardrails/*.test.js",
     "test:integration": "npm run build && npm run test:integration:prebuilt",
     "test:integration:prebuilt": "node --test --test-force-exit --test-concurrency=2 tests/node/integration/*.test.js",

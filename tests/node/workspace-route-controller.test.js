@@ -1,526 +1,212 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
 import { WorkspaceRouteController } from '../../src/client/application/workspace-route-controller.js';
 
-function createClassListRecorder() {
+const createController = ({
+  active = true,
+  indexReady = true,
+  indexed = true,
+  openResult = true,
+  route = { filePath: 'README.md', type: 'file' },
+  session = null,
+} = {}) => {
   const events = [];
-  return {
-    events,
-    add(token) {
-      events.push(['add', token]);
+  const requests = [];
+  let currentSession = session;
+  const coordinator = {
+    cleanupSession() {
+      events.push(['cleanup']);
+      currentSession = null;
     },
-    remove(token) {
-      events.push(['remove', token]);
+    getSession() {
+      return currentSession;
+    },
+    async openFile(filePath) {
+      events.push(['open', filePath]);
+      return openResult;
     },
   };
-}
-
-function createController(overrides = {}) {
-  const events = [];
-  let sessionLoadToken = overrides.sessionLoadToken ?? 0;
-  let currentFilePath = overrides.currentFilePath ?? 'README.md';
-  let session = overrides.session ?? { id: 'session-1' };
-  const previewContent = {
-    dataset: {},
-    innerHTML: 'stale',
-  };
-
   const controller = new WorkspaceRouteController({
-    backlinksPanel: { clear: () => events.push(['backlinks-clear']) },
-    clearInitialFileBootstrap: () => events.push(['clear-bootstrap']),
-    closeSidebarOnMobile: () => events.push(['close-sidebar']),
-    elements: {
-      activeFileName: { textContent: '' },
-      diffPage: { classList: createClassListRecorder() },
-      editorPage: { classList: createClassListRecorder() },
-      emptyState: { classList: createClassListRecorder() },
-      markdownToolbar: { classList: createClassListRecorder() },
-      outlineToggle: { classList: createClassListRecorder() },
-      previewContent,
+    getIsDocumentIndexReady: () => indexReady,
+    getIsTabActive: () => active,
+    hasIndexedDocument: (filePath) => {
+      events.push(['index', filePath]);
+      return indexed;
     },
-    excalidrawEmbed: {
-      setHydrationPaused: (value) => events.push(['embed-hydration', value]),
-    },
-    fileExplorer: {
-      revealFile: (filePath, options) => events.push(['explorer-reveal', filePath, options ?? null]),
-      setActiveFile: (filePath) => events.push(['explorer-active', filePath]),
-    },
-    getIsTabActive: () => overrides.isTabActive ?? true,
-    getSessionLoadToken: () => sessionLoadToken,
-    gitDiffView: {
-      hide: () => events.push(['diff-hide']),
-    },
-    gitPanel: {
-      setSelection: () => events.push(['git-selection']),
-    },
-    imageLightbox: {
-      close: () => events.push(['lightbox-close']),
-    },
-    layoutController: {
-      reset: () => events.push(['layout-reset']),
-    },
-    lobby: {
-      setCurrentFile: (filePath) => events.push(['lobby-file', filePath]),
-    },
-    navigation: overrides.navigation ?? {
-      getHashRoute: () => ({ filePath: 'README.md', type: 'file' }),
+    navigation: {
+      getHashRoute: () => route,
       navigateToFile: (filePath) => events.push(['navigate', filePath]),
     },
-    previewRenderer: {
-      setHydrationPaused: (value) => events.push(['preview-hydration', value]),
+    onDocumentRequested: async (filePath, options) => {
+      events.push(['request', filePath]);
+      requests.push([filePath, options]);
     },
-    renderAvatars: () => events.push(['render-avatars']),
-    renderPresence: () => events.push(['render-presence']),
-    resetPreviewMode: () => events.push(['reset-preview']),
-    scrollSyncController: {
-      invalidatePreviewBlocks: () => events.push(['invalidate-preview']),
-      setLargeDocumentMode: (value) => events.push(['large-doc', value]),
-    },
-    setCurrentFilePath: (value) => {
-      currentFilePath = value;
-      events.push(['current-file', value]);
-    },
-    setSession: (value) => {
-      session = value;
-      events.push(['session', value ? value.id : null]);
-    },
-    setSessionLoadToken: (value) => {
-      sessionLoadToken = value;
-      events.push(['session-token', value]);
-    },
-    setSidebarTab: (value) => events.push(['sidebar-tab', value]),
-    setSidebarVisibility: (value) => events.push(['sidebar-visibility', value]),
-    showGitCommit: async (route) => {
-      events.push(['show-git-commit', route.hash ?? null, route.path ?? null, route.historyFilePath ?? null]);
-    },
-    showGitDiff: async (route) => {
-      events.push(['show-git-diff', route.scope ?? 'all', route.filePath ?? null]);
-    },
-    showGitFileHistory: async (route) => {
-      events.push(['show-git-file-history', route.filePath ?? null]);
-    },
-    showGitFilePreview: async (route) => {
-      events.push(['show-git-file-preview', route.hash ?? null, route.filePath ?? null, route.currentFilePath ?? null]);
-    },
-    showGitHistory: async () => {
-      events.push(['show-git-history']);
-    },
-    syncMainChrome: ({ mode, title = null }) => events.push(['main-chrome', mode, title]),
-    workspaceCoordinator: {
-      cleanupSession: () => events.push(['cleanup-session']),
-      getSession: () => ({ id: 'session-2' }),
-      openFile: async (filePath) => events.push(['open-file', filePath]),
-    },
-    ...overrides,
+    workspaceCoordinator: coordinator,
   });
 
   return {
     controller,
-    currentFilePath: () => currentFilePath,
+    coordinator,
     events,
-    previewContent,
-    session: () => session,
-    sessionLoadToken: () => sessionLoadToken,
+    requests,
+    setSession(nextSession) {
+      currentSession = nextSession;
+    },
+    setIndexReady(nextReady) {
+      indexReady = nextReady;
+    },
   };
-}
+};
 
-test('WorkspaceRouteController routes hash changes to empty, git diff, git file history, git file preview, git history, git commit, and file views', async () => {
-  const empty = createController({
-    navigation: {
-      getHashRoute: () => ({ type: 'empty' }),
-      navigateToFile() {},
-    },
-  });
-  await empty.controller.handleHashChange();
-  assert.deepEqual(empty.events.slice(0, 3), [
-    ['git-selection'],
-    ['diff-hide'],
-    ['cleanup-session'],
-  ]);
-
-  const gitDiff = createController({
-    navigation: {
-      getHashRoute: () => ({ filePath: 'README.md', scope: 'working-tree', type: 'git-diff' }),
-      navigateToFile() {},
-    },
-  });
-  await gitDiff.controller.handleHashChange();
-  assert.deepEqual(gitDiff.events, [
-    ['sidebar-tab', 'git'],
-    ['show-git-diff', 'working-tree', 'README.md'],
-  ]);
-
-  const gitHistory = createController({
-    navigation: {
-      getHashRoute: () => ({ type: 'git-history' }),
-      navigateToFile() {},
-    },
-  });
-  await gitHistory.controller.handleHashChange();
-  assert.deepEqual(gitHistory.events, [
-    ['sidebar-tab', 'git'],
-    ['show-git-history'],
-  ]);
-
-  const gitFileHistory = createController({
-    navigation: {
-      getHashRoute: () => ({ filePath: 'README.md', type: 'git-file-history' }),
-      navigateToFile() {},
-    },
-  });
-  await gitFileHistory.controller.handleHashChange();
-  assert.deepEqual(gitFileHistory.events, [
-    ['sidebar-tab', 'files'],
-    ['show-git-file-history', 'README.md'],
-  ]);
-
-  const gitFilePreview = createController({
-    navigation: {
-      getHashRoute: () => ({
-        currentFilePath: 'docs/README.md',
-        filePath: 'README.md',
-        hash: 'abc1234',
-        type: 'git-file-preview',
-      }),
-      navigateToFile() {},
-    },
-  });
-  await gitFilePreview.controller.handleHashChange();
-  assert.deepEqual(gitFilePreview.events, [
-    ['sidebar-tab', 'files'],
-    ['show-git-file-preview', 'abc1234', 'README.md', 'docs/README.md'],
-  ]);
-
-  const gitCommit = createController({
-    navigation: {
-      getHashRoute: () => ({
-        hash: 'abc1234',
-        historyFilePath: 'docs/README.md',
-        path: 'README.md',
-        type: 'git-commit',
-      }),
-      navigateToFile() {},
-    },
-  });
-  await gitCommit.controller.handleHashChange();
-  assert.deepEqual(gitCommit.events, [
-    ['sidebar-tab', 'git'],
-    ['show-git-commit', 'abc1234', 'README.md', 'docs/README.md'],
-  ]);
-
-  const file = createController({
-    navigation: {
-      getHashRoute: () => ({ filePath: 'notes/today.md', type: 'file' }),
-      navigateToFile() {},
-    },
-  });
-  await file.controller.handleHashChange();
-  assert.deepEqual(file.events, [
-    ['sidebar-tab', 'files'],
-    ['lightbox-close'],
-    ['git-selection'],
-    ['diff-hide'],
-    ['main-chrome', 'editor', null],
-    ['open-file', 'notes/today.md'],
-    ['session', 'session-2'],
-  ]);
-
-  const preservedFile = createController({
-    navigation: {
-      getHashRoute: () => ({ filePath: 'notes/from-comments.md', type: 'file' }),
-      navigateToFile() {},
-    },
-  });
-  preservedFile.controller.preserveSidebarTabForNextFileRoute('notes/from-comments.md');
-  await preservedFile.controller.handleHashChange();
-  assert.deepEqual(preservedFile.events, [
-    ['lightbox-close'],
-    ['git-selection'],
-    ['diff-hide'],
-    ['main-chrome', 'editor', null],
-    ['open-file', 'notes/from-comments.md'],
-    ['session', 'session-2'],
-  ]);
-});
-
-test('WorkspaceRouteController defers a route match until a governed editor session is ready and reapplies it after recreation', async () => {
-  const route = {
-    column: 3,
-    filePath: 'notes/today.md',
-    line: 5,
-    matchLength: 6,
-    type: 'file',
-  };
-  const reveals = [];
-  let controller;
-  const notifyFileOpenReady = (session) => {
-    controller.revealEditorMatch(route, session);
-  };
+test('WorkspaceRouteController opens only the route-selected indexed Markdown document', async () => {
   const fixture = createController({
-    navigation: {
-      getHashRoute: () => route,
-      navigateToFile() {},
-    },
-    workspaceCoordinator: {
-      cleanupSession() {},
-      getSession: () => null,
-      openFile: async () => {
-        notifyFileOpenReady(null);
-        return true;
-      },
-    },
-  });
-  controller = fixture.controller;
-
-  await controller.handleHashChange();
-  assert.deepEqual(reveals, []);
-
-  notifyFileOpenReady({
-    revealSearchMatch(match) {
-      reveals.push(['ready', match]);
-      return true;
-    },
-  });
-  notifyFileOpenReady({
-    revealSearchMatch(match) {
-      reveals.push(['recreated', match]);
-      return true;
-    },
+    route: { filePath: 'docs/guide.md', type: 'file' },
   });
 
-  assert.deepEqual(reveals, [
-    ['ready', { column: 3, length: 6, line: 5 }],
-    ['recreated', { column: 3, length: 6, line: 5 }],
+  assert.equal(await fixture.controller.handleHashChange(), true);
+  assert.deepEqual(fixture.events, [
+    ['index', 'docs/guide.md'],
+    ['request', 'docs/guide.md'],
+    ['open', 'docs/guide.md'],
   ]);
 });
 
-test('WorkspaceRouteController reveals a route match once when a normal editor session opens', async () => {
-  const route = {
-    column: 1,
-    filePath: 'notes/today.md',
-    line: 5,
-    matchLength: 6,
-    type: 'file',
-  };
+test('WorkspaceRouteController routes an indexed-missing Markdown hash through not-found without creating Access', async () => {
+  const fixture = createController({ indexed: false });
+
+  assert.equal(await fixture.controller.handleHashChange(), false);
+  assert.deepEqual(fixture.events, [
+    ['index', 'README.md'],
+    ['open', 'README.md'],
+  ]);
+});
+
+test('WorkspaceRouteController defers Access until the initial non-visual index is ready without blocking a retry', async () => {
+  const fixture = createController({ indexReady: false });
+
+  assert.equal(await fixture.controller.handleHashChange(), true);
+  assert.deepEqual(fixture.events, []);
+
+  fixture.setIndexReady(true);
+  assert.equal(await fixture.controller.handleHashChange(), true);
+  assert.deepEqual(fixture.events, [
+    ['index', 'README.md'],
+    ['request', 'README.md'],
+    ['open', 'README.md'],
+  ]);
+});
+
+test('WorkspaceRouteController forces same-document Access retry after confirming index membership', async () => {
+  const fixture = createController();
+
+  assert.equal(await fixture.controller.handleHashChange({ forceGovernance: true }), true);
+  assert.deepEqual(fixture.events, [
+    ['index', 'README.md'],
+    ['request', 'README.md'],
+    ['open', 'README.md'],
+  ]);
+  assert.deepEqual(fixture.requests, [['README.md', { force: true }]]);
+});
+
+test('WorkspaceRouteController fails closed for empty, removed product, and non-Markdown routes', async () => {
+  const routes = [
+    { type: 'empty' },
+    { type: 'git-diff' },
+    { filePath: 'README.assets/image.png', type: 'file' },
+    { filePath: 'diagram.excalidraw', type: 'file' },
+  ];
+
+  for (const route of routes) {
+    const fixture = createController({ route, session: { id: 'active-session' } });
+
+    assert.equal(await fixture.controller.handleHashChange(), false);
+    assert.deepEqual(fixture.events, [
+      ['cleanup'],
+      ['request', null],
+    ]);
+    assert.equal(fixture.coordinator.getSession(), null);
+  }
+});
+
+test('WorkspaceRouteController leaves the workspace untouched while this tab is inactive', async () => {
+  const fixture = createController({ active: false });
+
+  assert.equal(await fixture.controller.handleHashChange(), false);
+  assert.deepEqual(fixture.events, []);
+});
+
+test('WorkspaceRouteController reapplies a text match when the same active session handles the route', async () => {
   const reveals = [];
-  let controller;
-  let session = null;
-  const readySession = {
+  const session = {
     revealSearchMatch(match) {
       reveals.push(match);
       return true;
     },
   };
   const fixture = createController({
-    navigation: {
-      getHashRoute: () => route,
-      navigateToFile() {},
+    route: {
+      column: 3,
+      filePath: 'README.md',
+      line: 7,
+      matchLength: 5,
+      type: 'file',
     },
-    workspaceCoordinator: {
-      cleanupSession() {},
-      getSession: () => session,
-      openFile: async () => {
-        session = readySession;
-        controller.revealEditorMatch(route, readySession);
-        return true;
-      },
-    },
+    session,
   });
-  controller = fixture.controller;
 
-  await controller.handleHashChange();
+  assert.equal(await fixture.controller.handleHashChange(), true);
 
-  assert.deepEqual(reveals, [{ column: 1, length: 6, line: 5 }]);
+  assert.deepEqual(reveals, [{ column: 3, length: 5, line: 7 }]);
 });
 
-test('WorkspaceRouteController focuses an Excalidraw element route after opening its file', async () => {
-  const calls = [];
+test('WorkspaceRouteController does not apply a route match to a newly replaced session', async () => {
+  const oldSession = { id: 'old' };
+  const reveals = [];
+  const newSession = {
+    id: 'new',
+    revealSearchMatch(match) {
+      reveals.push(match);
+      return true;
+    },
+  };
   const fixture = createController({
-    excalidrawEmbed: {
-      openElement: (...args) => calls.push(args),
-      setHydrationPaused() {},
-    },
-    navigation: {
-      getHashRoute: () => ({
-        elementId: 'node-42',
-        elementType: 'group',
-        filePath: 'diagrams/architecture.excalidraw',
-        type: 'file',
-      }),
-      navigateToFile() {},
-    },
+    route: { filePath: 'README.md', line: 2, type: 'file' },
+    session: oldSession,
   });
+  fixture.coordinator.openFile = async (filePath) => {
+    fixture.events.push(['open', filePath]);
+    fixture.setSession(newSession);
+    return true;
+  };
 
-  await fixture.controller.handleHashChange();
+  assert.equal(await fixture.controller.handleHashChange(), true);
 
-  assert.deepEqual(calls, [[
-    'diagrams/architecture.excalidraw',
-    'node-42',
-    'group',
-  ]]);
+  assert.deepEqual(reveals, []);
 });
 
-test('WorkspaceRouteController keeps the active Excalidraw route when reconnecting navigation is declined', async () => {
-  const events = [];
-  const fixture = createController({
-    excalidrawEmbed: {
-      async prepareFileDisconnect(filePath, options) {
-        events.push(['prepare-disconnect', filePath, options.timeoutMs]);
-        return false;
-      },
-      setHydrationPaused() {},
-    },
-    navigation: {
-      getHashRoute: () => ({ filePath: 'next.md', type: 'file' }),
-      navigateToFile: (filePath) => events.push(['navigate', filePath]),
-    },
-    workspaceCoordinator: {
-      cleanupSession() {},
-      getSession: () => null,
-      isExcalidrawFile: (filePath) => filePath.endsWith('.excalidraw'),
-      openFile: async (filePath) => events.push(['open-file', filePath]),
-      stateStore: {
-        get: (key) => (key === 'currentFilePath' ? 'active.excalidraw' : null),
-      },
-    },
-  });
+test('WorkspaceRouteController propagates a focused editor open failure', async () => {
+  const fixture = createController({ openResult: false });
 
-  await fixture.controller.handleHashChange();
-
-  assert.deepEqual(events, [
-    ['prepare-disconnect', 'active.excalidraw', 10000],
-    ['navigate', 'active.excalidraw'],
+  assert.equal(await fixture.controller.handleHashChange(), false);
+  assert.deepEqual(fixture.events, [
+    ['index', 'README.md'],
+    ['request', 'README.md'],
+    ['open', 'README.md'],
   ]);
 });
 
-test('WorkspaceRouteController guards non-file routes before leaving an active Excalidraw room', async () => {
-  const events = [];
-  const fixture = createController({
-    excalidrawEmbed: {
-      async prepareFileDisconnect(filePath) {
-        events.push(['prepare-disconnect', filePath]);
-        return false;
-      },
-      setHydrationPaused() {},
+test('WorkspaceRouteController falls back to line scrolling when exact match reveal is unavailable', () => {
+  const scrolls = [];
+  const fixture = createController();
+  const session = {
+    scrollToLine(line, ratio) {
+      scrolls.push([line, ratio]);
+      return true;
     },
-    navigation: {
-      getHashRoute: () => ({ type: 'git-history' }),
-      navigateToFile: (filePath) => events.push(['navigate', filePath]),
-    },
-    workspaceCoordinator: {
-      cleanupSession() {},
-      getSession: () => null,
-      isExcalidrawFile: (filePath) => filePath.endsWith('.excalidraw'),
-      openFile() {},
-      stateStore: {
-        get: (key) => (key === 'currentFilePath' ? 'active.excalidraw' : null),
-      },
-    },
-  });
+  };
 
-  await fixture.controller.handleHashChange();
-
-  assert.deepEqual(events, [
-    ['prepare-disconnect', 'active.excalidraw'],
-    ['navigate', 'active.excalidraw'],
-  ]);
-});
-
-test('WorkspaceRouteController resets editor state when showing the empty workspace', () => {
-  const { controller, currentFilePath, events, previewContent, session, sessionLoadToken } = createController();
-
-  controller.showEmptyState();
-
-  assert.equal(session(), null);
-  assert.equal(sessionLoadToken(), 1);
-  assert.equal(currentFilePath(), null);
-  assert.equal(previewContent.innerHTML, '');
-  assert.equal(previewContent.dataset.renderPhase, 'ready');
-  assert.equal(events.includes(['current-file', null]), false);
-  assert.deepEqual(events.filter(([type]) => type === 'current-file'), [['current-file', null]]);
-  assert.ok(events.some(([type]) => type === 'lightbox-close'));
-});
-
-test('WorkspaceRouteController resets into diff mode and keeps navigation helpers simple', () => {
-  const { controller, events, previewContent, session, sessionLoadToken } = createController();
-
-  controller.showDiffState();
-  controller.handleFileSelection('README.md', { closeSidebarOnMobile: true });
-
-  assert.equal(session(), null);
-  assert.equal(sessionLoadToken(), 1);
-  assert.equal(previewContent.innerHTML, '');
-  assert.equal(previewContent.dataset.renderPhase, 'ready');
-  assert.ok(events.some(([type]) => type === 'lightbox-close'));
-  assert.deepEqual(events.slice(-2), [
-    ['close-sidebar'],
-    ['navigate', 'README.md'],
-  ]);
-});
-
-test('WorkspaceRouteController reveals the file tree once for quick-switcher opens without changing navigation semantics', async () => {
-  const { controller, events } = createController();
-
-  controller.handleFileSelection('notes/today.md', {
-    closeSidebarOnMobile: true,
-    revealInTree: true,
-  });
-
-  assert.deepEqual(events.slice(-1), [
-    ['navigate', 'notes/today.md'],
-  ]);
-  assert.equal(events.some(([type]) => type === 'explorer-reveal'), false);
-  assert.equal(events.some(([type]) => type === 'close-sidebar'), false);
-
-  await controller.openFile('notes/today.md');
-  await controller.openFile('notes/today.md');
-
-  assert.deepEqual(events.filter(([type]) => type === 'explorer-reveal'), [
-    ['explorer-reveal', 'notes/today.md', { clearSearch: true }],
-  ]);
-  assert.deepEqual(events.filter(([type]) => type === 'sidebar-tab').slice(-1), [
-    ['sidebar-tab', 'files'],
-  ]);
-  assert.deepEqual(events.filter(([type]) => type === 'sidebar-visibility').slice(-1), [
-    ['sidebar-visibility', true],
-  ]);
-});
-
-test('WorkspaceRouteController reveals the current file immediately for quick-switcher reselection', () => {
-  const { controller, events } = createController();
-
-  controller.handleFileSelection('README.md', { revealInTree: true });
-
-  assert.deepEqual(events.filter(([type]) => type === 'sidebar-tab'), [
-    ['sidebar-tab', 'files'],
-  ]);
-  assert.deepEqual(events.filter(([type]) => type === 'sidebar-visibility'), [
-    ['sidebar-visibility', true],
-  ]);
-  assert.deepEqual(events.filter(([type]) => type === 'explorer-reveal'), [
-    ['explorer-reveal', 'README.md', { clearSearch: true }],
-  ]);
-  assert.equal(events.some(([type]) => type === 'navigate'), false);
-});
-
-test('WorkspaceRouteController navigates instead of fast-revealing when draw.io text mode is active', () => {
-  const { controller, events } = createController({
-    navigation: {
-      getHashRoute: () => ({
-        drawioMode: 'text',
-        filePath: 'diagrams/architecture.drawio',
-        type: 'file',
-      }),
-      navigateToFile: (filePath) => events.push(['navigate', filePath]),
-    },
-  });
-
-  controller.handleFileSelection('diagrams/architecture.drawio', { revealInTree: true });
-
-  assert.deepEqual(events.filter(([type]) => type === 'navigate'), [
-    ['navigate', 'diagrams/architecture.drawio'],
-  ]);
-  assert.equal(events.some(([type]) => type === 'explorer-reveal'), false);
-  assert.equal(events.some(([type]) => type === 'sidebar-visibility'), false);
+  assert.equal(fixture.controller.revealEditorMatch({ line: 4 }, session), true);
+  assert.deepEqual(scrolls, [[4, 0.2]]);
+  assert.equal(fixture.controller.revealEditorMatch({}, session), false);
 });

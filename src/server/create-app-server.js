@@ -199,6 +199,7 @@ export function createAppServer(config = loadConfig()) {
   const collaborationGateway = attachCollaborationGateway({
     authService,
     basePath: config.basePath,
+    governanceSessionRegistry,
     heartbeatIntervalMs: config.wsHeartbeatIntervalMs,
     maxPayload: config.wsMaxPayloadBytes,
     httpServer,

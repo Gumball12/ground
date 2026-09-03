@@ -160,6 +160,13 @@ test.describe('oidc auth', () => {
     )).toBe('Google User');
     await expect(page.locator('#displayNameDialog')).toBeHidden();
     await expect(page.locator('#editNameBtn')).toBeHidden();
-    await expect(page.locator('#currentUserName')).toHaveText('Google User');
+    const currentParticipant = page.locator('#participantBar [data-self="true"]');
+    await expect(currentParticipant).toBeVisible();
+    await expect(currentParticipant.locator('.participant-name')).toHaveText('Google User');
+    await expect(currentParticipant).toHaveAttribute('data-participant-kind', 'human');
+    await expect(currentParticipant).toHaveAttribute('data-grant-state', 'active');
+    await expect(currentParticipant).toContainText('Owner');
+    await expect(currentParticipant).toContainText('You');
+    await expect(page.locator('#currentUserName')).toHaveCount(0);
   });
 });

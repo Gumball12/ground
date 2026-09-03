@@ -332,6 +332,10 @@ export class WorkspaceSyncClient {
     });
   }
 
+  isInitialIndexReady() {
+    return this._didInitialSync;
+  }
+
   primeEventCache() {
     this.events.toArray().forEach((event) => {
       const normalized = normalizeWorkspaceEvent(event);

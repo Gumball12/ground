@@ -57,6 +57,38 @@ async function waitForRoomRelease(app, filePath) {
   await waitForCondition(() => app.server.roomRegistry.get(filePath) === undefined);
 }
 
+async function governanceRequest(app, path, {
+  body,
+  credential,
+  method = 'GET',
+} = {}) {
+  const response = await fetch(`${app.baseUrl}${path}`, {
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: {
+      ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    method,
+  });
+  assert.equal(response.ok, true);
+  return response.json();
+}
+
+function waitForProviderClosed(provider, timeoutMs = 5_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      provider.off('closed', handleClosed);
+      reject(new Error(`Timed out after ${timeoutMs}ms waiting for governed provider close`));
+    }, timeoutMs);
+    const handleClosed = (event) => {
+      clearTimeout(timer);
+      provider.off('closed', handleClosed);
+      resolve(event);
+    };
+    provider.on('closed', handleClosed);
+  });
+}
+
 test('WebSocket collaboration does not rewrite CRLF markdown on open-only sessions', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());
@@ -86,6 +118,124 @@ test('WebSocket collaboration does not rewrite CRLF markdown on open-only sessio
   const afterStat = await stat(absolutePath);
   assert.equal(await readFile(absolutePath, 'utf-8'), '# Test\r\n\r\nHello from CRLF.\r\n');
   assert.equal(afterStat.mtimeMs, beforeStat.mtimeMs);
+});
+
+test('governance Role transitions invalidate only the changed governed document connections', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const createGovernedSession = (displayName) => governanceRequest(app, '/api/governance/session', {
+    body: { displayName, documentPath: 'test.md', kind: 'human' },
+    method: 'POST',
+  });
+  const owner = await createGovernedSession('Owner');
+  const writer = await createGovernedSession('Writer');
+  const assignedWriter = await governanceRequest(
+    app,
+    `/api/governance/grants/${writer.participantSessionId}`,
+    {
+      body: { roleId: 'editor' },
+      credential: owner.credential,
+      method: 'PUT',
+    },
+  );
+  const currentOwner = await governanceRequest(app, '/api/governance/session', {
+    credential: owner.credential,
+  });
+  assert.equal(currentOwner.version, 3);
+  assert.equal(assignedWriter.version, 3);
+
+  const serverUrl = `ws://127.0.0.1:${app.port}${app.server.config.wsBasePath}`;
+  const createProvider = ({ participantSessionId, version } = {}) => {
+    const doc = new Y.Doc();
+    const provider = new WebsocketProvider(serverUrl, 'test.md', doc, {
+      WebSocketPolyfill: WebSocket,
+      connect: false,
+      disableBc: true,
+      ...(participantSessionId === undefined ? {} : {
+        params: {
+          governanceParticipantSessionId: participantSessionId,
+          governanceVersion: String(version),
+        },
+      }),
+    });
+    t.after(() => {
+      provider.destroy();
+      doc.destroy();
+    });
+    provider.connect();
+    return { doc, provider };
+  };
+
+  const ownerConnection = createProvider({
+    participantSessionId: owner.participantSessionId,
+    version: currentOwner.version,
+  });
+  const writerConnection = createProvider({
+    participantSessionId: writer.participantSessionId,
+    version: assignedWriter.version,
+  });
+  const legacyConnection = createProvider();
+  await Promise.all([
+    waitForProviderSync(ownerConnection.provider),
+    waitForProviderSync(writerConnection.provider),
+    waitForProviderSync(legacyConnection.provider),
+  ]);
+
+  const writerRoleChanged = waitForProviderClosed(writerConnection.provider);
+  const changedWriter = await governanceRequest(
+    app,
+    `/api/governance/grants/${writer.participantSessionId}`,
+    {
+      body: { roleId: 'reviewer' },
+      credential: owner.credential,
+      method: 'PUT',
+    },
+  );
+  assert.deepEqual(await writerRoleChanged, {
+    code: 4403,
+    reason: 'Governance access changed',
+  });
+  assert.equal(ownerConnection.provider.wsconnected, true);
+  assert.equal(legacyConnection.provider.wsconnected, true);
+
+  const currentWriterConnection = createProvider({
+    participantSessionId: writer.participantSessionId,
+    version: changedWriter.version,
+  });
+  await waitForProviderSync(currentWriterConnection.provider);
+  const writerRevoked = waitForProviderClosed(currentWriterConnection.provider);
+  await governanceRequest(app, `/api/governance/grants/${writer.participantSessionId}`, {
+    credential: owner.credential,
+    method: 'DELETE',
+  });
+  assert.deepEqual(await writerRevoked, {
+    code: 4403,
+    reason: 'Governance access changed',
+  });
+  assert.equal(ownerConnection.provider.wsconnected, true);
+
+  let staleConnectionSynchronized = false;
+  const staleWriterConnection = createProvider({
+    participantSessionId: writer.participantSessionId,
+    version: changedWriter.version,
+  });
+  staleWriterConnection.provider.on('sync', (isSynced) => {
+    staleConnectionSynchronized ||= isSynced;
+  });
+  assert.deepEqual(await waitForProviderClosed(staleWriterConnection.provider), {
+    code: 4403,
+    reason: 'Governance access changed',
+  });
+  assert.equal(staleConnectionSynchronized, false);
+
+  legacyConnection.doc.getText('codemirror').insert(
+    legacyConnection.doc.getText('codemirror').length,
+    '\nLegacy connection remains collaborative.\n',
+  );
+  await waitForCondition(() => (
+    ownerConnection.doc.getText('codemirror').toString().includes('Legacy connection remains collaborative.')
+  ));
 });
 
 test('WebSocket collaboration broadcasts awareness and persists vault file', async (t) => {

@@ -12,6 +12,8 @@ const credentialFrom = (request) => (
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
 const readParticipantSessionId = (pathname) => {
   const encodedId = pathname.slice(GRANTS_PREFIX.length);
   if (!encodedId || encodedId.includes('/')) {
@@ -115,16 +117,19 @@ export function createGovernanceApiHandler({ manifest, registry }) {
 
         const body = await parseJsonBody(request);
         const participantSessionId = readParticipantSessionId(requestUrl.pathname);
-        if (!participantSessionId || !Object.hasOwn(manifest.roles, body?.roleId) || body.roleId === 'owner'
-          || (body.expiresInMinutes !== undefined && (!Number.isInteger(body.expiresInMinutes)
-            || body.expiresInMinutes < 1 || body.expiresInMinutes > 1440))) {
+        if (!isObject(body)
+          || typeof body.roleId !== 'string'
+          || Object.keys(body).length !== 1) {
+          jsonResponse(request, response, 400, { error: 'Role assignment requires only roleId.' });
+          return;
+        }
+        if (!participantSessionId || !Object.hasOwn(manifest.roles, body.roleId) || body.roleId === 'owner') {
           jsonResponse(request, response, 400, { error: 'Invalid role grant' });
           return;
         }
 
         try {
           jsonResponse(request, response, 200, registry.assignRole(session.credential, {
-            expiresInMinutes: body.expiresInMinutes,
             participantSessionId,
             roleId: body.roleId,
           }));

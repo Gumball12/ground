@@ -274,21 +274,6 @@ async function handleFileTree(req, res, _requestUrl, { vaultFileStore, workspace
   }
 }
 
-async function handleCommentOverview(req, res, _requestUrl, { vaultFileStore }) {
-  try {
-    if (typeof vaultFileStore.readCommentOverview !== 'function') {
-      jsonResponse(req, res, 503, { error: 'Comment overview is unavailable' });
-      return;
-    }
-
-    const overview = await vaultFileStore.readCommentOverview();
-    jsonResponse(req, res, 200, { overview });
-  } catch (error) {
-    console.error('[api] Failed to read comment overview:', error.message);
-    jsonResponse(req, res, 500, { error: 'Failed to read comment overview' });
-  }
-}
-
 async function handleFileRead(req, res, requestUrl, { vaultFileStore }) {
   const filePath = requestUrl.searchParams.get('path');
   if (!filePath) {
@@ -495,7 +480,6 @@ function createRouteTable(context) {
     { method: 'POST', path: '/api/base/transform', handler: handleBaseTransform },
     { method: 'POST', path: '/api/base/export', handler: handleBaseExport },
     { method: 'GET', path: '/api/files', handler: handleFileTree },
-    { method: 'GET', path: '/api/comments/overview', handler: handleCommentOverview },
     { method: 'GET', path: '/api/file', handler: handleFileRead },
     { method: 'GET', path: '/api/download/file', handler: handleFileDownload },
     { method: 'GET', path: '/api/download/directory', handler: handleDirectoryDownload },

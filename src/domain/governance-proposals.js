@@ -5,7 +5,7 @@ import {
   createCommentThreadSharedType,
   serializeCommentThread,
 } from './comment-threads.js';
-import { appendActivity } from './governance-activity.js';
+import { appendActivity, GOVERNANCE_ACTIVITY_SOURCES } from './governance-activity.js';
 
 export const GOVERNANCE_ORIGIN = Object.freeze({ type: 'governance-resolution' });
 export const PROPOSAL_STATUSES = Object.freeze(['open', 'accepted', 'rejected', 'conflict']);
@@ -26,6 +26,14 @@ const normalizeActor = (actor) => ({
   participantSessionId: requiredString(actor?.participantSessionId, 'Actor participantSessionId'),
   roleId: requiredString(actor?.roleId, 'Actor roleId'),
 });
+
+const normalizeSource = (source, label) => {
+  const value = requiredString(source, label);
+  if (!GOVERNANCE_ACTIVITY_SOURCES.includes(value)) {
+    throw new TypeError(`Unknown Activity source: ${value}.`);
+  }
+  return value;
+};
 
 const assertContext = (context) => {
   if (!(context?.ydoc instanceof Y.Doc)
@@ -68,7 +76,7 @@ const setStatus = (thread, status) => {
   thread.set('status', status);
 };
 
-const revalidate = (context, actor) => {
+const revalidate = (context, actor, source) => {
   const changed = [];
   // ponytail: O(n) is enough for one document; add an index only after profiling proves otherwise.
   for (const thread of context.comments.toArray()) {
@@ -96,6 +104,7 @@ const revalidate = (context, actor) => {
         action: 'proposal_status_changed',
         actor,
         outcome: nextStatus,
+        source,
         target: proposal.id,
       });
     }
@@ -106,6 +115,7 @@ const revalidate = (context, actor) => {
 export const createProposal = (context, input = {}) => {
   assertContext(context);
   const actor = normalizeActor(input.actor);
+  const source = normalizeSource(input.source, 'Proposal source');
   const record = {
     ...input.anchor,
     baseRevision: requiredString(input.baseRevision, 'Proposal baseRevision'),
@@ -137,6 +147,7 @@ export const createProposal = (context, input = {}) => {
       actor,
       createdAt: record.createdAt,
       outcome: record.status,
+      source,
       target: record.id,
     });
   }, 'governance-proposal-create');
@@ -146,19 +157,22 @@ export const createProposal = (context, input = {}) => {
 export const revalidateOpenProposals = (context, {
   actor,
   origin = 'governance-revalidate',
+  source,
   system = false,
 } = {}) => {
   assertContext(context);
   const normalizedActor = normalizeActor(actor);
+  const normalizedSource = normalizeSource(source, 'Activity source');
 
   let changed = [];
   context.ydoc.transact(() => {
-    changed = revalidate(context, normalizedActor);
+    changed = revalidate(context, normalizedActor, normalizedSource);
     if (system) {
       appendActivity(context.activity, {
         action: 'external_reconciliation',
         actor: normalizedActor,
         outcome: 'applied',
+        source: normalizedSource,
         target: context.target ?? 'document',
       });
     }
@@ -204,13 +218,14 @@ export const resolveProposal = (context, { proposalId, resolution, actor } = {})
     thread.set('resolution', resolution);
     thread.set('resolvedAt', resolvedAt);
     thread.set('resolvedByParticipantSessionId', normalizedActor.participantSessionId);
-    revalidate(context, normalizedActor);
+    revalidate(context, normalizedActor, 'owner_decision');
 
     result = readProposal(thread);
     appendActivity(context.activity, {
       action: `proposal_${result.status}`,
       actor: normalizedActor,
       outcome: result.status,
+      source: 'owner_decision',
       target: proposal.id,
     });
   }, GOVERNANCE_ORIGIN);
@@ -219,12 +234,22 @@ export const resolveProposal = (context, { proposalId, resolution, actor } = {})
 
 export const groupReviewItems = (context) => {
   assertContext(context);
+  const currentContent = context.ytext.toString();
   const items = context.comments.toArray()
     .filter((thread) => thread instanceof Y.Map && thread.get('kind') === 'proposal')
     .map((thread) => serializeCommentThread(thread))
     .filter(Boolean)
     .filter((proposal) => !TERMINAL_STATUSES.has(proposal.status))
-    .map((proposal) => ({ anchor: resolveAnchor(context, proposal), proposal }))
+    .map((proposal) => {
+      const anchor = resolveAnchor(context, proposal);
+      return {
+        anchor,
+        proposal: {
+          ...proposal,
+          currentText: anchor ? currentContent.slice(anchor.from, anchor.to) : null,
+        },
+      };
+    })
     .sort((left, right) => {
       if (!left.anchor) return right.anchor ? 1 : left.proposal.createdAt - right.proposal.createdAt;
       if (!right.anchor) return -1;

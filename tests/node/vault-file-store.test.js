@@ -184,52 +184,6 @@ test('VaultFileStore persists collaboration sidecars without touching vault cont
   assert.deepEqual(Array.from(await store.readCollaborationSnapshot('README.md') ?? []), Array.from(snapshot));
 });
 
-test('VaultFileStore reads comment overview from comment sidecars for supported files', async (t) => {
-  const { store, cleanup } = await createVaultStore();
-  t.after(cleanup);
-
-  await store.writeCommentThreads('README.md', [{
-    anchorEnd: { assoc: 0, type: null },
-    anchorEndLine: 1,
-    anchorKind: 'line',
-    anchorQuote: '# Readme',
-    anchorStart: { assoc: 0, type: null },
-    anchorStartLine: 1,
-    createdAt: 1,
-    createdByName: 'Reviewer',
-    id: 'thread-readme',
-    messages: [{ body: 'Please update this.', createdAt: 2, id: 'message-readme', userName: 'Reviewer' }],
-  }]);
-  await store.createFile('diagram.drawio', '<mxfile></mxfile>');
-  await store.writeCommentThreads('diagram.drawio', [{
-    anchorEnd: { assoc: 0, type: null },
-    anchorEndLine: 1,
-    anchorKind: 'line',
-    anchorStart: { assoc: 0, type: null },
-    anchorStartLine: 1,
-    id: 'thread-unsupported',
-    messages: [{ body: 'Unsupported.', createdAt: 3, id: 'message-unsupported', userName: 'Reviewer' }],
-  }]);
-  await store.createFile('diagram.excalidraw', '{"type":"excalidraw","elements":[]}');
-  await store.writeCommentThreads('diagram.excalidraw', [{
-    anchorKind: 'diagram-element',
-    anchorPoint: { x: 40, y: 60 },
-    anchorSnapshot: { height: 20, type: 'rectangle', width: 40, x: 20, y: 50 },
-    createdAt: 3,
-    elementId: 'element-1',
-    id: 'thread-excalidraw',
-    messages: [{ body: 'Please label this.', createdAt: 4, id: 'message-excalidraw', userName: 'Reviewer' }],
-  }]);
-
-  const overview = await store.readCommentOverview();
-
-  assert.equal(overview.totalThreadCount, 2);
-  assert.deepEqual(overview.files.map((file) => file.filePath), ['diagram.excalidraw', 'README.md']);
-  assert.equal(overview.files[0].threads[0].id, 'thread-excalidraw');
-  assert.equal(overview.files[1].threads[0].id, 'thread-readme');
-  assert.equal(overview.files[1].threads[0].latestMessage.bodyPreview, 'Please update this.');
-});
-
 test('VaultFileStore leaves live content untouched when staged collaboration snapshot preparation fails', async (t) => {
   const { store, cleanup, vaultDir } = await createVaultStore();
   t.after(cleanup);

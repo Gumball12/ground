@@ -8,11 +8,10 @@ import { GovernanceSessionRegistry } from '../../src/server/domain/governance-se
 import { createGovernanceApiHandler } from '../../src/server/infrastructure/http/create-governance-api-handler.js';
 
 const manifest = {
-  defaultGrantMinutes: 60,
   roles: {
     owner: [...GOVERNANCE_CAPABILITIES],
-    editor: ['document.read', 'document.comment', 'document.suggest', 'document.edit'],
-    reviewer: ['document.read', 'document.comment', 'document.suggest'],
+    editor: ['document.read', 'document.suggest', 'document.edit'],
+    reviewer: ['document.read', 'document.suggest'],
   },
 };
 
@@ -93,13 +92,30 @@ test('only Owner can assign and revoke a collaborator Role', async () => {
   const path = `/api/governance/grants/${reviewer.participantSessionId}`;
 
   assert.equal((await harness.request('PUT', path, {
-    body: { expiresInMinutes: 60, roleId: 'editor' },
+    body: { roleId: 'editor' },
     credential: reviewer.credential,
   })).status, 403);
-  assert.equal((await harness.request('PUT', path, {
-    body: { expiresInMinutes: 60, roleId: 'reviewer' },
+  const response = await harness.request('PUT', path, {
+    body: { roleId: 'reviewer' },
     credential: owner.credential,
-  })).status, 200);
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.state, 'active');
+  assert.equal(Object.hasOwn(response.body, 'expiresAt'), false);
+  assert.deepEqual(response.body.transition, {
+    action: 'grant_assigned',
+    actor: {
+      displayName: 'Mina',
+      kind: 'human',
+      participantSessionId: owner.participantSessionId,
+      roleId: 'owner',
+    },
+    createdAt: response.body.transition.createdAt,
+    id: response.body.transition.id,
+    outcome: 'changed',
+    source: 'access_management',
+    target: reviewer.participantSessionId,
+  });
   assert.equal((await harness.request('DELETE', path, {
     credential: owner.credential,
   })).status, 200);
@@ -110,15 +126,15 @@ test('governance control routes distinguish malformed input and unknown particip
   const { owner } = await createTwoSessions(harness);
 
   assert.equal((await harness.request('PUT', '/api/governance/grants/missing', {
-    body: { expiresInMinutes: 60, roleId: 'reviewer' },
+    body: { roleId: 'reviewer' },
     credential: owner.credential,
   })).status, 404);
   assert.equal((await harness.request('PUT', '/api/governance/grants/missing', {
-    body: { expiresInMinutes: 0, roleId: 'reviewer' },
+    body: { expiresInMinutes: 60, roleId: 'reviewer' },
     credential: owner.credential,
   })).status, 400);
   assert.equal((await harness.request('PUT', '/api/governance/grants/missing', {
-    body: { expiresInMinutes: 60, roleId: 'owner' },
+    body: { roleId: 'owner' },
     credential: owner.credential,
   })).status, 400);
 });
@@ -130,7 +146,21 @@ test('governance authorization only accepts a valid Bearer session', async () =>
   assert.deepEqual((await harness.request('POST', '/api/governance/authorize', {
     body: { capability: 'document.edit', documentPath: 'README.md' },
     credential: owner.credential,
-  })).body, { ok: true });
+  })).body, {
+    actor: {
+      displayName: 'Mina',
+      kind: 'human',
+      participantSessionId: owner.participantSessionId,
+      roleId: 'owner',
+    },
+    ok: true,
+    session: {
+      documentPath: 'README.md',
+      participantSessionId: owner.participantSessionId,
+      roleId: 'owner',
+      state: 'active',
+    },
+  });
   assert.equal((await harness.request('POST', '/api/governance/authorize', {
     body: { capability: 'document.edit', documentPath: 'README.md' },
   })).status, 401);

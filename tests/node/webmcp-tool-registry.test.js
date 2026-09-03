@@ -26,13 +26,16 @@ function createModelContext() {
 }
 
 function createRegistryHarness({
+  authoritativeActor = null,
   roleId = 'editor',
   capabilities = capabilitiesForRole(roleId),
   state = 'active',
 } = {}) {
   const modelContext = createModelContext();
+  const authorizationRequests = [];
   let content = ORIGINAL_TEXT;
   let getTextCalls = 0;
+  let initialSyncComplete = true;
   const participantSessionId = 'reviewer-session';
   const governanceClient = {
     snapshot: {
@@ -46,20 +49,38 @@ function createRegistryHarness({
       version: 1,
     },
     async authorize(capability, path) {
+      authorizationRequests.push({ capability, path });
       const snapshot = this.snapshot;
+      const actor = authoritativeActor ?? {
+        displayName: snapshot.displayName,
+        kind: snapshot.kind,
+        participantSessionId: snapshot.participantSessionId,
+        roleId: snapshot.roleId,
+      };
+      const authorizedCapabilities = authoritativeActor
+        ? capabilitiesForRole(actor.roleId)
+        : snapshot.capabilities;
       if (
         snapshot.documentPath !== path
         || snapshot.state !== 'active'
-        || !snapshot.capabilities.includes(capability)
+        || !authorizedCapabilities.includes(capability)
       ) {
         return {
           code: 'CAPABILITY_DENIED',
           message: `Missing ${capability}`,
           ok: false,
-          snapshot,
         };
       }
-      return { ok: true, snapshot };
+      return {
+        actor,
+        ok: true,
+        session: {
+          documentPath: path,
+          participantSessionId: actor.participantSessionId,
+          roleId: actor.roleId,
+          state: 'active',
+        },
+      };
     },
   };
   const session = {
@@ -76,10 +97,11 @@ function createRegistryHarness({
       getTextCalls += 1;
       return content;
     },
-    isInitialSyncComplete: () => true,
+    isInitialSyncComplete: () => initialSyncComplete,
     proposeTextEdit({ actor, newText, oldText, revision }) {
       return {
         baseRevision: revision,
+        createdByDisplayName: actor.displayName,
         createdByKind: actor.kind,
         createdByParticipantSessionId: actor.participantSessionId,
         createdByRole: actor.roleId,
@@ -97,6 +119,7 @@ function createRegistryHarness({
   });
 
   return {
+    authorizationRequests,
     documentText: () => content,
     execute: async (name, input, options) => modelContext.tools.get(name).execute(input, options),
     getTextCalls: () => getTextCalls,
@@ -105,6 +128,7 @@ function createRegistryHarness({
     registered: modelContext.tools,
     registeredNames: () => Array.from(modelContext.tools.keys()).sort(),
     resetTextReadCalls: () => { getTextCalls = 0; },
+    setSessionSynchronized: (value) => { initialSyncComplete = value; },
     setRole: async (nextRole, nextState = 'active', nextCapabilities = capabilitiesForRole(nextRole)) => {
       governanceClient.snapshot = {
         ...governanceClient.snapshot,
@@ -180,6 +204,29 @@ test('caller actor and role fields never affect authorization or attribution', a
   assert.equal(harness.documentText(), ORIGINAL_TEXT);
 });
 
+test('server authorization actor overrides stale client Role attribution', async () => {
+  const authoritativeActor = {
+    displayName: 'Reviewer from server',
+    kind: 'ai',
+    participantSessionId: 'authoritative-reviewer-session',
+    roleId: 'reviewer',
+  };
+  const harness = createRegistryHarness({ authoritativeActor, roleId: 'owner' });
+  await harness.refresh();
+  const snapshot = await harness.execute('collabmd_read_active_document', {});
+
+  const result = await harness.execute('collabmd_propose_text_edit', {
+    newText: 'Hello reviewer',
+    oldText: 'Hello world',
+    path: 'README.md',
+    revision: snapshot.revision,
+  });
+
+  assert.equal(result.createdByDisplayName, 'Reviewer from server');
+  assert.equal(result.createdByParticipantSessionId, 'authoritative-reviewer-session');
+  assert.equal(result.createdByRole, 'reviewer');
+});
+
 test('apply accepts a stale revision when every exact target still matches', async () => {
   const harness = createRegistryHarness({ roleId: 'editor' });
   await harness.refresh();
@@ -216,6 +263,60 @@ test('a cached apply tool is denied after revocation without a text mutation', a
     revision: snapshot.revision,
   }), /document\.edit/u);
   assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('frozen cached tools authorize before synchronized-document validation', async (t) => {
+  const cases = [
+    {
+      capability: 'document.read',
+      errorPattern: /CAPABILITY_DENIED: Missing document\.read/u,
+      input: {},
+      name: 'collabmd_read_active_document',
+    },
+    {
+      capability: 'document.edit',
+      errorPattern: /CAPABILITY_DENIED: Missing document\.edit/u,
+      input: {
+        path: 'README.md',
+        replacements: [{ newText: 'Hello agent', oldText: 'Hello world' }],
+        revision: 'stale-revision',
+      },
+      name: 'collabmd_apply_text_edits',
+    },
+    {
+      capability: 'document.suggest',
+      errorPattern: /CAPABILITY_DENIED: Missing document\.suggest/u,
+      input: {
+        newText: 'Hello reviewer',
+        oldText: 'Hello world',
+        path: 'README.md',
+        revision: 'stale-revision',
+      },
+      name: 'collabmd_propose_text_edit',
+    },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const harness = createRegistryHarness({ roleId: 'editor' });
+      await harness.refresh();
+      const cachedExecute = harness.registered.get(testCase.name).execute;
+      await harness.setRole('editor', 'revoked');
+      harness.setSessionSynchronized(false);
+      harness.resetTextReadCalls();
+
+      await assert.rejects(
+        () => cachedExecute(testCase.input),
+        testCase.errorPattern,
+      );
+      assert.deepEqual(harness.authorizationRequests, [{
+        capability: testCase.capability,
+        path: 'README.md',
+      }]);
+      assert.equal(harness.getTextCalls(), 0);
+      assert.equal(harness.documentText(), ORIGINAL_TEXT);
+    });
+  }
 });
 
 test('denied cached apply authorizes before reading or validating document-dependent input', async () => {
@@ -285,6 +386,7 @@ test('governed edits are atomic and create conflicts without changing text', () 
     createdAt: session.collaborationClient.governanceActivity.get(0).createdAt,
     id: session.collaborationClient.governanceActivity.get(0).id,
     outcome: 'applied',
+    source: 'webmcp_apply',
     target: 'document',
   });
   assert.equal(updates.length, 1);
@@ -336,6 +438,7 @@ test('governed edits are atomic and create conflicts without changing text', () 
     createdAt: proposal.createdAt,
     id: session.collaborationClient.governanceActivity.toArray().at(-1).id,
     outcome: 'open',
+    source: 'webmcp_proposal',
     target: proposal.id,
   });
   assert.equal(updates.length, 3);

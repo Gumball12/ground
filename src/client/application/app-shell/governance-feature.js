@@ -1,23 +1,6 @@
 import { appendActivity } from '../../../domain/governance-activity.js';
 import { groupReviewItems, resolveProposal } from '../../../domain/governance-proposals.js';
-
-const GOVERNED_SURFACE_KEYS = Object.freeze([
-  'backlinksHeaderPanel',
-  'backlinksInlinePanel',
-  'backlinksPanel',
-  'diffPage',
-  'fileHistoryButton',
-  'fileSearch',
-  'gitSearch',
-  'gitSidebarTab',
-  'quickSwitcher',
-  'reviewFileChangesButton',
-  'searchFilesButton',
-  'sidebar',
-  'sidebarBackdrop',
-  'sidebarToggle',
-  'toolbarSearchButton',
-]);
+import { deriveGovernanceShellState } from '../../domain/governance-shell-state.js';
 
 const actorFromSnapshot = (snapshot) => snapshot ? {
   displayName: snapshot.displayName,
@@ -43,7 +26,9 @@ const markerAnchor = (group) => {
 
 const governanceRolesSessionKey = (shell) => {
   const snapshot = shell.governanceSnapshot;
-  if (!snapshot?.participantSessionId
+  if (shell.governanceLoad?.phase !== 'ready'
+    || snapshot?.state !== 'active'
+    || !snapshot?.participantSessionId
     || snapshot.documentPath !== shell.currentFilePath
     || !shell.governanceClient?.credential) {
     return '';
@@ -53,6 +38,10 @@ const governanceRolesSessionKey = (shell) => {
 
 export const governanceFeature = {
   async applyGovernanceSnapshotTransition(previous, next) {
+    if (this.governanceLoad?.phase !== 'ready'
+      && !['invalid-session', 'retryable-error'].includes(next?.state)) {
+      return 0;
+    }
     await this.workspaceCoordinator?.applyGovernanceTransition(previous, next);
     return this.appendGovernanceLifecycleActivity(next);
   },
@@ -74,28 +63,18 @@ export const governanceFeature = {
     const records = [];
     for (const participant of snapshot.participants) {
       const actor = actorFromSnapshot(participant);
-      const candidates = [{
+      const record = {
         action: 'participant_joined',
         actor,
         createdAt: participant.joinedAt,
         outcome: 'joined',
+        source: 'access_management',
         target: participant.participantSessionId,
-      }];
-      if (participant.state === 'expired') {
-        candidates.push({
-          action: 'grant_expired',
-          actor,
-          createdAt: participant.expiresAt,
-          outcome: 'expired',
-          target: participant.participantSessionId,
-        });
-      }
-      for (const record of candidates) {
-        const key = `${record.action}:${record.target}:${record.createdAt}`;
-        if (!existing.has(key)) {
-          existing.add(key);
-          records.push(record);
-        }
+      };
+      const key = `${record.action}:${record.target}:${record.createdAt}`;
+      if (!existing.has(key)) {
+        existing.add(key);
+        records.push(record);
       }
     }
     if (records.length === 0) {
@@ -108,42 +87,19 @@ export const governanceFeature = {
     return records.length;
   },
 
-  syncGovernedSurfaces(governed = this.isGovernedMode?.() === true) {
-    const elements = GOVERNED_SURFACE_KEYS
-      .map((key) => this.elements?.[key])
-      .filter(Boolean);
-
-    if (governed) {
-      this._governanceSurfaceState ??= new Map();
-      elements.forEach((element) => {
-        if (!this._governanceSurfaceState.has(element)) {
-          this._governanceSurfaceState.set(element, {
-            hidden: element.hidden,
-            inert: element.inert,
-          });
-        }
-        element.hidden = true;
-        element.inert = true;
-      });
-      document.body.dataset.governed = 'true';
-      return;
-    }
-
-    this._governanceSurfaceState?.forEach((state, element) => {
-      element.hidden = state.hidden;
-      element.inert = state.inert;
-    });
-    this._governanceSurfaceState?.clear();
-    document.body.removeAttribute('data-governed');
-  },
-
   bindGovernanceSession(session) {
     if (this._governanceActivity && this._handleGovernanceActivityChange) {
       this._governanceActivity.unobserve(this._handleGovernanceActivityChange);
     }
-    this._governanceActivity = session?.getGovernanceContext?.()?.activity ?? null;
+    if (this._governanceComments && this._handleGovernanceActivityChange) {
+      this._governanceComments.unobserve(this._handleGovernanceActivityChange);
+    }
+    const context = session?.getGovernanceContext?.();
+    this._governanceActivity = context?.activity ?? null;
+    this._governanceComments = context?.comments ?? null;
     this._handleGovernanceActivityChange = () => this.renderGovernanceUi();
     this._governanceActivity?.observe(this._handleGovernanceActivityChange);
+    this._governanceComments?.observe(this._handleGovernanceActivityChange);
     this.renderGovernanceUi();
   },
 
@@ -159,29 +115,28 @@ export const governanceFeature = {
   },
 
   renderGovernanceUi() {
-    const governed = this.isGovernedMode?.() === true;
     const rolesSessionKey = governanceRolesSessionKey(this);
     if (rolesSessionKey !== this._governanceRolesSessionKey) {
       this._governanceRolesSessionKey = rolesSessionKey;
       this._governanceRolesAttemptedKey = '';
       this.governanceRoles = null;
     }
-    this.syncGovernedSurfaces(governed);
-    if (!governed) {
-      this.commentUi?.setReviewGroups?.([]);
-      this.governanceUi?.hide();
-      return;
-    }
-
     const reviewGroups = this.getGovernanceReviewGroups();
     const context = this.session?.getGovernanceContext?.();
-    this.commentUi?.setReviewGroups?.(reviewGroups);
+    const shellState = deriveGovernanceShellState({
+      currentFilePath: this.currentFilePath,
+      error: this.governanceLoad?.error ?? null,
+      requestedDocumentPath: this.governanceLoad?.documentPath ?? null,
+      snapshot: this.governanceSnapshot,
+    });
     this.governanceUi?.render({
       activity: context?.activity?.toArray?.() ?? [],
+      connectionState: this.connectionState,
       participants: this.governanceSnapshot?.participants ?? [],
       reviewGroups,
       roles: this.governanceRoles ?? {},
       session: this.governanceSnapshot,
+      shellState,
     });
     if (rolesSessionKey && this._governanceRolesAttemptedKey !== rolesSessionKey) {
       void this.loadGovernanceRoles(rolesSessionKey);
@@ -205,10 +160,21 @@ export const governanceFeature = {
         this.renderGovernanceUi();
         return this.governanceRoles;
       })
-      .catch((error) => {
+      .catch(() => {
         if (this._governanceRolesSessionKey === rolesSessionKey) {
-          this._governanceRolesAttemptedKey = '';
-          this.toastController?.show(error.message || 'Failed to load governance Roles');
+          this.toastController?.show('Access controls could not be loaded.', {
+            actionLabel: 'Retry',
+            dismissible: true,
+            duration: 0,
+            onAction: () => {
+              if (this._governanceRolesSessionKey !== rolesSessionKey) {
+                return;
+              }
+              this._governanceRolesAttemptedKey = '';
+              void this.loadGovernanceRoles(rolesSessionKey);
+            },
+            tone: 'error',
+          });
         }
         return {};
       })
@@ -237,51 +203,41 @@ export const governanceFeature = {
     return payload;
   },
 
-  appendGovernanceGrantActivity(action, target) {
+  appendGovernanceAccessActivity(transition) {
     const context = this.session?.getGovernanceContext?.();
-    const actor = actorFromSnapshot(this.governanceSnapshot);
-    if (!context || !actor) {
-      return;
+    if (!context || typeof transition?.id !== 'string' || !transition.id) {
+      return false;
+    }
+    if (context.activity.toArray().some((record) => record.id === transition.id)) {
+      return false;
     }
     context.ydoc.transact(() => {
-      appendActivity(context.activity, {
-        action,
-        actor,
-        outcome: 'applied',
-        target,
-      });
+      appendActivity(context.activity, transition);
     }, 'governance-grant-ui');
+    return true;
   },
 
-  async assignGovernanceRole(participantSessionId, roleId, expiresInMinutes) {
-    try {
-      await this.governanceRequest(`/api/governance/grants/${encodeURIComponent(participantSessionId)}`, {
-        body: JSON.stringify({ expiresInMinutes, roleId }),
-        method: 'PUT',
-      });
-      this.appendGovernanceGrantActivity('grant_assigned', participantSessionId);
-      await this.governanceClient.refresh();
-    } catch (error) {
-      this.toastController?.show(error.message || 'Failed to assign Role');
-    }
+  async assignGovernanceRole(participantSessionId, roleId) {
+    const response = await this.governanceRequest(`/api/governance/grants/${encodeURIComponent(participantSessionId)}`, {
+      body: JSON.stringify({ roleId }),
+      method: 'PUT',
+    });
+    this.appendGovernanceAccessActivity(response.transition);
+    await this.governanceClient.refresh();
   },
 
   async revokeGovernanceGrant(participantSessionId) {
-    try {
-      await this.governanceRequest(`/api/governance/grants/${encodeURIComponent(participantSessionId)}`, {
-        method: 'DELETE',
-      });
-      this.appendGovernanceGrantActivity('grant_revoked', participantSessionId);
-      await this.governanceClient.refresh();
-    } catch (error) {
-      this.toastController?.show(error.message || 'Failed to revoke Grant');
-    }
+    const response = await this.governanceRequest(`/api/governance/grants/${encodeURIComponent(participantSessionId)}`, {
+      method: 'DELETE',
+    });
+    this.appendGovernanceAccessActivity(response.transition);
+    await this.governanceClient.refresh();
   },
 
   async resolveGovernanceProposal(proposalId, resolution) {
     const authorization = await this.governanceClient.authorize('conflict.resolve', this.currentFilePath);
     const context = this.session?.getGovernanceContext?.();
-    const actor = actorFromSnapshot(authorization.snapshot ?? this.governanceSnapshot);
+    const actor = authorization.actor;
     if (!authorization.ok || !context || !actor) {
       this.toastController?.show(authorization.message || 'Conflict resolution is not allowed');
       return;

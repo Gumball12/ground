@@ -1,5 +1,4 @@
 const LOCK_KEY = 'collabmd-active-tab-lock';
-const TAB_ID_KEY = 'collabmd-tab-id';
 const CHANNEL_NAME = 'collabmd-tab-lock';
 const HEARTBEAT_INTERVAL_MS = 4000;
 
@@ -41,7 +40,7 @@ export class TabActivityLock {
     this.scope = String(scope || '');
     this.lockKey = this.scope ? `${LOCK_KEY}:${encodeURIComponent(this.scope)}` : LOCK_KEY;
     this.channelName = this.scope ? `${CHANNEL_NAME}:${encodeURIComponent(this.scope)}` : CHANNEL_NAME;
-    this.tabId = this.getOrCreateTabId();
+    this.tabId = createTabId();
     this.channel = null;
     this.heartbeatTimer = null;
     this.isOwner = false;
@@ -99,21 +98,6 @@ export class TabActivityLock {
 
     this.isOwner = false;
     this.stopHeartbeat();
-  }
-
-  getOrCreateTabId() {
-    try {
-      const existing = window.sessionStorage.getItem(TAB_ID_KEY);
-      if (existing) {
-        return existing;
-      }
-
-      const tabId = createTabId();
-      window.sessionStorage.setItem(TAB_ID_KEY, tabId);
-      return tabId;
-    } catch {
-      return createTabId();
-    }
   }
 
   readLock() {

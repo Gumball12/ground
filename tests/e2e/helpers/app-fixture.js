@@ -239,14 +239,21 @@ export async function createGovernedParticipant(page, { displayName, kind = 'hum
 }
 
 export async function copyGovernedParticipantSession(sourcePage, targetPage) {
-  const session = await sourcePage.evaluate((key) => window.sessionStorage.getItem(key), GOVERNANCE_SESSION_STORAGE_KEY);
-  if (!session) {
+  const session = await sourcePage.evaluate(() => Object.fromEntries(
+    Array.from({ length: window.sessionStorage.length }, (_value, index) => {
+      const key = window.sessionStorage.key(index);
+      return [key, window.sessionStorage.getItem(key)];
+    }).filter(([key]) => key !== null),
+  ));
+  if (!session[GOVERNANCE_SESSION_STORAGE_KEY]) {
     throw new Error('Source page has no governed session to copy.');
   }
 
-  await targetPage.addInitScript(({ key, value }) => {
-    window.sessionStorage.setItem(key, value);
-  }, { key: GOVERNANCE_SESSION_STORAGE_KEY, value: session });
+  await targetPage.addInitScript((entries) => {
+    Object.entries(entries).forEach(([key, value]) => {
+      window.sessionStorage.setItem(key, value);
+    });
+  }, session);
 }
 
 export async function installModelContextHarness(page) {
@@ -375,31 +382,29 @@ export async function pasteClipboardText(page, text) {
   }, text);
 }
 
-export async function assignGovernedRole(ownerPage, participantSessionId, roleId, expiresInMinutes = 60) {
+export async function assignGovernedRole(ownerPage, participantSessionId, roleId) {
   const dialog = ownerPage.locator('#manageAccessDialog');
   if (!await dialog.evaluate((element) => element.open)) {
-    await ownerPage.locator('#manageAccessBtn').click();
+    await ownerPage.getByRole('button', { name: 'Manage access' }).click();
   }
-  const row = ownerPage.locator(
-    `[data-manage-access-list] [data-participant-session-id="${participantSessionId}"]`,
-  );
-  await expect(row).toBeVisible();
-  await row.locator('[data-expiry-control]').fill(String(expiresInMinutes));
+  const row = dialog.locator(`[data-participant-session-id="${participantSessionId}"]`);
   await row.locator('[data-role-control]').selectOption(roleId);
-  await dialog.locator('[data-manage-access-close]').click();
+  await row.locator('[data-role-submit]').click();
+  await expect(row.locator('[data-role-inline-status]')).toContainText(/assigned|updated/i);
+  await expect(dialog).toHaveAttribute('open', '');
 }
 
 export async function revokeGovernedRole(ownerPage, participantSessionId) {
   const dialog = ownerPage.locator('#manageAccessDialog');
   if (!await dialog.evaluate((element) => element.open)) {
-    await ownerPage.locator('#manageAccessBtn').click();
+    await ownerPage.getByRole('button', { name: 'Manage access' }).click();
   }
-  const row = ownerPage.locator(
-    `[data-manage-access-list] [data-participant-session-id="${participantSessionId}"]`,
-  );
-  await expect(row).toBeVisible();
-  await row.locator('[data-revoke-control]').click();
-  await dialog.locator('[data-manage-access-close]').click();
+  const row = dialog.locator(`[data-participant-session-id="${participantSessionId}"]`);
+  ownerPage.once('dialog', (confirmation) => confirmation.accept());
+  await row.getByRole('button', { name: 'Revoke access' }).click();
+  await expect(row).toContainText('Revoked');
+  await expect(row.locator('[data-role-inline-status]')).toContainText(/revoked/i);
+  await expect(dialog).toHaveAttribute('open', '');
 }
 
 export async function waitForEditor(page) {

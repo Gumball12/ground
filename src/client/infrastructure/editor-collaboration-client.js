@@ -5,8 +5,24 @@ import { createRandomUser, normalizeUserName } from '../domain/room.js';
 import { resolveWsBaseUrl } from './runtime-config.js';
 import { stopReconnectOnControlledClose } from './yjs-provider-reset-guard.js';
 
+const governanceParamsFor = (snapshot, documentPath) => {
+  if (snapshot?.state !== 'active'
+    || snapshot.documentPath !== documentPath
+    || typeof snapshot.participantSessionId !== 'string'
+    || snapshot.participantSessionId.length === 0
+    || !Number.isSafeInteger(snapshot.version)
+    || snapshot.version <= 0) {
+    return null;
+  }
+  return {
+    governanceParticipantSessionId: snapshot.participantSessionId,
+    governanceVersion: String(snapshot.version),
+  };
+};
+
 export class EditorCollaborationClient {
   constructor({
+    governanceSnapshot = null,
     localUser = null,
     onAwarenessChange = null,
     onConnectionChange = null,
@@ -14,6 +30,7 @@ export class EditorCollaborationClient {
     preferredUserName,
     resolveAwarenessCursor = null,
   }) {
+    this.governanceSnapshot = governanceSnapshot;
     this.onAwarenessChange = onAwarenessChange;
     this.onConnectionChange = onConnectionChange;
     this.onInitialSync = onInitialSync;
@@ -33,6 +50,28 @@ export class EditorCollaborationClient {
     this.initialSyncPromise = Promise.resolve();
     this.resolveInitialSync = null;
     this.destroying = false;
+    this.connected = false;
+    this.unsynchronizedLocalChanges = false;
+    this.handleDocumentUpdate = (_update, origin) => {
+      if (!this.connected && origin !== this.provider) {
+        this.unsynchronizedLocalChanges = true;
+      }
+    };
+    this.handleSync = (isSynced) => {
+      if (!isSynced) {
+        return;
+      }
+
+      this.unsynchronizedLocalChanges = false;
+      if (this.initialSyncComplete) {
+        return;
+      }
+
+      this.initialSyncComplete = true;
+      this.resolveInitialSync?.();
+      this.resolveInitialSync = null;
+      this.onInitialSync?.();
+    };
   }
 
   normalizeViewport(viewport) {
@@ -55,15 +94,18 @@ export class EditorCollaborationClient {
   async initialize(filePath) {
     this.wsBaseUrl = resolveWsBaseUrl();
     this.ydoc = new Y.Doc();
+    this.ydoc.on('update', this.handleDocumentUpdate);
     this.ytext = this.ydoc.getText('codemirror');
     this.commentThreads = this.ydoc.getArray('comments');
     this.governanceActivity = this.ydoc.getArray('governanceActivity');
 
     const undoManager = new Y.UndoManager(this.ytext);
     this.undoManager = undoManager;
+    const governanceParams = governanceParamsFor(this.governanceSnapshot, filePath);
     const provider = new WebsocketProvider(this.wsBaseUrl, filePath, this.ydoc, {
       disableBc: true,
       maxBackoffTime: 5000,
+      ...(governanceParams ? { params: governanceParams } : {}),
     });
     stopReconnectOnControlledClose(provider);
     const awareness = provider.awareness;
@@ -81,16 +123,7 @@ export class EditorCollaborationClient {
 
     this.trackConnectionStatus();
 
-    provider.on('sync', (isSynced) => {
-      if (!isSynced || this.initialSyncComplete) {
-        return;
-      }
-
-      this.initialSyncComplete = true;
-      this.resolveInitialSync?.();
-      this.resolveInitialSync = null;
-      this.onInitialSync?.();
-    });
+    provider.on('sync', this.handleSync);
 
     return {
       awareness,
@@ -117,7 +150,12 @@ export class EditorCollaborationClient {
     this.provider?.disconnect();
   }
 
-  reconnect() {
+  reconnect(governanceSnapshot = null) {
+    const governanceParams = governanceParamsFor(governanceSnapshot, this.provider?.roomname);
+    if (governanceParams) {
+      this.governanceSnapshot = governanceSnapshot;
+      this.provider.params = governanceParams;
+    }
     this.provider?.connect();
   }
 
@@ -127,6 +165,8 @@ export class EditorCollaborationClient {
     this.resolveInitialSync = null;
     this.initialSyncComplete = false;
     this.initialSyncPromise = Promise.resolve();
+    this.connected = false;
+    this.unsynchronizedLocalChanges = false;
 
     this.provider?.disconnect();
     this.provider?.destroy();
@@ -136,6 +176,7 @@ export class EditorCollaborationClient {
 
     this.undoManager?.destroy();
     this.undoManager = null;
+    this.ydoc?.off?.('update', this.handleDocumentUpdate);
     this.ydoc?.destroy();
     this.ydoc = null;
     this.ytext = null;
@@ -162,6 +203,10 @@ export class EditorCollaborationClient {
 
   getText() {
     return this.ytext?.toString() ?? '';
+  }
+
+  hasUnsynchronizedLocalChanges() {
+    return this.unsynchronizedLocalChanges;
   }
 
   getLocalUser() {
@@ -244,6 +289,7 @@ export class EditorCollaborationClient {
     let hasEverConnected = false;
 
     this.provider.on('status', ({ status }) => {
+      this.connected = status === 'connected';
       if (status === 'connecting') {
         attempts += 1;
       }

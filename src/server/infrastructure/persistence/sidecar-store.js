@@ -1,5 +1,5 @@
-import { dirname, join, resolve } from 'path';
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
+import { dirname, resolve } from 'path';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'fs/promises';
 
 import { resolveVaultFilePath, toVaultRelativePath } from './path-utils.js';
 
@@ -41,10 +41,6 @@ export class SidecarStore {
     return resolveSidecarPath(this.vaultDir, filePath, COMMENT_STORAGE_ROOT, '.json');
   }
 
-  getCommentStorageRootPath() {
-    return resolve(this.vaultDir, COMMENT_STORAGE_ROOT);
-  }
-
   getSnapshotPath(filePath) {
     return resolveSidecarPath(this.vaultDir, filePath, YJS_SNAPSHOT_STORAGE_ROOT, '.bin');
   }
@@ -70,53 +66,6 @@ export class SidecarStore {
 
       throw error;
     }
-  }
-
-  async listCommentThreadEntries({ filePaths = null } = {}) {
-    const allowedPaths = filePaths ? new Set(filePaths) : null;
-    const rootPath = this.getCommentStorageRootPath();
-    const entries = [];
-
-    const visitDirectory = async (absoluteDirectoryPath, relativeDirectoryPath = '') => {
-      let dirEntries;
-      try {
-        dirEntries = await readdir(absoluteDirectoryPath, { withFileTypes: true });
-      } catch (error) {
-        if (error.code === 'ENOENT') {
-          return;
-        }
-        throw error;
-      }
-
-      for (const entry of dirEntries.sort((left, right) => left.name.localeCompare(right.name))) {
-        const relativePath = relativeDirectoryPath
-          ? `${relativeDirectoryPath}/${entry.name}`
-          : entry.name;
-        const absolutePath = join(absoluteDirectoryPath, entry.name);
-
-        if (entry.isDirectory()) {
-          await visitDirectory(absolutePath, relativePath);
-          continue;
-        }
-
-        if (!entry.isFile() || !relativePath.endsWith('.json')) {
-          continue;
-        }
-
-        const filePath = relativePath.slice(0, -'.json'.length);
-        if (allowedPaths && !allowedPaths.has(filePath)) {
-          continue;
-        }
-
-        const threads = await this.readCommentThreads(filePath);
-        if (threads.length > 0) {
-          entries.push({ filePath, threads });
-        }
-      }
-    };
-
-    await visitDirectory(rootPath);
-    return entries.sort((left, right) => left.filePath.localeCompare(right.filePath, undefined, { sensitivity: 'base' }));
   }
 
   async writeCommentThreads(filePath, threads = []) {

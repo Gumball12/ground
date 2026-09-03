@@ -5,7 +5,11 @@ import * as Y from 'yjs';
 
 import { EditorSession } from '../../src/client/infrastructure/editor-session.js';
 import { createCommentThreadSharedType, serializeCommentThreads } from '../../src/domain/comment-threads.js';
-import { createProposal } from '../../src/domain/governance-proposals.js';
+import {
+  createProposal,
+  groupReviewItems,
+  resolveProposal,
+} from '../../src/domain/governance-proposals.js';
 
 const EDITOR_SNAPSHOT = Object.freeze({
   displayName: 'Writer',
@@ -343,6 +347,7 @@ test('EditorSession appends distinct Proposal lifecycle and discrete local edit 
     baseRevision: 'revision-1',
     expectedText: 'Hello',
     replacementText: 'Hi',
+    source: 'webmcp_proposal',
   });
   context.ytext.delete(0, 5);
   context.ytext.insert(0, 'Changed');
@@ -354,6 +359,7 @@ test('EditorSession appends distinct Proposal lifecycle and discrete local edit 
     action: record.action,
     actor: record.actor,
     outcome: record.outcome,
+    source: record.source,
     target: record.target,
   })), [
     {
@@ -365,6 +371,7 @@ test('EditorSession appends distinct Proposal lifecycle and discrete local edit 
         roleId: 'editor',
       },
       outcome: 'open',
+      source: 'webmcp_proposal',
       target: serializeCommentThreads(context.commentThreads)[0].id,
     },
     {
@@ -376,6 +383,7 @@ test('EditorSession appends distinct Proposal lifecycle and discrete local edit 
         roleId: 'editor',
       },
       outcome: 'conflict',
+      source: 'document_editor',
       target: serializeCommentThreads(context.commentThreads)[0].id,
     },
     {
@@ -387,13 +395,14 @@ test('EditorSession appends distinct Proposal lifecycle and discrete local edit 
         roleId: 'editor',
       },
       outcome: 'applied',
+      source: 'document_editor',
       target: 'document',
     },
   ]);
   session.destroy();
 });
 
-test('EditorSession coalesces native edit Activity until an explicit burst flush', () => {
+test('EditorSession records native edit Activity on the burst leading edge and coalesces until flush', () => {
   const session = new EditorSession({
     canComment: () => true,
     canEdit: () => true,
@@ -406,13 +415,140 @@ test('EditorSession coalesces native edit Activity until an explicit burst flush
   });
   const { governanceActivity } = attachGovernanceDocument(session);
 
-  session.handleLocalEdit('native');
-  session.handleLocalEdit('native');
-  assert.equal(governanceActivity.length, 0);
+  assert.equal(session.handleLocalEdit('native'), true);
+  assert.deepEqual(governanceActivity.toArray().map((record) => record.action), [
+    'direct_edit_applied',
+  ]);
 
+  session.handleLocalEdit('native');
+  assert.equal(governanceActivity.length, 1);
   assert.equal(session.flushLocalEditBurst(), true);
   assert.equal(governanceActivity.length, 1);
   assert.equal(session.flushLocalEditBurst(), false);
+
+  session.handleLocalEdit('native');
+  assert.deepEqual(governanceActivity.toArray().map((record) => ({
+    action: record.action,
+    source: record.source,
+  })), [
+    { action: 'direct_edit_applied', source: 'document_editor' },
+    { action: 'direct_edit_applied', source: 'document_editor' },
+  ]);
+  session.flushLocalEditBurst();
+  session.destroy();
+});
+
+test('EditorSession freeze ends a synchronized native edit burst without a new Yjs update', () => {
+  const session = new EditorSession({
+    canComment: () => true,
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const { governanceActivity, ydoc } = attachGovernanceDocument(session);
+  const updates = [];
+  session.collaborationClient.connected = true;
+  ydoc.on('update', session.collaborationClient.handleDocumentUpdate);
+  ydoc.on('update', (update) => updates.push(update));
+
+  session.handleLocalEdit('native');
+  assert.equal(governanceActivity.length, 1);
+  assert.equal(session.hasUnsynchronizedLocalChanges(), false);
+  const updateCountBeforeFreeze = updates.length;
+
+  session.collaborationClient.connected = false;
+  session.freezeForDisconnect();
+
+  assert.equal(updates.length, updateCountBeforeFreeze);
+  assert.equal(governanceActivity.length, 1);
+  assert.equal(session.hasUnsynchronizedLocalChanges(), false);
+  assert.equal(session.flushLocalEditBurst(), false);
+  session.destroy();
+});
+
+test('EditorSession records structured exact edits as WebMCP apply Activity', () => {
+  const session = new EditorSession({
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const { governanceActivity, ytext } = attachGovernanceDocument(session);
+
+  const result = session.applyGovernedTextEdits({
+    actor: EDITOR_SNAPSHOT,
+    edits: [{ newText: 'Hi', oldText: 'Hello', revision: 'revision-1' }],
+  });
+
+  assert.equal(result.replacementCount, 1);
+  assert.equal(ytext.toString(), 'Hi');
+  assert.deepEqual(governanceActivity.toArray().map((record) => ({
+    action: record.action,
+    source: record.source,
+  })), [{ action: 'text_edits_applied', source: 'webmcp_apply' }]);
+  session.destroy();
+});
+
+test('EditorSession stores a missing exact target as a non-destructive Unlocated Conflict', () => {
+  const session = new EditorSession({
+    canEdit: () => true,
+    editorContainer: null,
+    getGovernanceSnapshot: () => EDITOR_SNAPSHOT,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const context = attachGovernanceDocument(session, 'Keep this document intact.');
+
+  const result = session.applyGovernedTextEdits({
+    actor: EDITOR_SNAPSHOT,
+    edits: [{
+      newText: 'Destructive replacement',
+      oldText: 'Missing source text',
+      revision: 'revision-1',
+    }],
+  });
+
+  assert.equal(result.replacementCount, 0);
+  assert.equal(result.conflictProposals.length, 1);
+  assert.equal(result.conflictProposals[0].status, 'conflict');
+  assert.equal(context.ytext.toString(), 'Keep this document intact.');
+  const [reviewGroup] = groupReviewItems({
+    activity: context.governanceActivity,
+    comments: context.commentThreads,
+    ydoc: context.ydoc,
+    ytext: context.ytext,
+  });
+  assert.equal(reviewGroup.unlocated, true);
+  for (const key of ['anchorStart', 'anchorEnd']) {
+    assert.equal(Y.createAbsolutePositionFromRelativePosition(
+      Y.createRelativePositionFromJSON(result.conflictProposals[0][key]),
+      context.ydoc,
+    ), null);
+  }
+
+  const updates = [];
+  context.ydoc.on('update', (update) => updates.push(update));
+  assert.throws(() => resolveProposal({
+    activity: context.governanceActivity,
+    comments: context.commentThreads,
+    ydoc: context.ydoc,
+    ytext: context.ytext,
+  }, {
+    actor: EDITOR_SNAPSHOT,
+    proposalId: result.conflictProposals[0].id,
+    resolution: 'apply_proposed',
+  }), /Unlocated/u);
+  assert.equal(context.ytext.toString(), 'Keep this document intact.');
+  assert.equal(updates.length, 0);
   session.destroy();
 });
 
@@ -441,6 +577,79 @@ test('EditorSession freezes editing, comments, and tools on disconnect', () => {
   assert.equal(pauseCalls, 1);
   assert.equal(session.isInitialSyncComplete(), false);
   assert.equal(session.replyToCommentThread('missing', 'Denied'), null);
+  session.destroy();
+});
+
+test('EditorSession refreshes governance metadata before reconnecting after another Participant transition', () => {
+  const initialSnapshot = { ...EDITOR_SNAPSHOT, version: 3 };
+  const refreshedSnapshot = { ...EDITOR_SNAPSHOT, version: 4 };
+  const session = new EditorSession({
+    editorContainer: null,
+    getGovernanceSnapshot: () => initialSnapshot,
+    governed: true,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  let connectCalls = 0;
+  session.collaborationClient.provider = {
+    connect() {
+      connectCalls += 1;
+    },
+    destroy() {},
+    disconnect() {},
+    params: {
+      governanceParticipantSessionId: 'writer-session',
+      governanceVersion: '3',
+    },
+    roomname: 'README.md',
+  };
+  session.connectionFrozen = true;
+
+  assert.equal(session.reconnectAfterGovernanceValidation(refreshedSnapshot), true);
+
+  assert.equal(connectCalls, 1);
+  assert.deepEqual(session.collaborationClient.provider.params, {
+    governanceParticipantSessionId: 'writer-session',
+    governanceVersion: '4',
+  });
+  session.destroy();
+});
+
+test('EditorSession tracks only disconnected local Yjs updates until sync succeeds', () => {
+  const session = new EditorSession({
+    editorContainer: null,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    localUser: null,
+    onAwarenessChange: () => {},
+    onCommentsChange: () => {},
+    onConnectionChange: () => {},
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('codemirror');
+  const provider = { destroy() {}, disconnect() {} };
+  const client = session.collaborationClient;
+  client.ydoc = ydoc;
+  client.provider = provider;
+  client.connected = false;
+  assert.equal(typeof client.handleDocumentUpdate, 'function');
+  ydoc.on('update', client.handleDocumentUpdate);
+
+  ytext.insert(0, 'local');
+  assert.equal(session.hasUnsynchronizedLocalChanges(), true);
+
+  client.handleSync(true);
+  assert.equal(session.hasUnsynchronizedLocalChanges(), false);
+
+  ydoc.transact(() => {
+    ytext.insert(ytext.length, 'remote');
+  }, provider);
+  assert.equal(session.hasUnsynchronizedLocalChanges(), false);
+
   session.destroy();
 });
 

@@ -510,6 +510,7 @@ test('CollaborationRoom appends distinct system reconciliation and Proposal life
     expectedText: '$100K',
     id: 'proposal-1',
     replacementText: '$120K',
+    source: 'webmcp_proposal',
   });
   const updates = [];
   await room.persist();
@@ -527,6 +528,7 @@ test('CollaborationRoom appends distinct system reconciliation and Proposal life
     action: record.action,
     actor: record.actor,
     outcome: record.outcome,
+    source: record.source,
     target: record.target,
   })), [
     {
@@ -538,6 +540,7 @@ test('CollaborationRoom appends distinct system reconciliation and Proposal life
         roleId: 'reviewer',
       },
       outcome: 'open',
+      source: 'webmcp_proposal',
       target: proposal.id,
     },
     {
@@ -549,6 +552,7 @@ test('CollaborationRoom appends distinct system reconciliation and Proposal life
         roleId: 'system',
       },
       outcome: 'conflict',
+      source: 'system_reconciliation',
       target: proposal.id,
     },
     {
@@ -560,6 +564,7 @@ test('CollaborationRoom appends distinct system reconciliation and Proposal life
         roleId: 'system',
       },
       outcome: 'applied',
+      source: 'system_reconciliation',
       target: 'governed.md',
     },
   ]);

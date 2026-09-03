@@ -1,8 +1,7 @@
 {
   "roles": {
-    "owner": ["document.read", "document.comment", "document.suggest", "document.edit", "conflict.resolve", "grant.manage"],
-    "editor": ["document.read", "document.comment", "document.suggest", "document.edit"],
-    "reviewer": ["document.read", "document.comment", "document.suggest"]
-  },
-  "defaultGrantMinutes": 60
+    "owner": ["document.read", "document.suggest", "document.edit", "conflict.resolve", "grant.manage"],
+    "editor": ["document.read", "document.suggest", "document.edit"],
+    "reviewer": ["document.read", "document.suggest"]
+  }
 }

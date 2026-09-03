@@ -10,28 +10,36 @@ import {
 } from '../../src/server/config/governance-manifest.js';
 
 const validManifest = {
-  defaultGrantMinutes: 60,
   roles: {
     owner: [
       'document.read',
-      'document.comment',
       'document.suggest',
       'document.edit',
       'conflict.resolve',
       'grant.manage',
     ],
-    reviewer: ['document.read'],
+    editor: ['document.read', 'document.suggest', 'document.edit'],
+    reviewer: ['document.read', 'document.suggest'],
   },
 };
 
-test('manifest validation rejects incomplete Owner roles and invalid grants', () => {
+test('manifest validation rejects incomplete Owner roles and removed grant duration', () => {
   assert.throws(
     () => validateGovernanceManifest({ ...validManifest, roles: { owner: ['grant.manage'] } }),
     /Owner role must include/,
   );
   assert.throws(
-    () => validateGovernanceManifest({ ...validManifest, defaultGrantMinutes: 0 }),
-    /defaultGrantMinutes/,
+    () => validateGovernanceManifest({ ...validManifest, defaultGrantMinutes: 60 }),
+    /defaultGrantMinutes is not supported/,
+  );
+});
+
+test('manifest validation rejects removed comment capability', () => {
+  assert.throws(
+    () => validateGovernanceManifest({
+      roles: { ...validManifest.roles, reviewer: ['document.read', 'document.comment'] },
+    }),
+    /Unknown governance capability: document\.comment/,
   );
 });
 

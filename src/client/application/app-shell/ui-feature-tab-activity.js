@@ -4,36 +4,24 @@ import { isMarkdownFilePath } from '../../../domain/file-kind.js';
  * @typedef {object} UiTabActivityContext
  * @property {boolean} isTabActive
  * @property {string | null} currentFilePath
- * @property {Set<string>} chatMessageIds
- * @property {boolean} chatInitialSyncComplete
- * @property {number} chatUnreadCount
- * @property {Array<unknown>} chatMessages
- * @property {Array<unknown>} globalUsers
- * @property {string | null} followedUserClientId
- * @property {string} followedCursorSignature
  * @property {{ status: string, unreachable: boolean }} connectionState
  * @property {{ tabLockOverlay?: HTMLDialogElement | null, tabLockTitle?: HTMLElement | null, tabLockCopy?: HTMLElement | null }} elements
- * @property {{ connect(): void, disconnect(): void, provider?: unknown }} lobby
  * @property {{ connect(): void, disconnect(): void, provider?: unknown }} workspaceSync
  * @property {{ show(message: string): void }} toastController
  * @property {{ tryActivate(options?: { takeover?: boolean }): void }} tabActivityLock
- * @property {{ destroy?(): void, restoreOrCreate(input: { documentPath: string, displayName: string, kind: string }): Promise<{ participantSessionId: string }> }} governanceClient
+ * @property {{ destroy?(): void, restoreOrCreate(input: { documentPath: string, displayName: string, kind: string }): Promise<object> }} governanceClient
  * @property {{ participantKind?: 'ai' | 'human' }} runtimeConfig
  * @property {(scope?: string) => UiTabActivityContext['tabActivityLock']} createTabActivityLock
  * @property {() => string} getStoredUserName
  * @property {{ refresh(): Promise<boolean> }} webMcpTools
- * @property {{ prepareFileDisconnect(filePath: string): Promise<void> }} excalidrawEmbed
- * @property {{ handleHashChange(): Promise<void> }} workspaceRouteController
- * @property {() => boolean} isExcalidrawFile
+ * @property {{ handleHashChange(options?: { forceGovernance?: boolean }): Promise<void> }} workspaceRouteController
+ * @property {{ cleanupSession(): void }} workspaceCoordinator
  * @property {() => void} promptForDisplayNameIfNeeded
- * @property {() => void} renderChat
- * @property {() => void} showEmptyState
- * @property {({ reason }: { reason?: string }) => void} showTabLockOverlay
- * @property {() => void} hideTabLockOverlay
+ * @property {() => void} renderGovernanceUi
  */
 
 /** @this {UiTabActivityContext} */
-async function initializeGovernanceTabActivity(documentPath = null) {
+async function initializeGovernanceTabActivity(documentPath, { force = false } = {}) {
   const hadTabActivityLock = Boolean(this.tabActivityLock);
   if (!this.tabActivityLock) {
     this.tabActivityLock = this.createTabActivityLock('');
@@ -43,42 +31,71 @@ async function initializeGovernanceTabActivity(documentPath = null) {
 
   if (!isMarkdownFilePath(documentPath)) {
     this.governanceDocumentPath = null;
+    this.governanceSnapshot = null;
     this.governanceClient.destroy?.();
+    this.workspaceCoordinator?.cleanupSession?.();
+    this.renderGovernanceUi?.();
     if (!hadTabActivityLock) {
-      return;
+      return null;
     }
     this.tabActivityLock.destroy();
     this.tabActivityLock = this.createTabActivityLock('');
     this.tabActivityLock.initialize();
     this.tabActivityLock.tryActivate();
-    return;
+    return null;
   }
 
-  if (this.governanceDocumentPath === documentPath) {
-    return;
+  if (!force && this.governanceDocumentPath === documentPath) {
+    return this.governanceSnapshot;
   }
 
   this.governanceDocumentPath = documentPath;
+  this.governanceLoad = {
+    documentPath,
+    error: null,
+    phase: 'loading',
+  };
+  this.governanceSnapshot = null;
+  this.workspaceCoordinator?.cleanupSession?.();
+  this.renderGovernanceUi?.();
+
   try {
     const snapshot = await this.governanceClient.restoreOrCreate({
       displayName: this.getStoredUserName() || 'Guest',
       documentPath,
       kind: this.runtimeConfig?.participantKind ?? 'human',
     });
-    if (this.governanceDocumentPath !== documentPath) {
-      return;
+    if (this.governanceDocumentPath !== documentPath || !snapshot) {
+      return null;
     }
 
-    if (!snapshot) {
-      return;
-    }
-
+    this.governanceSnapshot = snapshot;
+    this.governanceLoad = {
+      documentPath,
+      error: null,
+      phase: 'ready',
+    };
     this.tabActivityLock.destroy();
     this.tabActivityLock = this.createTabActivityLock(snapshot.participantSessionId);
     this.tabActivityLock.initialize();
     this.tabActivityLock.tryActivate();
-  } catch {
-    this.governanceDocumentPath = null;
+    this.renderGovernanceUi?.();
+    await this.applyGovernanceSnapshotTransition?.(null, snapshot);
+    return snapshot;
+  } catch (error) {
+    if (this.governanceDocumentPath !== documentPath) {
+      return null;
+    }
+    this.governanceClient.destroy?.();
+    this.governanceSnapshot = null;
+    this.governanceLoad = {
+      documentPath,
+      error,
+      phase: 'error',
+    };
+    this.workspaceCoordinator?.cleanupSession?.();
+    this.renderGovernanceUi?.();
+    return null;
   }
 }
 
@@ -94,17 +111,12 @@ function handleTabActivated({ takeover = false } = {}) {
   this.hideTabLockOverlay();
   void this.webMcpTools?.refresh();
 
-  if (!this.lobby.provider) {
-    this.lobby.connect();
-  }
   if (!this.workspaceSync.provider) {
     this.workspaceSync.connect();
   }
 
   if (wasInactive) {
-    if (this.fileExplorerReady) {
-      void this.workspaceRouteController.handleHashChange();
-    }
+    void this.workspaceRouteController.handleHashChange({ forceGovernance: true });
     this.promptForDisplayNameIfNeeded();
   }
 
@@ -114,35 +126,15 @@ function handleTabActivated({ takeover = false } = {}) {
 }
 
 /** @this {UiTabActivityContext} */
-async function handleTabBlocked({ reason } = {}) {
+function handleTabBlocked({ reason } = {}) {
   const wasActive = this.isTabActive;
-  const blockedFilePath = this.currentFilePath;
-  const shouldPrepareExcalidrawDisconnect = Boolean(
-    blockedFilePath
-    && this.isExcalidrawFile?.(blockedFilePath),
-  );
-
   this.isTabActive = false;
   void this.webMcpTools?.refresh();
-  this.lobby.disconnect();
   this.workspaceSync.disconnect();
-  this.globalUsers = [];
-  this.chatMessages = [];
-  this.chatMessageIds.clear();
-  this.chatUnreadCount = 0;
-  this.chatInitialSyncComplete = false;
-  this.presencePanelOpen = false;
-  this.followedUserClientId = null;
-  this.followedCursorSignature = '';
   this.connectionState = { status: 'disconnected', unreachable: false };
+  this.workspaceCoordinator?.cleanupSession?.();
+  this.renderGovernanceUi?.();
   this.showTabLockOverlay({ reason });
-
-  if (shouldPrepareExcalidrawDisconnect) {
-    await this.excalidrawEmbed.prepareFileDisconnect(blockedFilePath);
-  }
-
-  this.showEmptyState();
-  this.renderChat();
 
   if (wasActive && reason === 'taken-over') {
     this.toastController.show('Another tab took over this session');
@@ -154,23 +146,26 @@ function showTabLockOverlay({ reason } = {}) {
   const overlay = this.elements.tabLockOverlay;
   const title = this.elements.tabLockTitle;
   const copy = this.elements.tabLockCopy;
-  if (!overlay) return;
+  if (!overlay) {
+    return;
+  }
 
   document.dispatchEvent(new Event('collabmd:close-custom-modals'));
   document.querySelectorAll('dialog[open]').forEach((dialog) => {
-    if (dialog !== overlay) dialog.close();
+    if (dialog !== overlay) {
+      dialog.close();
+    }
   });
 
   if (title) {
     title.textContent = reason === 'taken-over'
       ? 'This tab is no longer active'
-      : 'This vault is active in another tab';
+      : 'This workspace is active in another tab';
   }
-
   if (copy) {
     copy.textContent = reason === 'taken-over'
-      ? 'Another tab took over the live session. This tab is now disconnected until you explicitly take over here again.'
-      : 'To avoid duplicate presence and chat, only one tab can stay connected at a time. Use the other tab, or take over the session here.';
+      ? 'Another tab took over the live session. Take over here to reconnect this tab.'
+      : 'Only one tab can keep this live session connected. Use the other tab, or take over here.';
   }
 
   if (!overlay.open) {
@@ -184,7 +179,9 @@ function showTabLockOverlay({ reason } = {}) {
 
 /** @this {UiTabActivityContext} */
 function hideTabLockOverlay() {
-  if (this.elements.tabLockOverlay?.open) this.elements.tabLockOverlay.close();
+  if (this.elements.tabLockOverlay?.open) {
+    this.elements.tabLockOverlay.close();
+  }
   this.tabLockPreviouslyFocusedElement?.focus?.();
   this.tabLockPreviouslyFocusedElement = null;
 }

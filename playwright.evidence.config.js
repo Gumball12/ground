@@ -7,6 +7,7 @@ export default defineConfig({
   outputDir: 'test-results/evidence',
   reporter: [
     ['list'],
+    ['./tests/e2e/helpers/governance-evidence-reporter.js'],
     ['html', {
       open: 'never',
       outputFolder: 'playwright-report/evidence',
@@ -18,7 +19,7 @@ export default defineConfig({
     reducedMotion: 'reduce',
     screenshot: 'off',
     trace: 'off',
-    video: 'on',
+    video: 'off',
     viewport: { width: 1280, height: 720 },
   },
   projects: [

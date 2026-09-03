@@ -635,6 +635,7 @@ export class CollaborationRoom {
           }, {
             actor: SYSTEM_ACTOR,
             origin: 'workspace-reconcile',
+            source: 'system_reconciliation',
             system: true,
           });
         }

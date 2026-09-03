@@ -7,6 +7,20 @@ function snapshotTree(tree) {
   return JSON.parse(JSON.stringify(tree));
 }
 
+test('WorkspaceSyncClient exposes initial index readiness and clears it on disconnect', () => {
+  const client = new WorkspaceSyncClient();
+
+  assert.equal(client.isInitialIndexReady(), false);
+  client._didInitialSync = true;
+  assert.equal(client.isInitialIndexReady(), true);
+  client.entries.observe(client.handleEntriesChange);
+  client.events.observe(client.handleEventsChange);
+  client.disconnect();
+  assert.equal(client.isInitialIndexReady(), false);
+
+  client.ydoc.destroy();
+});
+
 test('WorkspaceSyncClient incrementally applies workspace entry add, rename, and delete changes', () => {
   const treeSnapshots = [];
   const changeMetadata = [];

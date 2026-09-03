@@ -242,10 +242,14 @@ test('packed CLI starts without a CWD manifest and still prefers a CWD override'
   try {
     const launcherDir = resolve(dirname(artifact.packageRoot), 'launcher');
     const vaultDir = resolve(dirname(artifact.packageRoot), 'vault');
+    const defaultManifest = JSON.parse(await readFile(resolve(artifact.packageRoot, 'collabmd.governance.json'), 'utf8'));
     await mkdir(launcherDir, { recursive: true });
     await mkdir(vaultDir, { recursive: true });
     await writeFile(resolve(vaultDir, 'README.md'), '# Packed CLI\n', 'utf8');
     await symlink(resolve(rootDir, 'node_modules'), resolve(artifact.packageRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+
+    assert.equal(Object.hasOwn(defaultManifest, 'defaultGrantMinutes'), false);
+    assert.equal(JSON.stringify(defaultManifest).includes('document.comment'), false);
 
     const defaultServer = await startPackagedCli({
       cwd: launcherDir,
@@ -256,12 +260,10 @@ test('packed CLI starts without a CWD manifest and still prefers a CWD override'
     await defaultServer.close();
 
     await writeFile(resolve(launcherDir, 'collabmd.governance.json'), JSON.stringify({
-      defaultGrantMinutes: 60,
       roles: {
         observer: ['document.read'],
         owner: [
           'document.read',
-          'document.comment',
           'document.suggest',
           'document.edit',
           'conflict.resolve',

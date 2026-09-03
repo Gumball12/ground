@@ -32,6 +32,7 @@ function extractRoomName(pathname, wsBasePath) {
 export function attachCollaborationGateway({
   authService,
   basePath = '',
+  governanceSessionRegistry = null,
   heartbeatIntervalMs,
   hostedWorkspaceService = null,
   httpServer,
@@ -98,8 +99,58 @@ export function attachCollaborationGateway({
     });
   }) ?? (() => {});
 
+  const closeForGovernanceAccessChange = (client) => {
+    try {
+      client.close(4403, 'Governance access changed');
+    } catch {
+      try {
+        client.terminate();
+      } catch {
+        // Ignore termination errors while closing invalid governance sessions.
+      }
+    }
+  };
+
+  const unsubscribeGovernanceAccessChange = governanceSessionRegistry?.onAccessChanged?.(({
+    documentPath,
+    participantSessionId,
+  }) => {
+    websocketServer.clients.forEach((client) => {
+      const entry = socketSessions.get(client);
+      if (entry?.roomName !== documentPath
+        || entry.governanceParticipantSessionId !== participantSessionId) {
+        return;
+      }
+
+      closeForGovernanceAccessChange(client);
+    });
+  }) ?? (() => {});
+
   websocketServer.on('connection', (ws, req, requestUrl, user = null) => {
     const roomName = extractRoomName(requestUrl.pathname, wsBasePath);
+    const hasGovernanceParticipantSessionId = requestUrl.searchParams.has('governanceParticipantSessionId');
+    const hasGovernanceVersion = requestUrl.searchParams.has('governanceVersion');
+    let governanceParticipantSessionId;
+
+    if (hasGovernanceParticipantSessionId || hasGovernanceVersion) {
+      governanceParticipantSessionId = requestUrl.searchParams.get('governanceParticipantSessionId');
+      const rawGovernanceVersion = requestUrl.searchParams.get('governanceVersion');
+      const governanceVersion = /^\d+$/.test(rawGovernanceVersion ?? '')
+        ? Number(rawGovernanceVersion)
+        : Number.NaN;
+      if (!hasGovernanceParticipantSessionId
+        || !hasGovernanceVersion
+        || !governanceParticipantSessionId
+        || !governanceSessionRegistry?.isConnectionCurrent({
+          documentPath: roomName,
+          participantSessionId: governanceParticipantSessionId,
+          version: governanceVersion,
+        })) {
+        closeForGovernanceAccessChange(ws);
+        return;
+      }
+    }
+
     const room = roomRegistry.getOrCreate(roomName);
     const session = new ClientSocketSession({
       onDisconnected: (disconnectedRoomName) => {
@@ -115,6 +166,8 @@ export function attachCollaborationGateway({
       ws,
     });
     socketSessions.set(ws, {
+      governanceParticipantSessionId,
+      roomName,
       session,
       userEmail: normalizeHostedEmail(user?.email),
     });
@@ -177,6 +230,7 @@ export function attachCollaborationGateway({
     isShuttingDown = true;
     clearInterval(heartbeatTimer);
     unsubscribeHostedAccessChange();
+    unsubscribeGovernanceAccessChange();
 
     closePromise = new Promise((resolve, reject) => {
       const forceCloseTimer = setTimeout(() => {

@@ -61,6 +61,7 @@ const proposalInput = (context, from, to, overrides = {}) => ({
   baseRevision: 'base',
   expectedText: context.ytext.toString().slice(from, to),
   replacementText: 'replacement',
+  source: 'webmcp_proposal',
   ...overrides,
 });
 
@@ -96,8 +97,10 @@ test('createProposal stores the Proposal and creation Activity in one Yjs update
     createdAt: 100,
     id: context.activity.get(0).id,
     outcome: 'open',
+    source: 'webmcp_proposal',
     target: 'proposal-1',
   });
+  assert.equal(context.activity.get(0).source, 'webmcp_proposal');
   assert.equal(updates.length, 1);
 });
 
@@ -135,22 +138,26 @@ test('governance resolution updates text, Proposal, overlaps, and Activity in on
   assert.equal(resolved.status, 'accepted');
   assert.equal(readProposal(context.comments, 'proposal-2').status, 'conflict');
   assert.equal(readProposal(context.comments, 'proposal-unchanged-conflict').status, 'conflict');
+  assert.equal(context.activity.toArray().at(-1).source, 'owner_decision');
   assert.deepEqual(context.activity.toArray().slice(activityCountBeforeResolution).map((record) => ({
     action: record.action,
     actor: record.actor,
     outcome: record.outcome,
+    source: record.source,
     target: record.target,
   })), [
     {
       action: 'proposal_status_changed',
       actor: ownerActor,
       outcome: 'conflict',
+      source: 'owner_decision',
       target: 'proposal-2',
     },
     {
       action: 'proposal_accepted',
       actor: ownerActor,
       outcome: 'accepted',
+      source: 'owner_decision',
       target: 'proposal-1',
     },
   ]);
@@ -338,7 +345,11 @@ test('terminal Proposals never reopen after later edits', () => {
   });
 
   context.ytext.insert(0, 'Updated: ');
-  revalidateOpenProposals(context, { actor: editorActor, origin: 'direct-edit' });
+  revalidateOpenProposals(context, {
+    actor: editorActor,
+    origin: 'direct-edit',
+    source: 'document_editor',
+  });
 
   assert.equal(readProposal(context.comments, proposal.id).status, 'accepted');
 });
@@ -368,25 +379,35 @@ test('revalidation appends one actor-snapshotted Activity per changed non-termin
     }
   });
 
-  const changed = revalidateOpenProposals(context, { actor: editorActor, origin: 'direct-edit' });
+  const changed = revalidateOpenProposals(context, {
+    actor: editorActor,
+    origin: 'direct-edit',
+    source: 'document_editor',
+  });
 
   assert.deepEqual(changed.changed.map((proposal) => proposal.id), [first.id, second.id]);
   assert.deepEqual(context.activity.toArray().slice(activityCountBefore).map((record) => ({
     action: record.action,
     actor: record.actor,
     outcome: record.outcome,
+    source: record.source,
     target: record.target,
   })), [first.id, second.id].map((target) => ({
     action: 'proposal_status_changed',
     actor: editorActor,
     outcome: 'conflict',
+    source: 'document_editor',
     target,
   })));
   assert.equal(readProposal(context.comments, terminal.id).status, 'rejected');
   assert.equal(updates.length, 1);
 
   const activityCountAfterChange = context.activity.length;
-  assert.equal(revalidateOpenProposals(context, { actor: editorActor, origin: 'direct-edit' }).changedCount, 0);
+  assert.equal(revalidateOpenProposals(context, {
+    actor: editorActor,
+    origin: 'direct-edit',
+    source: 'document_editor',
+  }).changedCount, 0);
   assert.equal(context.activity.length, activityCountAfterChange);
   assert.equal(updates.length, 1);
 
@@ -400,7 +421,11 @@ test('revalidation appends one actor-snapshotted Activity per changed non-termin
     context.ytext.delete(10, 5);
     context.ytext.insert(10, '$100K');
   }, 'direct-edit');
-  const reopened = revalidateOpenProposals(context, { actor: editorActor, origin: 'direct-edit' });
+  const reopened = revalidateOpenProposals(context, {
+    actor: editorActor,
+    origin: 'direct-edit',
+    source: 'document_editor',
+  });
   assert.deepEqual(reopened.changed.map((proposal) => proposal.status), ['open', 'open']);
   assert.deepEqual(context.activity.toArray().slice(-2).map((record) => record.outcome), ['open', 'open']);
 });
@@ -412,6 +437,22 @@ test('revalidation requires an actor before starting a transaction', () => {
 
   assert.throws(() => revalidateOpenProposals(context), /Actor/u);
   assert.equal(updates.length, 0);
+});
+
+test('Proposal and revalidation require a source before starting a transaction', () => {
+  const context = createGovernanceDoc('Budget is $100K.');
+
+  assert.throws(() => createProposal(context, {
+    ...proposalInput(context, 10, 15),
+    source: undefined,
+  }), /Proposal source/u);
+  assert.throws(() => revalidateOpenProposals(context, { actor: editorActor }), /Activity source/u);
+  assert.throws(() => createProposal(context, {
+    ...proposalInput(context, 10, 15),
+    source: 'unknown_channel',
+  }), /Unknown Activity source/u);
+  assert.equal(context.comments.length, 0);
+  assert.equal(context.activity.length, 0);
 });
 
 test('groupReviewItems groups located items by position and sorts Unlocated last', () => {
@@ -444,16 +485,69 @@ test('groupReviewItems groups located items by position and sorts Unlocated last
     id: 'unlocated',
     replacementText: 'ALPHA',
   }));
-  revalidateOpenProposals(context, { actor: editorActor, origin: 'direct-edit' });
+  context.ydoc.transact(() => {
+    context.ytext.delete(6, 4);
+    context.ytext.insert(6, 'live');
+  }, 'direct-edit');
+  revalidateOpenProposals(context, {
+    actor: editorActor,
+    origin: 'direct-edit',
+    source: 'document_editor',
+  });
 
   const groups = groupReviewItems(context);
   assert.deepEqual(groups.map((group) => ({
     from: group.from,
-    ids: group.proposals.map((proposal) => proposal.id),
+    proposals: group.proposals.map((proposal) => ({
+      currentText: proposal.currentText,
+      expectedText: proposal.expectedText,
+      id: proposal.id,
+      replacementText: proposal.replacementText,
+      status: proposal.status,
+    })),
     unlocated: group.unlocated,
   })), [
-    { from: 0, ids: ['alpha'], unlocated: false },
-    { from: 6, ids: ['beta-early', 'beta-late'], unlocated: false },
-    { from: null, ids: ['unlocated'], unlocated: true },
+    {
+      from: 0,
+      proposals: [{
+        currentText: 'alpha',
+        expectedText: 'alpha',
+        id: 'alpha',
+        replacementText: 'ALPHA',
+        status: 'open',
+      }],
+      unlocated: false,
+    },
+    {
+      from: 6,
+      proposals: [
+        {
+          currentText: 'live',
+          expectedText: 'beta',
+          id: 'beta-early',
+          replacementText: 'Beta',
+          status: 'conflict',
+        },
+        {
+          currentText: 'live',
+          expectedText: 'beta',
+          id: 'beta-late',
+          replacementText: 'BETA',
+          status: 'conflict',
+        },
+      ],
+      unlocated: false,
+    },
+    {
+      from: null,
+      proposals: [{
+        currentText: null,
+        expectedText: 'alpha',
+        id: 'unlocated',
+        replacementText: 'ALPHA',
+        status: 'conflict',
+      }],
+      unlocated: true,
+    },
   ]);
 });
