@@ -54,12 +54,14 @@ export const createDocumentAsAdmin = ({
   displayName = 'Ground user',
   snapshot = Buffer.alloc(0),
   recoveryTokenHash = randomBytes(32),
+  now = new Date().toISOString(),
 } = {}) => callAdminRpc('ground_create_document', {
-  p_actor_id: actorId,
   p_document_id: documentId,
   p_display_name: displayName,
+  p_initial_snapshot: encodeUpdate(snapshot),
+  p_now: now,
+  p_owner_id: actorId,
   p_recovery_token_hash: encodeUpdate(recoveryTokenHash),
-  p_snapshot: encodeUpdate(snapshot),
 });
 
 export const createPendingScenario = async () => {
@@ -68,9 +70,10 @@ export const createPendingScenario = async () => {
   const documentId = uniqueDocumentId();
   await createDocumentAsAdmin({ actorId: owner.userId, documentId });
   await callAdminRpc('ground_join_document', {
-    p_actor_id: pending.userId,
     p_display_name: 'Pending user',
     p_document_id: documentId,
+    p_now: new Date().toISOString(),
+    p_user_id: pending.userId,
   });
   return { documentId, owner, pending };
 };
