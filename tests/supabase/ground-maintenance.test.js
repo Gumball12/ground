@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import * as Y from 'yjs';
 import {
@@ -7,11 +8,47 @@ import {
   commitRawUpdate,
   createActiveEditorScenario,
   createAdminClient,
+  createAnonymousClient,
   decodeUpdate,
   encodeUpdate,
   readDocumentHead,
+  readParticipantsAsAdmin,
   readUpdateRows,
 } from './ground-supabase-fixture.js';
+
+const EXPIRED_AT = '2026-01-01T00:00:00.000Z';
+const RETENTION_CUTOFF = '2026-02-01T00:00:00.000Z';
+const RECENT_AT = '2026-03-01T00:00:00.000Z';
+
+const takeRateLimit = (input) => callAdminRpc('ground_take_rate_limit', {
+  p_key_hash: encodeUpdate(input.keyHash),
+  p_limit: input.limit,
+  p_now: input.now,
+  p_scope: input.scope,
+  p_window_seconds: input.windowSeconds,
+});
+
+const deleteExpiredDocuments = (cutoff) => callAdminRpc('ground_delete_expired_documents', {
+  p_cutoff: cutoff,
+});
+
+const joinDocumentAsAdmin = (input) => callAdminRpc('ground_join_document', {
+  p_activity_update: encodeUpdate(input.activityUpdate ?? Buffer.alloc(0)),
+  p_display_name: input.displayName,
+  p_document_id: input.documentId,
+  p_now: input.now,
+  p_user_id: input.userId,
+});
+
+const findDocument = async (documentId) => {
+  const { data, error } = await createAdminClient()
+    .from('ground_documents')
+    .select('id')
+    .eq('id', documentId)
+    .maybeSingle();
+  assert.equal(error, null);
+  return data;
+};
 
 const compactDocumentAsAdmin = (input) => callAdminRpc('ground_compact_document', {
   p_candidate_sequence: input.candidateSequence,
@@ -132,4 +169,142 @@ test('compaction bounded by the captured candidate keeps a newer committed row',
     (await readUpdateRows(scenario.documentId)).map(({ sequence }) => sequence),
     [capturedCandidate + 1],
   );
+});
+
+test('rate limiting increments one fixed window atomically and denies only after its limit', async () => {
+  const keyHash = randomBytes(32);
+
+  const results = await Promise.all([1, 2, 3].map(() => takeRateLimit({
+    keyHash,
+    limit: 2,
+    now: EXPIRED_AT,
+    scope: 'mutation',
+    windowSeconds: 60,
+  })));
+
+  assert.equal(results.filter(Boolean).length, 2);
+  assert.equal(results.filter((value) => !value).length, 1);
+});
+
+test('rate windows start at one count for each scope and key hash', async () => {
+  const keyHash = randomBytes(32);
+  const otherKeyHash = randomBytes(32);
+  const take = (scope, hash) => takeRateLimit({
+    keyHash: hash,
+    limit: 1,
+    now: EXPIRED_AT,
+    scope,
+    windowSeconds: 60,
+  });
+
+  assert.equal(await take('create', keyHash), true);
+  assert.equal(await take('join', keyHash), true);
+  assert.equal(await take('create', otherKeyHash), true);
+  assert.equal(await take('create', keyHash), false);
+});
+
+test('rate limiting refuses a non-positive limit or window', async () => {
+  const keyHash = randomBytes(32);
+
+  await assert.rejects(takeRateLimit({
+    keyHash, limit: 0, now: EXPIRED_AT, scope: 'mutation', windowSeconds: 60,
+  }), { code: 'GROUND_INVALID_REQUEST' });
+  await assert.rejects(takeRateLimit({
+    keyHash, limit: 1, now: EXPIRED_AT, scope: 'mutation', windowSeconds: 0,
+  }), { code: 'GROUND_INVALID_REQUEST' });
+});
+
+test('retention timestamp advances only for an accepted edit', async () => {
+  const scenario = await createActiveEditorScenario();
+
+  await commitRawUpdate(
+    scenario,
+    createTextUpdates('A')[0],
+    TEST_MAX_UPDATE_BYTES,
+    RECENT_AT,
+  );
+
+  const record = await readDocumentRecord(scenario.documentId);
+  assert.equal(new Date(record.last_mutation_at).toISOString(), RECENT_AT);
+});
+
+test('retention timestamp survives reads, denied requests, and a Pending join', async () => {
+  const scenario = await createActiveEditorScenario();
+  await commitRawUpdate(
+    scenario,
+    createTextUpdates('A')[0],
+    TEST_MAX_UPDATE_BYTES,
+    EXPIRED_AT,
+  );
+  const before = await readDocumentRecord(scenario.documentId);
+  const visitor = await createAnonymousClient();
+
+  const read = await scenario.editor.client
+    .from('ground_documents')
+    .select('id')
+    .eq('id', scenario.documentId);
+  assert.equal(read.error, null);
+  await assert.rejects(commitRawUpdate(
+    scenario,
+    Buffer.alloc(TEST_MAX_UPDATE_BYTES + 1),
+    TEST_MAX_UPDATE_BYTES,
+    RECENT_AT,
+  ), { code: 'GROUND_UPDATE_TOO_LARGE' });
+  await joinDocumentAsAdmin({
+    displayName: 'Visitor',
+    documentId: scenario.documentId,
+    now: RECENT_AT,
+    userId: visitor.userId,
+  });
+
+  const after = await readDocumentRecord(scenario.documentId);
+  assert.equal(
+    new Date(after.last_mutation_at).toISOString(),
+    new Date(before.last_mutation_at).toISOString(),
+  );
+  assert.equal(after.head_sequence, before.head_sequence + 1);
+});
+
+test('thirty day expiry removes the document and every child row', async () => {
+  const scenario = await createActiveEditorScenario();
+  await commitRawUpdate(
+    scenario,
+    createTextUpdates('A')[0],
+    TEST_MAX_UPDATE_BYTES,
+    EXPIRED_AT,
+  );
+
+  assert.ok(await deleteExpiredDocuments(RETENTION_CUTOFF) >= 1);
+
+  assert.equal(await findDocument(scenario.documentId), null);
+  assert.deepEqual(await readParticipantsAsAdmin(scenario.documentId), []);
+  assert.deepEqual(await readUpdateRows(scenario.documentId), []);
+});
+
+test('thirty day cleanup keeps a document whose mutation is newer than the cutoff', async () => {
+  const scenario = await createActiveEditorScenario();
+  const [first, second] = createTextUpdates('A', 'B');
+  await commitRawUpdate(scenario, first, TEST_MAX_UPDATE_BYTES, EXPIRED_AT);
+  await commitRawUpdate(scenario, second, TEST_MAX_UPDATE_BYTES, RECENT_AT);
+
+  assert.equal(await deleteExpiredDocuments(RETENTION_CUTOFF), 0);
+
+  assert.notEqual(await findDocument(scenario.documentId), null);
+});
+
+test('thirty day cleanup also removes expired rate windows', async () => {
+  const keyHash = randomBytes(32);
+  const take = () => takeRateLimit({
+    keyHash,
+    limit: 1,
+    now: EXPIRED_AT,
+    scope: 'mutation',
+    windowSeconds: 60,
+  });
+  assert.equal(await take(), true);
+  assert.equal(await take(), false);
+
+  await deleteExpiredDocuments(RETENTION_CUTOFF);
+
+  assert.equal(await take(), true);
 });
