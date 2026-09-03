@@ -38,6 +38,12 @@
   padding-inline: var(--space-6);
 }
 
+/* The ui-button primitive declares display, so the attribute needs the same
+   explicit override the governance surfaces already use. */
+#shareGroundDocument[hidden] {
+  display: none;
+}
+
 #groundRecoveryLink {
   font-family: var(--font-mono);
   font-size: var(--text-code-sm);

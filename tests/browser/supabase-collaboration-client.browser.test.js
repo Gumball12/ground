@@ -417,3 +417,38 @@ it('stops persisting and clears state after destroy', async () => {
   await flush();
   expect(harness.appended.length).toBe(0);
 });
+
+// A freshly created document stores its snapshot at sequence 0, because only
+// compaction ever raises `snapshot_sequence`. Skipping the snapshot in that case
+// silently dropped the seeded document text and the Owner join Activity.
+it('applies the snapshot of a new document whose snapshot sequence is zero', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate({
+    headSequence: 0,
+    snapshot: encodeText('# Launch plan'),
+    snapshotSequence: 0,
+    updates: [],
+  });
+
+  const { bindings, client } = await startClient(harness);
+
+  expect(client.getText()).toBe('# Launch plan');
+  expect(bindings.ytext.toString()).toBe('# Launch plan');
+});
+
+it('keeps the snapshot applied across a notice-driven rehydrate', async () => {
+  const harness = createCollaborationHarness();
+  const snapshot = encodeText('# Launch plan');
+  harness.setHydrate({ headSequence: 0, snapshot, snapshotSequence: 0, updates: [] });
+  const { client } = await startClient(harness);
+
+  harness.setHydrate({
+    headSequence: 1,
+    snapshot,
+    snapshotSequence: 0,
+    updates: [{ sequence: 1, update: appendText([snapshot], ' v2') }],
+  });
+  await harness.channel.emitUpdate({ sequence: 1 });
+
+  expect(client.getText()).toBe('# Launch plan v2');
+});

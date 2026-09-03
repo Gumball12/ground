@@ -163,7 +163,10 @@ export class SupabaseCollaborationClient {
     const payload = await this.api.request('hydrate_document', { documentId: this.docId });
     this.headSequence = payload.headSequence;
     const pending = [];
-    if (payload.snapshot && this.appliedSequence < payload.snapshotSequence) {
+    // A new document keeps its snapshot at sequence 0 because only compaction
+    // raises `snapshot_sequence`, so the snapshot can never be gated on that
+    // number. Yjs applies a known update idempotently, so replaying it is safe.
+    if (payload.snapshot) {
       pending.push(decodeBase64(payload.snapshot));
     }
     for (const { sequence, update } of payload.updates) {

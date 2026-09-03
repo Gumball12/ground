@@ -96,8 +96,8 @@ test('Ground-only surfaces ship hidden and their display rules respect the attri
   for (const selector of displayRules) {
     assert.match(
       selector,
-      /:not\(\[hidden\]\)/u,
-      `display in "${selector}" must be guarded with :not([hidden])`,
+      /\[hidden\]/u,
+      `display in "${selector}" must reference [hidden] so the attribute wins`,
     );
   }
 });

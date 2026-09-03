@@ -56,6 +56,18 @@ export class GroundAppShell {
 
     this.entry = this.#createEntryController();
     this.governanceUi = this.#createGovernanceUi();
+
+    // Subscribe before the workspace controller does. The controller reacts to a
+    // snapshot by building the editor session, and `EditorSession` reads
+    // `canEdit` once at construction, so the shell's snapshot must already be
+    // current or an Owner would get a read-only editor.
+    this.governance.subscribe((snapshot, transition) => {
+      this.snapshot = snapshot;
+      this.shellError = transition?.error ?? null;
+      this.renderGovernance();
+      void this.webMcpTools?.refresh();
+    });
+
     this.controller = this.#createWorkspaceController();
     this.webMcpTools = new WebMcpToolRegistry({
       executor: this.#createWebMcpExecutor(),
@@ -63,13 +75,6 @@ export class GroundAppShell {
       getIsTabActive: () => true,
       getSession: () => this.session,
       governanceClient: this.governance,
-    });
-
-    this.governance.subscribe((snapshot, transition) => {
-      this.snapshot = snapshot;
-      this.shellError = transition?.error ?? null;
-      this.renderGovernance();
-      void this.webMcpTools.refresh();
     });
     this.elements.shareGroundDocument?.addEventListener('click', () => {
       void this.entry.copyShareLink(this.controller.docId);
@@ -110,16 +115,17 @@ export class GroundAppShell {
       governanceStatusTitle: this.elements.governanceStatusTitle,
       manageAccessButton: this.elements.manageAccessButton,
       manageAccessDialog: this.elements.manageAccessDialog,
-      onAssignRole: ({ participantSessionId, roleId }) => this.governance.assignRole({
+      // GovernanceUiController invokes these with positional arguments.
+      onAssignRole: (participantSessionId, roleId) => this.governance.assignRole({
         roleId,
         targetUserId: participantSessionId,
       }),
-      onResolveProposal: ({ proposalId, resolution }) => this.governance.resolveProposal({
+      onResolveProposal: (proposalId, resolution) => this.governance.resolveProposal({
         proposalId,
         resolution,
       }),
       onRetry: () => this.governance.refresh(),
-      onRevoke: ({ participantSessionId }) => this.governance.revoke({
+      onRevoke: (participantSessionId) => this.governance.revoke({
         targetUserId: participantSessionId,
       }),
       participantBar: this.elements.participantBar,
@@ -141,7 +147,7 @@ export class GroundAppShell {
   #createEditorSession({ docId, onAuthoritativeReload, snapshot }) {
     const session = new EditorSession({
       canComment: false,
-      canEdit: () => Boolean(this.snapshot?.capabilities?.includes('document.edit')),
+      canEdit: () => Boolean((this.snapshot ?? snapshot)?.capabilities?.includes('document.edit')),
       createCollaborationClient: (options) => new SupabaseCollaborationClient({
         ...options,
         api: this.api,
@@ -172,10 +178,13 @@ export class GroundAppShell {
         session.destroy();
       },
       initialize: async () => {
+        // Reveal the document surface before CodeMirror mounts. A view mounted
+        // into a hidden container measures zero height and paints no lines.
+        this.renderGovernance();
         await session.initialize(docId);
         this.activity = session.collaborationClient.governanceActivity;
         this.comments = session.collaborationClient.commentThreads;
-        this.activity?.observe(() => this.renderGovernance());
+        this.activity?.observe(() => this.#handleActivityChange());
         this.comments?.observe(() => this.renderGovernance());
         this.renderGovernance();
       },
@@ -225,6 +234,16 @@ export class GroundAppShell {
     };
   }
 
+  // A join or an access change appends Activity to the shared document, but the
+  // personal access channel notifies only the affected participant. An Owner
+  // therefore rereads the roster whenever the document's Activity advances.
+  #handleActivityChange() {
+    this.renderGovernance();
+    if (this.snapshot?.capabilities?.includes('grant.manage')) {
+      void this.governance.refresh().catch(() => {});
+    }
+  }
+
   renderGovernance() {
     const documentPath = this.snapshot?.documentPath ?? this.controller?.docId ?? null;
     this.governanceUi.render({
@@ -243,11 +262,11 @@ export class GroundAppShell {
     });
   }
 
+  // `groupReviewItems` needs the whole governance context, which the session
+  // already assembles; passing a partial one throws and blocks the render.
   #reviewGroups() {
-    if (!this.comments || !this.session?.ytext) {
-      return [];
-    }
-    return groupReviewItems({ comments: this.comments, ytext: this.session.ytext });
+    const context = this.session?.getGovernanceContext?.();
+    return context ? groupReviewItems(context) : [];
   }
 
   async #startRoute() {
