@@ -501,3 +501,69 @@ test('append_update refuses a server-only or unknown operation kind', async () =
     );
   }
 });
+
+test('webmcp_apply applies every replacement in one atomic sequence', async () => {
+  const store = createGroundStoreFake({
+    launchPlan: 'Budget is $100K and the date is March.\n',
+  });
+  const service = buildService(store);
+  await seedDocument(service);
+  const before = store.documents.get(DOCUMENT_ID).headSequence;
+
+  const applied = await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    replacements: [
+      { expectedText: '$100K', replacementText: '$110K' },
+      { expectedText: 'March', replacementText: 'April' },
+    ],
+  });
+
+  assert.equal(applied.sequence, before + 1);
+  const document = store.documents.get(DOCUMENT_ID);
+  const hydrated = hydrateGroundYDoc({
+    snapshot: document.snapshot,
+    updates: document.updates,
+  });
+  assert.equal(hydrated.ytext.toString(), 'Budget is $110K and the date is April.\n');
+  assert.deepEqual(
+    hydrated.activity.toJSON().filter(({ source }) => source === 'webmcp_apply').length,
+    1,
+  );
+});
+
+test('webmcp_apply refuses an empty replacement list', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget is $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+
+  await assert.rejects(
+    service.webmcp_apply({
+      actorId: 'user-owner',
+      documentId: DOCUMENT_ID,
+      replacements: [],
+    }),
+    (thrown) => groundCode(thrown) === 'GROUND_INVALID_REQUEST',
+  );
+});
+
+test('webmcp_apply leaves the document unchanged when one replacement is stale', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget is $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const before = store.documents.get(DOCUMENT_ID).headSequence;
+
+  await assert.rejects(
+    service.webmcp_apply({
+      actorId: 'user-owner',
+      documentId: DOCUMENT_ID,
+      replacements: [
+        { expectedText: '$100K', replacementText: '$110K' },
+        { expectedText: 'missing text', replacementText: 'x' },
+      ],
+    }),
+    (thrown) => groundCode(thrown) === 'GROUND_STALE_STATE',
+  );
+
+  assert.equal(store.documents.get(DOCUMENT_ID).headSequence, before);
+});

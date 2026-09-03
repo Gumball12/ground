@@ -11,6 +11,7 @@ import {
 } from '../infrastructure/ground-auth-client.js';
 import { GroundGovernanceClient } from '../infrastructure/ground-governance-client.js';
 import { SupabaseCollaborationClient } from '../infrastructure/supabase-collaboration-client.js';
+import { WebMcpToolRegistry } from '../infrastructure/webmcp-tool-registry.js';
 import { GovernanceUiController } from '../presentation/governance-ui-controller.js';
 import { GroundEntryController } from '../presentation/ground-entry-controller.js';
 import { ThemeController } from '../presentation/theme-controller.js';
@@ -56,11 +57,19 @@ export class GroundAppShell {
     this.entry = this.#createEntryController();
     this.governanceUi = this.#createGovernanceUi();
     this.controller = this.#createWorkspaceController();
+    this.webMcpTools = new WebMcpToolRegistry({
+      executor: this.#createWebMcpExecutor(),
+      getActiveFilePath: () => this.controller.docId ?? '',
+      getIsTabActive: () => true,
+      getSession: () => this.session,
+      governanceClient: this.governance,
+    });
 
     this.governance.subscribe((snapshot, transition) => {
       this.snapshot = snapshot;
       this.shellError = transition?.error ?? null;
       this.renderGovernance();
+      void this.webMcpTools.refresh();
     });
     this.elements.shareGroundDocument?.addEventListener('click', () => {
       void this.entry.copyShareLink(this.controller.docId);
@@ -147,7 +156,10 @@ export class GroundAppShell {
       initialTheme: this.themeController.getTheme?.(),
       lineInfoElement: null,
       onAwarenessChange: () => this.renderGovernance(),
-      onContentChange: () => this.renderGovernance(),
+      onContentChange: () => {
+        this.renderGovernance();
+        void this.webMcpTools.refresh();
+      },
       preferredUserName: snapshot?.displayName,
     });
     this.session = session;
@@ -168,6 +180,48 @@ export class GroundAppShell {
         this.renderGovernance();
       },
       waitForInitialSync: () => session.waitForInitialSync(null),
+    };
+  }
+
+  // Every WebMCP operation goes to the Ground server, which reauthorizes it and
+  // returns the committed sequence; the tool resolves only once that sequence is
+  // applied locally, so an agent never sees an unpersisted document.
+  #createWebMcpExecutor() {
+    const settle = async (operation, input) => {
+      const result = await this.api.request(operation, {
+        documentId: this.controller.docId,
+        ...input,
+      });
+      await this.session?.collaborationClient?.waitForSequence?.(result.sequence);
+      return result;
+    };
+
+    return {
+      apply: async ({ replacements }) => {
+        const result = await settle('webmcp_apply', {
+          replacements: replacements.map(({ newText, oldText }) => ({
+            expectedText: oldText,
+            replacementText: newText,
+          })),
+        });
+        return { ...result, path: this.controller.docId, replacementCount: replacements.length };
+      },
+      propose: ({ newText, oldText }) => settle('webmcp_propose', {
+        expectedText: oldText,
+        replacementText: newText,
+      }),
+      read: async () => {
+        const { activity, headSequence, text } = await this.api.request('webmcp_read', {
+          documentId: this.controller.docId,
+        });
+        return {
+          activity,
+          content: text,
+          kind: 'markdown',
+          path: this.controller.docId,
+          revision: String(headSequence),
+        };
+      },
     };
   }
 

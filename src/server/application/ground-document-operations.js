@@ -15,6 +15,16 @@ const encodeBase64 = (bytes) => Buffer.from(bytes ?? []).toString('base64');
 // update, so accepting one here would let a client forge an audit row.
 const EDITOR_OPERATION_KINDS = Object.freeze(['document_edit', 'proposal_create']);
 
+const readReplacements = ({ expectedText, replacementText, replacements }) => {
+  if (replacements === undefined) {
+    return [{ expectedText, replacementText }];
+  }
+  if (!Array.isArray(replacements) || replacements.length === 0) {
+    throw groundError('GROUND_INVALID_REQUEST');
+  }
+  return replacements;
+};
+
 const replaceUniqueText = ({ context, expectedText, replacementText }) => {
   const text = context.ytext.toString();
   const from = text.indexOf(requireText(expectedText));
@@ -104,7 +114,10 @@ export const createGroundDocumentOperations = ({ helpers }) => {
       });
     },
 
-    webmcp_apply: async ({ actorId, documentId, expectedText, replacementText }) => {
+    // A WebMCP apply may carry several replacements. They are captured as one
+    // update, so a stale target aborts the whole edit and commits no sequence.
+    webmcp_apply: async ({ actorId, documentId, expectedText, replacementText, replacements }) => {
+      const edits = readReplacements({ expectedText, replacementText, replacements });
       const participant = await requireCapability({
         actorId,
         capability: 'document.edit',
@@ -113,7 +126,13 @@ export const createGroundDocumentOperations = ({ helpers }) => {
       requireUpdateLimit();
       const { context } = await loadContext(documentId);
       const update = captureGroundUpdate(context, (mutable) => {
-        replaceUniqueText({ context: mutable, expectedText, replacementText });
+        for (const edit of edits) {
+          replaceUniqueText({
+            context: mutable,
+            expectedText: edit.expectedText,
+            replacementText: edit.replacementText,
+          });
+        }
         appendActivity(mutable.activity, {
           action: 'document_edit',
           actor: actorFrom(participant),
