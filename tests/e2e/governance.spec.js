@@ -122,9 +122,9 @@ test('Pending AI Reviewer sees only Access status without a credential in the UR
 
     const reviewerSelf = reviewerPage.locator('[data-self="true"]');
     await expect(reviewerSelf).toHaveAttribute('data-grant-state', 'pending');
-    await expect(reviewerSelf).toHaveAttribute('data-participant-kind', 'ai');
     await expect(reviewerSelf).toContainText('AI Reviewer');
-    await expect(reviewerSelf).toContainText('AI');
+    // Ground renders no Human/AI badge; only the display name and Role remain.
+    await expect(reviewerSelf).not.toContainText('Human');
     await expect(reviewerPage.locator('#governanceStatusPanel')).toContainText('Waiting for access');
     await expect(reviewerPage.locator('.cm-editor')).toHaveCount(0);
     await expect(reviewerPage.locator('#governanceRail')).toBeHidden();
@@ -183,8 +183,8 @@ test('Owner assigns Editor and Reviewer through Manage access and sees source-la
 
     const dialog = ownerPage.locator('#manageAccessDialog');
     await expect(dialog).toHaveAttribute('open', '');
-    await expect(dialog.locator(`[data-participant-session-id="${writer.participantSessionId}"]`)).toContainText('Human · Active');
-    await expect(dialog.locator(`[data-participant-session-id="${reviewer.participantSessionId}"]`)).toContainText('AI · Active');
+    await expect(dialog.locator(`[data-participant-session-id="${writer.participantSessionId}"]`)).toContainText('Active');
+    await expect(dialog.locator(`[data-participant-session-id="${reviewer.participantSessionId}"]`)).toContainText('Active');
     await attachEvidenceScreenshot({
       name: 'focused-manage-access',
       page: ownerPage,

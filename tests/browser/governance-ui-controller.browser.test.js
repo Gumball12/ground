@@ -271,7 +271,9 @@ describe('GovernanceUiController focused shell', () => {
       'activity-1',
     ]);
     expect(items[0].textContent).toContain('ReviewBot');
-    expect(items[0].textContent).toContain('AI');
+    // A legacy record still carries `kind`, but Ground renders no Human/AI badge.
+    expect(items[0].textContent).not.toContain('AI');
+    expect(items[0].textContent).not.toContain('Human');
     expect(items[0].textContent).toContain('session-ai');
     expect(items[0].textContent).toContain('Reviewer');
     expect(items[0].textContent).toContain('Proposal Created');
@@ -282,7 +284,7 @@ describe('GovernanceUiController focused shell', () => {
     expect(document.querySelector('[data-activity-filter]')).toBeNull();
   });
 
-  it('renders Proposal Human or AI and Role-at-creation attribution', () => {
+  it('renders Proposal author and Role-at-creation attribution without an identity badge', () => {
     const { controller } = mount();
     const state = activeOwnerState();
     state.reviewGroups = [proposalGroup()];
@@ -291,7 +293,8 @@ describe('GovernanceUiController focused shell', () => {
 
     const proposal = document.querySelector('[data-proposal-id="proposal-open"]');
     expect(proposal.textContent).toContain('ReviewBot');
-    expect(proposal.textContent).toContain('AI');
+    expect(proposal.textContent).not.toContain('AI');
+    expect(proposal.textContent).not.toContain('Human');
     expect(proposal.textContent).toContain('Reviewer');
   });
 

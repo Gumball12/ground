@@ -123,7 +123,7 @@ async function createPublicDirSnapshot() {
 
     try {
       const indexHtml = await readFile(resolve(publicDir, 'index.html'), 'utf8');
-      if (indexHtml.includes('./assets/') && indexHtml.includes('CollabMD')) {
+      if (indexHtml.includes('./assets/') && indexHtml.includes('Ground')) {
         break;
       }
     } catch {
@@ -278,7 +278,7 @@ test('HTTP server serves health, runtime config, and static assets', async (t) =
 
   const indexResponse = await httpRequest(`${app.baseUrl}/`);
   assert.equal(indexResponse.statusCode, 200);
-  assert.match(indexResponse.body, /CollabMD/);
+  assert.match(indexResponse.body, /Ground/);
   assert.equal(indexResponse.headers['cache-control'], 'no-store');
   const styleAssetPath = extractAssetPath(indexResponse.body, /<link[^>]+rel="stylesheet"[^>]+href="\.\/(assets\/[^"]+-[A-Za-z0-9_-]{8,}\.css)"/, 'style asset');
 

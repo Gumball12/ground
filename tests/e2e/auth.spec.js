@@ -163,7 +163,6 @@ test.describe('oidc auth', () => {
     const currentParticipant = page.locator('#participantBar [data-self="true"]');
     await expect(currentParticipant).toBeVisible();
     await expect(currentParticipant.locator('.participant-name')).toHaveText('Google User');
-    await expect(currentParticipant).toHaveAttribute('data-participant-kind', 'human');
     await expect(currentParticipant).toHaveAttribute('data-grant-state', 'active');
     await expect(currentParticipant).toContainText('Owner');
     await expect(currentParticipant).toContainText('You');
