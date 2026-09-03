@@ -4,6 +4,7 @@ import test from 'node:test';
 import * as Y from 'yjs';
 import {
   assignRoleAsAdmin,
+  callAdminRpc,
   createAdminClient,
   createAnonymousClient,
   createDocumentAsAdmin,
@@ -18,14 +19,6 @@ import {
 
 const JOIN_ACTIVITY_SEQUENCE = 1;
 
-const callGovernanceRpc = async (name, input) => {
-  const { data, error } = await createAdminClient().rpc(name, input);
-  if (error) {
-    throw Object.assign(new Error(error.message, { cause: error }), { code: error.code });
-  }
-  return data;
-};
-
 const createActivityUpdate = (value) => {
   const document = new Y.Doc();
   document.getText('activity').insert(0, value);
@@ -37,7 +30,7 @@ const createRecoveryToken = () => {
   return { token, tokenHash: createHash('sha256').update(token, 'utf8').digest() };
 };
 
-const revokeParticipantAsAdmin = (input) => callGovernanceRpc('ground_revoke_participant', {
+const revokeParticipantAsAdmin = (input) => callAdminRpc('ground_revoke_participant', {
   p_activity_update: encodeUpdate(input.activityUpdate ?? createActivityUpdate('revoked')),
   p_document_id: input.documentId,
   p_expected_owner_version: input.expectedOwnerVersion,
@@ -46,7 +39,7 @@ const revokeParticipantAsAdmin = (input) => callGovernanceRpc('ground_revoke_par
   p_target_user_id: input.targetUserId,
 });
 
-const recoverOwnerAsAdmin = (input) => callGovernanceRpc('ground_recover_owner', {
+const recoverOwnerAsAdmin = (input) => callAdminRpc('ground_recover_owner', {
   p_activity_update: encodeUpdate(input.activityUpdate ?? createActivityUpdate('recovered')),
   p_actor_id: input.actorId,
   p_display_name: input.displayName ?? 'Recovered owner',
@@ -217,7 +210,7 @@ test('an invalid Activity payload rolls back the Role and Activity together', as
   const { documentId, owner, pending } = await createPendingScenario();
   const headBefore = await readDocumentHead(documentId);
 
-  await assert.rejects(callGovernanceRpc('ground_assign_role', {
+  await assert.rejects(callAdminRpc('ground_assign_role', {
     p_activity_update: null,
     p_document_id: documentId,
     p_expected_owner_version: 1,

@@ -11,17 +11,23 @@ const requireLocalSupabase = () => {
   }
 };
 
+const GROUND_ERROR_MESSAGE = /^GROUND_[A-Z_]+$/u;
+
 const throwRpcError = (error) => {
   if (!error) {
     return;
   }
 
   const failure = new Error(error.message, { cause: error });
-  Object.assign(failure, { code: error.code, details: error.details, hint: error.hint });
+  Object.assign(failure, {
+    code: GROUND_ERROR_MESSAGE.test(error.message ?? '') ? error.message : error.code,
+    details: error.details,
+    hint: error.hint,
+  });
   throw failure;
 };
 
-const callAdminRpc = async (name, input) => {
+export const callAdminRpc = async (name, input) => {
   const { data, error } = await createAdminClient().rpc(name, input);
   throwRpcError(error);
   return data;
@@ -104,10 +110,17 @@ export const createActiveEditorScenario = async () => {
   return { ...scenario, editor: scenario.pending, editorRoleVersion: 2 };
 };
 
-export const commitRawUpdate = (scenario, update) => callAdminRpc('ground_commit_update', {
+export const TEST_MAX_UPDATE_BYTES = 2_048;
+
+export const commitRawUpdate = (
+  scenario,
+  update,
+  maxUpdateBytes = TEST_MAX_UPDATE_BYTES,
+) => callAdminRpc('ground_commit_update', {
   p_actor_id: scenario.editor.userId,
   p_document_id: scenario.documentId,
   p_expected_role_version: scenario.editorRoleVersion,
+  p_max_update_bytes: maxUpdateBytes,
   p_now: new Date().toISOString(),
   p_operation_kind: 'document_edit',
   p_source: 'document_editor',

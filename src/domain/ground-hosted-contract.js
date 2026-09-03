@@ -17,6 +17,46 @@ export const GROUND_ACTIVITY_SOURCES = Object.freeze([
   'system_reconciliation',
 ]);
 
+export const GROUND_LIMIT_CANDIDATES = Object.freeze([64_000, 200_000, 500_000, 1_000_000]);
+
+export const GROUND_COMPACTION_UPDATE_CANDIDATES = Object.freeze([50, 100, 200]);
+
+export const GROUND_MEASUREMENT_RUNS = 10;
+
+export const GROUND_MAX_HYDRATE_MS = 2_000;
+
+export const GROUND_MAX_UPDATE_BYTES_CEILING = 256_000;
+
+// 25% of the 4.5 MB Vercel request body limit.
+export const GROUND_MAX_REQUEST_BYTES = 1_125_000;
+
+export const groundP95 = (durations) => {
+  if (durations.length === 0) {
+    throw new Error('A Ground p95 needs at least one measured duration.');
+  }
+
+  const sorted = [...durations].sort((first, second) => first - second);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)];
+};
+
+export const measureGroundLimits = (documentResults, replayResults = []) => {
+  const passing = documentResults.filter(
+    (result) => result.passed === true && result.p95HydrateMs <= GROUND_MAX_HYDRATE_MS,
+  );
+  if (passing.length === 0) {
+    throw new Error('No Ground document size candidate met every release target.');
+  }
+
+  const maxDocumentBytes = Math.max(...passing.map(({ bytes }) => bytes));
+  return Object.freeze({
+    compactionUpdateCount: GROUND_COMPACTION_UPDATE_CANDIDATES.find((count) => replayResults.some(
+      (replay) => replay.updateCount === count && replay.p95ReplayMs <= GROUND_MAX_HYDRATE_MS,
+    )),
+    maxDocumentBytes,
+    maxUpdateBytes: Math.min(GROUND_MAX_UPDATE_BYTES_CEILING, maxDocumentBytes),
+  });
+};
+
 export const isGroundDocumentId = (value) => /^[A-Za-z0-9_-]{22}$/u.test(value);
 
 const toBase64Url = (bytes) => btoa(String.fromCharCode(...bytes))
