@@ -1,0 +1,208 @@
+import { createClient } from '@supabase/supabase-js';
+
+const GROUND_MESSAGE = /^GROUND_[A-Z_]+$/u;
+
+const POSTGREST_CODE_MAP = Object.freeze({
+  23505: 'GROUND_DOCUMENT_ID_TAKEN',
+  PGRST116: 'GROUND_UNAVAILABLE',
+});
+
+// Supabase returns and accepts bytea as a `\x<hex>` literal; base64 does not
+// round-trip through PostgREST, which the Plan 1 update tests proved.
+const encodeBytea = (value) => `\\x${Buffer.from(value ?? []).toString('hex')}`;
+
+const decodeBytea = (value) => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const text = String(value);
+  return new Uint8Array(text.startsWith('\\x')
+    ? Buffer.from(text.slice(2), 'hex')
+    : Buffer.from(text, 'base64'));
+};
+
+const groundFailure = (error) => {
+  const code = GROUND_MESSAGE.test(error?.message ?? '')
+    ? error.message
+    : POSTGREST_CODE_MAP[error?.code] ?? 'GROUND_TEMPORARILY_UNAVAILABLE';
+  return Object.assign(new Error(code, { cause: error }), { code });
+};
+
+const participantFrom = (row) => (row ? {
+  accessState: row.access_state,
+  displayName: row.display_name,
+  roleId: row.role_id ?? undefined,
+  roleVersion: Number(row.role_version),
+  userId: row.user_id,
+} : undefined);
+
+export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl }) => {
+  const client = createClient(supabaseUrl, secretKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    ...(fetchImpl ? { global: { fetch: fetchImpl } } : {}),
+  });
+
+  const callRpc = async (name, input) => {
+    const { data, error } = await client.rpc(name, input);
+    if (error) {
+      throw groundFailure(error);
+    }
+    return data;
+  };
+
+  const selectOne = async (table, columns, filters) => {
+    let query = client.from(table).select(columns);
+    Object.entries(filters).forEach(([column, value]) => {
+      query = query.eq(column, value);
+    });
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+      throw groundFailure(error);
+    }
+    return data ?? undefined;
+  };
+
+  return {
+    assignRole: async (input) => {
+      const result = await callRpc('ground_assign_role', {
+        p_activity_update: encodeBytea(input.activityUpdate),
+        p_document_id: input.documentId,
+        p_expected_owner_version: input.expectedOwnerVersion,
+        p_now: input.now,
+        p_owner_id: input.ownerId,
+        p_role_id: input.roleId,
+        p_target_user_id: input.targetUserId,
+      });
+      return {
+        participant: participantFrom(result.participant),
+        sequence: Number(result.sequence),
+      };
+    },
+
+    commitUpdate: async (input) => {
+      const result = await callRpc('ground_commit_update', {
+        p_actor_id: input.actorId,
+        p_document_id: input.documentId,
+        p_expected_role_version: input.expectedRoleVersion,
+        p_max_update_bytes: input.maxUpdateBytes,
+        p_now: input.now,
+        p_operation_kind: input.operationKind,
+        p_source: input.source,
+        p_update: encodeBytea(input.update),
+      });
+      return { sequence: Number(result.sequence) };
+    },
+
+    create: async (input) => {
+      const rows = await callRpc('ground_create_document', {
+        p_display_name: input.displayName,
+        p_document_id: input.documentId,
+        p_initial_snapshot: encodeBytea(input.snapshot),
+        p_now: input.now,
+        p_owner_id: input.ownerId,
+        p_recovery_token_hash: encodeBytea(input.recoveryTokenHash),
+      });
+      const [row] = rows ?? [];
+      return {
+        accessState: row?.access_state,
+        roleId: row?.role_id ?? undefined,
+        roleVersion: Number(row?.role_version),
+      };
+    },
+
+    getSession: async ({ documentId, userId }) => participantFrom(await selectOne(
+      'ground_participants',
+      'access_state, display_name, role_id, role_version, user_id',
+      { document_id: documentId, user_id: userId },
+    )),
+
+    join: async (input) => {
+      const rows = await callRpc('ground_join_document', {
+        p_activity_update: encodeBytea(input.activityUpdate),
+        p_display_name: input.displayName,
+        p_document_id: input.documentId,
+        p_now: input.now,
+        p_user_id: input.userId,
+      });
+      const [row] = rows ?? [];
+      return {
+        accessState: row?.access_state,
+        displayName: input.displayName,
+        roleId: row?.role_id ?? undefined,
+        roleVersion: Number(row?.role_version),
+        userId: input.userId,
+      };
+    },
+
+    listParticipants: async ({ documentId }) => {
+      const { data, error } = await client
+        .from('ground_participants')
+        .select('access_state, display_name, role_id, role_version, user_id')
+        .eq('document_id', documentId)
+        .order('created_at');
+      if (error) {
+        throw groundFailure(error);
+      }
+      return data.map(participantFrom);
+    },
+
+    loadState: async ({ documentId }) => {
+      const document = await selectOne(
+        'ground_documents',
+        'head_sequence, snapshot, snapshot_sequence',
+        { id: documentId },
+      );
+      if (!document) {
+        throw Object.assign(new Error('GROUND_UNAVAILABLE'), { code: 'GROUND_UNAVAILABLE' });
+      }
+
+      const { data, error } = await client
+        .from('ground_yjs_updates')
+        .select('sequence, update_payload')
+        .eq('document_id', documentId)
+        .gt('sequence', document.snapshot_sequence)
+        .order('sequence');
+      if (error) {
+        throw groundFailure(error);
+      }
+
+      return {
+        headSequence: Number(document.head_sequence),
+        snapshot: decodeBytea(document.snapshot),
+        snapshotSequence: Number(document.snapshot_sequence),
+        updates: data.map((row) => ({
+          sequence: Number(row.sequence),
+          update: decodeBytea(row.update_payload),
+        })),
+      };
+    },
+
+    recover: async (input) => {
+      const result = await callRpc('ground_recover_owner', {
+        p_activity_update: encodeBytea(input.activityUpdate),
+        p_actor_id: input.actorId,
+        p_display_name: input.displayName,
+        p_document_id: input.documentId,
+        p_next_token_hash: encodeBytea(input.nextTokenHash),
+        p_now: input.now,
+        p_token_hash: encodeBytea(input.tokenHash),
+      });
+      return { sequence: Number(result.sequence) };
+    },
+
+    revoke: async (input) => {
+      const result = await callRpc('ground_revoke_participant', {
+        p_activity_update: encodeBytea(input.activityUpdate),
+        p_document_id: input.documentId,
+        p_expected_owner_version: input.expectedOwnerVersion,
+        p_now: input.now,
+        p_owner_id: input.ownerId,
+        p_target_user_id: input.targetUserId,
+      });
+      return {
+        participant: participantFrom(result.participant),
+        sequence: Number(result.sequence),
+      };
+    },
+  };
+};
