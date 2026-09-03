@@ -29,6 +29,78 @@ create unique index ground_one_owner_per_document
   on public.ground_participants(document_id)
   where access_state = 'active' and role_id = 'owner';
 
+create function private.ground_require_single_owner(p_document_id text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  owner_count bigint;
+begin
+  if not exists (
+    select 1
+    from public.ground_documents as document
+    where document.id = p_document_id
+  ) then
+    return;
+  end if;
+
+  select count(*)
+  into owner_count
+  from public.ground_participants as participant
+  where participant.document_id = p_document_id
+    and participant.access_state = 'active'
+    and participant.role_id = 'owner';
+
+  if owner_count <> 1 then
+    raise exception using
+      errcode = '23514',
+      constraint = 'ground_document_has_exactly_one_owner',
+      message = 'Every Ground document must have exactly one Active Owner.';
+  end if;
+end;
+$function$;
+
+create function private.ground_enforce_owner_invariant()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if tg_table_name = 'ground_documents' then
+    perform private.ground_require_single_owner(new.id);
+  elsif tg_op = 'DELETE' then
+    perform private.ground_require_single_owner(old.document_id);
+  elsif tg_op = 'UPDATE' then
+    perform private.ground_require_single_owner(old.document_id);
+    if new.document_id is distinct from old.document_id then
+      perform private.ground_require_single_owner(new.document_id);
+    end if;
+  else
+    perform private.ground_require_single_owner(new.document_id);
+  end if;
+
+  return null;
+end;
+$function$;
+
+revoke all on function private.ground_require_single_owner(text) from public;
+revoke all on function private.ground_enforce_owner_invariant() from public;
+
+create constraint trigger ground_document_requires_owner
+after insert on public.ground_documents
+deferrable initially deferred
+for each row
+execute function private.ground_enforce_owner_invariant();
+
+create constraint trigger ground_participant_preserves_owner
+after insert or update or delete on public.ground_participants
+deferrable initially deferred
+for each row
+execute function private.ground_enforce_owner_invariant();
+
 create function private.ground_participant(p_document_id text, p_user_id uuid)
 returns table (access_state text, role_id text, role_version bigint)
 language sql

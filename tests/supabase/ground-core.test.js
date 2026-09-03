@@ -45,6 +45,57 @@ test('concurrent creation leaves exactly one Owner', async () => {
   }]);
 });
 
+test('direct document insertion without an Owner is rejected at commit', async () => {
+  const documentId = uniqueDocumentId();
+  const now = new Date().toISOString();
+
+  const { error } = await createAdminClient()
+    .from('ground_documents')
+    .insert({
+      created_at: now,
+      id: documentId,
+      last_mutation_at: now,
+      recovery_token_hash: encodeUpdate(Buffer.alloc(32)),
+      snapshot: encodeUpdate(Buffer.alloc(0)),
+    });
+
+  assert.equal(error?.code, '23514');
+});
+
+test('direct removal or revocation of the sole Owner is rejected at commit', async () => {
+  const owner = await createAnonymousClient();
+  const documentId = uniqueDocumentId();
+  await createDocumentAsAdmin({ actorId: owner.userId, documentId });
+
+  const { error: revokeError } = await createAdminClient()
+    .from('ground_participants')
+    .update({ access_state: 'revoked', role_id: null })
+    .eq('document_id', documentId)
+    .eq('user_id', owner.userId);
+  assert.equal(revokeError?.code, '23514');
+
+  const { error: removeError } = await createAdminClient()
+    .from('ground_participants')
+    .delete()
+    .eq('document_id', documentId)
+    .eq('user_id', owner.userId);
+  assert.equal(removeError?.code, '23514');
+});
+
+test('deleting a document cascades participants without violating the Owner invariant', async () => {
+  const owner = await createAnonymousClient();
+  const documentId = uniqueDocumentId();
+  await createDocumentAsAdmin({ actorId: owner.userId, documentId });
+
+  const { error } = await createAdminClient()
+    .from('ground_documents')
+    .delete()
+    .eq('id', documentId);
+
+  assert.equal(error, null);
+  assert.deepEqual(await readParticipantsAsAdmin(documentId), []);
+});
+
 test('join keeps a later visitor Pending and hides the document', async () => {
   const owner = await createAnonymousClient();
   const visitor = await createAnonymousClient();
@@ -166,5 +217,35 @@ test('join preserves a Revoked participant state and role version', async () => 
     role_id: null,
     role_version: 7,
     display_name: 'Renamed visitor',
+  }]);
+});
+
+test('join preserves an Active Owner state, role, and version', async () => {
+  const owner = await createAnonymousClient();
+  const documentId = uniqueDocumentId();
+  await createDocumentAsAdmin({ actorId: owner.userId, documentId });
+
+  const { error: versionError } = await createAdminClient()
+    .from('ground_participants')
+    .update({ role_version: 9 })
+    .eq('document_id', documentId)
+    .eq('user_id', owner.userId);
+  assert.equal(versionError, null);
+
+  const result = await joinDocumentAsAdmin({
+    displayName: '  Renamed owner  ',
+    documentId,
+    userId: owner.userId,
+  });
+
+  assert.deepEqual(result, [{
+    access_state: 'active',
+    role_id: 'owner',
+    role_version: 9,
+  }]);
+  assert.deepEqual(await readParticipantsAsAdmin(documentId), [{
+    access_state: 'active',
+    role_id: 'owner',
+    role_version: 9,
   }]);
 });
