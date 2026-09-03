@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 
-**Status:** Design approved in chat; written specification awaiting user review
+**Status:** Approved by the user on 2026-09-03; ready for implementation
 
 **Product:** Ground - One document, Different roles
 
@@ -204,6 +204,13 @@ compatible without preserving an unused Ground concept.
 | Pending | No | No | No | No | No |
 | Revoked | No | No | No | No | No |
 
+Role definitions are loaded and validated from `collabmd.governance.json` when
+the server runtime initializes. The shipped MVP contains Owner, Editor, and
+Reviewer. Operators may add another Role by composing the existing Capability
+vocabulary in that file and redeploying; adding a new Capability still requires
+domain code and tests. The Manage Access UI reads the manifest from the server
+and never carries a second hard-coded Role map.
+
 Role assignments have no duration. They remain until the Owner changes or
 revokes them, the Owner recovery flow replaces the Owner identity, or the
 document is deleted.
@@ -372,12 +379,16 @@ rate-limit table, and the collaboration state stored inside Yjs:
 - `document_id`;
 - `user_id`, referencing the Supabase Auth user;
 - `display_name`;
-- `role`: `owner`, `editor`, `reviewer`, `pending`, or `revoked`;
+- `access_state`: `pending`, `active`, or `revoked`;
+- `role_id`: a manifest Role ID when active and `null` otherwise;
+- `role_version`: a monotonically increasing authorization revision;
 - creation and Role-change timestamps.
 
 The composite `(document_id, user_id)` is the primary key. A partial unique
-index on `document_id` where `role = 'owner'` permits only one Owner per
-document.
+index on `document_id` where `access_state = 'active'` and
+`role_id = 'owner'` permits only one Owner per document. A check constraint
+requires `role_id` exactly when `access_state = 'active'`; Pending and Revoked
+rows carry no Role.
 
 ### 9.3 Ordered Yjs update
 
@@ -439,7 +450,10 @@ ignored for authorization. Browser roles receive read grants required for
 hydration and Realtime, but no direct execute or insert grant for product
 mutations. Vercel calls narrowly scoped functions with server credentials and
 the user ID derived from the verified bearer session; each function still
-resolves that user's current participant row before changing state.
+resolves that user's current participant row before changing state. The API
+checks the current `role_id` against the validated manifest; the commit function
+locks the participant row and requires the same `role_version`, preventing a
+Role change between authorization and persistence.
 
 ### 10.2 Operation-specific boundaries
 
@@ -688,7 +702,9 @@ Use the real local Supabase stack, not mocked RLS, for:
 - exactly-one-Owner concurrent creation;
 - cross-document read and write denial;
 - own-row versus Owner participant visibility;
-- Role-specific read, edit, suggest, resolve, and manage operations;
+- manifest-defined Role-specific read, edit, suggest, resolve, and manage
+  operations;
+- safe rejection when `role_version` changes between authorization and commit;
 - cached-session denial after revoke;
 - recovery transfer, token rotation, and old-Owner denial;
 - monotonic sequence insertion and reconnect reconstruction;
