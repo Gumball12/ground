@@ -1,0 +1,208 @@
+import { groupReviewItems } from '../../domain/governance-proposals.js';
+import { bindAppShellElements } from '../application/app-shell-elements.js';
+import { GroundWorkspaceController } from '../application/ground-workspace-controller.js';
+import { deriveGovernanceShellState } from '../domain/governance-shell-state.js';
+import { parseGroundRoute } from '../domain/ground-route.js';
+import { EditorSession } from '../infrastructure/editor-session.js';
+import { GroundApiClient } from '../infrastructure/ground-api-client.js';
+import {
+  GroundAuthClient,
+  createGroundSupabaseClient,
+} from '../infrastructure/ground-auth-client.js';
+import { GroundGovernanceClient } from '../infrastructure/ground-governance-client.js';
+import { SupabaseCollaborationClient } from '../infrastructure/supabase-collaboration-client.js';
+import { GovernanceUiController } from '../presentation/governance-ui-controller.js';
+import { GroundEntryController } from '../presentation/ground-entry-controller.js';
+import { ThemeController } from '../presentation/theme-controller.js';
+import { ToastController } from '../presentation/toast-controller.js';
+
+const RECOVERY_PARAM = 'recover';
+
+// Ground has no vault, no tab takeover and no WebSocket transport, so the local
+// tab-lock dialog never belongs in its accessibility tree.
+const removeTabLockDialog = (elements) => {
+  elements.tabLockOverlay?.remove();
+};
+
+export class GroundAppShell {
+  constructor({ doc = document, history = window.history, location = window.location } = {}) {
+    this.doc = doc;
+    this.history = history;
+    this.location = location;
+    this.elements = bindAppShellElements(doc);
+    this.activity = null;
+    this.comments = null;
+    this.session = null;
+    this.shellError = null;
+    this.snapshot = null;
+  }
+
+  async initialize() {
+    const config = globalThis.__COLLABMD_CONFIG__ ?? {};
+    removeTabLockDialog(this.elements);
+
+    this.toastController = new ToastController(this.elements.toastContainer);
+    this.themeController = new ThemeController({ doc: this.doc });
+    this.themeController.initialize?.();
+
+    const supabase = createGroundSupabaseClient(config);
+    const authClient = new GroundAuthClient({ supabase });
+    const { userId } = await authClient.initialize();
+    this.api = new GroundApiClient({ authClient });
+    this.governance = new GroundGovernanceClient({ api: this.api, supabase, userId });
+    this.supabase = supabase;
+    this.userId = userId;
+
+    this.entry = this.#createEntryController();
+    this.governanceUi = this.#createGovernanceUi();
+    this.controller = this.#createWorkspaceController();
+
+    this.governance.subscribe((snapshot, transition) => {
+      this.snapshot = snapshot;
+      this.shellError = transition?.error ?? null;
+      this.renderGovernance();
+    });
+    this.elements.shareGroundDocument?.addEventListener('click', () => {
+      void this.entry.copyShareLink(this.controller.docId);
+    });
+
+    await this.#startRoute();
+  }
+
+  #createEntryController() {
+    return new GroundEntryController({
+      elements: {
+        createDocumentButton: this.elements.createGroundDocument,
+        displayNameDialog: this.elements.displayNameDialog,
+        displayNameForm: this.elements.displayNameForm,
+        displayNameInput: this.elements.displayNameInput,
+        groundLanding: this.elements.groundLanding,
+        groundUnavailable: this.elements.groundUnavailable,
+        recoveryCloseButton: this.elements.groundRecoveryClose,
+        recoveryCopyButton: this.elements.groundRecoveryCopy,
+        recoveryDialog: this.elements.groundRecoveryDialog,
+        recoveryLinkInput: this.elements.groundRecoveryLink,
+        shareButton: this.elements.shareGroundDocument,
+      },
+      onCreateDocument: () => {
+        void this.controller.createDocument();
+      },
+      origin: this.location.origin,
+    });
+  }
+
+  #createGovernanceUi() {
+    return new GovernanceUiController({
+      documentSurface: this.elements.documentSurface,
+      governanceRail: this.elements.governanceRail,
+      governanceStatusCopy: this.elements.governanceStatusCopy,
+      governanceStatusPanel: this.elements.governanceStatusPanel,
+      governanceStatusRetry: this.elements.governanceStatusRetry,
+      governanceStatusTitle: this.elements.governanceStatusTitle,
+      manageAccessButton: this.elements.manageAccessButton,
+      manageAccessDialog: this.elements.manageAccessDialog,
+      onAssignRole: ({ participantSessionId, roleId }) => this.governance.assignRole({
+        roleId,
+        targetUserId: participantSessionId,
+      }),
+      onResolveProposal: ({ proposalId, resolution }) => this.governance.resolveProposal({
+        proposalId,
+        resolution,
+      }),
+      onRetry: () => this.governance.refresh(),
+      onRevoke: ({ participantSessionId }) => this.governance.revoke({
+        targetUserId: participantSessionId,
+      }),
+      participantBar: this.elements.participantBar,
+      skipToEditor: this.elements.skipToEditor,
+    });
+  }
+
+  #createWorkspaceController() {
+    return new GroundWorkspaceController({
+      api: this.api,
+      createSession: (options) => this.#createEditorSession(options),
+      entry: this.entry,
+      governance: this.governance,
+      history: this.history,
+      origin: this.location.origin,
+    });
+  }
+
+  #createEditorSession({ docId, onAuthoritativeReload, snapshot }) {
+    const session = new EditorSession({
+      canComment: false,
+      canEdit: () => Boolean(this.snapshot?.capabilities?.includes('document.edit')),
+      createCollaborationClient: (options) => new SupabaseCollaborationClient({
+        ...options,
+        api: this.api,
+        onAuthoritativeReload,
+        supabase: this.supabase,
+        userId: this.userId,
+      }),
+      editorContainer: this.elements.editorContainer,
+      getFileList: () => [],
+      getGovernanceSnapshot: () => this.snapshot,
+      governed: true,
+      initialTheme: this.themeController.getTheme?.(),
+      lineInfoElement: null,
+      onAwarenessChange: () => this.renderGovernance(),
+      onContentChange: () => this.renderGovernance(),
+      preferredUserName: snapshot?.displayName,
+    });
+    this.session = session;
+
+    return {
+      destroy: () => {
+        this.activity = null;
+        this.comments = null;
+        this.session = null;
+        session.destroy();
+      },
+      initialize: async () => {
+        await session.initialize(docId);
+        this.activity = session.collaborationClient.governanceActivity;
+        this.comments = session.collaborationClient.commentThreads;
+        this.activity?.observe(() => this.renderGovernance());
+        this.comments?.observe(() => this.renderGovernance());
+        this.renderGovernance();
+      },
+      waitForInitialSync: () => session.waitForInitialSync(null),
+    };
+  }
+
+  renderGovernance() {
+    const documentPath = this.snapshot?.documentPath ?? this.controller?.docId ?? null;
+    this.governanceUi.render({
+      activity: this.activity?.toJSON() ?? [],
+      connectionState: { status: this.session ? 'connected' : 'disconnected', unreachable: false },
+      participants: this.snapshot?.participants ?? [],
+      reviewGroups: this.#reviewGroups(),
+      roles: this.governance.roles,
+      session: this.snapshot,
+      shellState: deriveGovernanceShellState({
+        currentFilePath: documentPath,
+        error: this.shellError,
+        requestedDocumentPath: documentPath,
+        snapshot: this.snapshot,
+      }),
+    });
+  }
+
+  #reviewGroups() {
+    if (!this.comments || !this.session?.ytext) {
+      return [];
+    }
+    return groupReviewItems({ comments: this.comments, ytext: this.session.ytext });
+  }
+
+  async #startRoute() {
+    const route = parseGroundRoute(this.location.pathname);
+    const recoveryToken = new URLSearchParams(this.location.search).get(RECOVERY_PARAM);
+    if (route.type === 'document' && recoveryToken) {
+      await this.controller.recoverOwner({ docId: route.docId, recoveryToken });
+      return;
+    }
+    await this.controller.start(route);
+  }
+}

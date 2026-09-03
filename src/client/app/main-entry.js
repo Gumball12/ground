@@ -18,4 +18,11 @@ function ensureHighlightThemeStylesheet() {
 }
 
 ensureHighlightThemeStylesheet();
-await import('../main.js');
+
+// `app-config.js` has already run, so the served runtime configuration decides
+// which product this page is before either bootstrap module loads.
+if (window.__COLLABMD_CONFIG__?.groundHosted) {
+  await import('../ground-main.js');
+} else {
+  await import('../main.js');
+}

@@ -30,6 +30,18 @@
     <main class="focused-product-main" id="mainContent">
       <section id="participantBar" class="participant-bar" aria-label="Document Participants" hidden>
         <button type="button" class="ui-button ui-button--secondary ui-button--compact" id="manageAccessBtn" hidden>Manage access</button>
+        <button type="button" class="ui-button ui-button--primary ui-button--compact" id="shareGroundDocument" hidden>Share document</button>
+      </section>
+
+      <section id="groundLanding" class="ground-entry" aria-labelledby="groundLandingTitle" hidden>
+        <h1 id="groundLandingTitle" class="ground-entry-title">One document. Different roles.</h1>
+        <p class="ground-entry-copy">The owner decides who can edit, who can only propose, and who gets no access. The server applies those rules to every WebMCP action.</p>
+        <button type="button" class="ui-button ui-button--primary" id="createGroundDocument">Create demo document</button>
+      </section>
+
+      <section id="groundUnavailable" class="ground-entry" aria-labelledby="groundUnavailableTitle" hidden>
+        <h1 id="groundUnavailableTitle" class="ground-entry-title">This document is unavailable</h1>
+        <p class="ground-entry-copy">The link may be wrong, or the document may have been removed.</p>
       </section>
 
       <section id="governanceStatusPanel" class="governance-status-panel" hidden aria-live="polite">
@@ -75,6 +87,23 @@
         <button type="submit" class="ui-button ui-button--primary" id="displayNameSubmit">Save name</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="app-dialog" id="groundRecoveryDialog" aria-labelledby="groundRecoveryTitle">
+    <div class="app-dialog-form">
+      <div class="app-dialog-header">
+        <h2 class="app-dialog-title" id="groundRecoveryTitle">Save your Owner recovery link</h2>
+        <p class="app-dialog-copy">This link is the only way to become Owner again from another browser. It is shown once.</p>
+      </div>
+      <label class="app-dialog-field" for="groundRecoveryLink">
+        <span class="app-dialog-label">Owner recovery link</span>
+        <input type="text" class="ui-input" id="groundRecoveryLink" readonly>
+      </label>
+      <div class="app-dialog-actions">
+        <button type="button" class="ui-button ui-button--secondary" id="copyGroundRecoveryLink">Copy recovery link</button>
+        <button type="button" class="ui-button ui-button--primary" id="closeGroundRecovery">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog class="app-dialog manage-access-dialog" id="manageAccessDialog" aria-labelledby="manageAccessTitle">
