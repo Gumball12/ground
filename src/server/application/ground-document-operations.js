@@ -10,6 +10,11 @@ import { captureGroundUpdate } from './ground-yjs-state.js';
 
 const encodeBase64 = (bytes) => Buffer.from(bytes ?? []).toString('base64');
 
+// The editor surface may only declare its own two kinds. Every other kind in the
+// domain vocabulary is produced by a server-driven operation, never by a client
+// update, so accepting one here would let a client forge an audit row.
+const EDITOR_OPERATION_KINDS = Object.freeze(['document_edit', 'proposal_create']);
+
 const replaceUniqueText = ({ context, expectedText, replacementText }) => {
   const text = context.ytext.toString();
   const from = text.indexOf(requireText(expectedText));
@@ -33,7 +38,16 @@ export const createGroundDocumentOperations = ({ helpers }) => {
   } = helpers;
 
   return {
-    append_update: async ({ actorId, documentId, expectedRoleVersion, update }) => {
+    append_update: async ({
+      actorId,
+      documentId,
+      expectedRoleVersion,
+      operationKind = 'document_edit',
+      update,
+    }) => {
+      if (!EDITOR_OPERATION_KINDS.includes(operationKind)) {
+        throw groundError('GROUND_INVALID_REQUEST');
+      }
       const participant = await requireCapability({
         actorId,
         capability: 'document.edit',
@@ -45,7 +59,7 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         expectedRoleVersion: expectedRoleVersion ?? participant.roleVersion,
         maxUpdateBytes: requireUpdateLimit(),
         now: now(),
-        operationKind: 'document_edit',
+        operationKind,
         source: 'document_editor',
         update: Buffer.from(requireText(update), 'base64'),
       });

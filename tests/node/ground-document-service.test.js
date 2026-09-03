@@ -458,3 +458,46 @@ test('hydrate_document returns JSON-safe base64 bytes the browser can decode', a
   const body = JSON.stringify(hydrated);
   assert.equal(body.includes('"0":'), false);
 });
+
+test('append_update audits the editor operation kind the client declares', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const update = Buffer.from([1, 2, 3]).toString('base64');
+
+  await service.append_update({ actorId: 'user-owner', documentId: DOCUMENT_ID, update });
+  await service.append_update({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    operationKind: 'proposal_create',
+    update,
+  });
+
+  const committed = store.calls
+    .filter(({ name }) => name === 'commitUpdate')
+    .map(({ input }) => [input.operationKind, input.source]);
+  assert.deepEqual(committed, [
+    ['document_edit', 'document_editor'],
+    ['proposal_create', 'document_editor'],
+  ]);
+});
+
+test('append_update refuses a server-only or unknown operation kind', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const update = Buffer.from([1, 2, 3]).toString('base64');
+
+  for (const operationKind of ['access_change', 'owner_recovery', 'proposal_resolve', 'nonsense']) {
+    await assert.rejects(
+      service.append_update({
+        actorId: 'user-owner',
+        documentId: DOCUMENT_ID,
+        operationKind,
+        update,
+      }),
+      (thrown) => groundCode(thrown) === 'GROUND_INVALID_REQUEST',
+      operationKind,
+    );
+  }
+});
