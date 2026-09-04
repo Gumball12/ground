@@ -1,21 +1,19 @@
-# Launch Plan
+# GPT-6 Astra Mission Control
 
-## Objective
+> Fictional demo scenario — not an OpenAI announcement.
 
-Launch the governed collaboration pilot with one human Owner, one Writer, and one Reviewer working in the same live Markdown document.
+## Mission
 
-## Budget decision
+Prepare Astra for launch without turning the release notes into a space opera.
 
-The approved launch budget is $100K.
+## Launch status
 
-## Rehearsal alternatives
+Launch status: Grounded.
 
-- Writer target: increase the approved launch budget to $110K.
-- Reviewer target: propose an approved launch budget of $120K.
+## Mission budget
 
-## Success criteria
+Approved mission budget: $100K.
 
-- Writer can apply a bounded WebMCP edit under an active Editor Grant.
-- Reviewer creates a Proposal without directly changing the document.
-- Stale changes at the budget sentence become visible Conflicts.
-- Owner resolves one Proposal and revokes Writer before a cached apply call is retried.
+## Flight rule
+
+Agents may chart the course. Humans approve the launch.
