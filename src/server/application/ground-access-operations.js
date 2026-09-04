@@ -20,6 +20,7 @@ export const createGroundAccessOperations = ({
     manifest,
     now,
     requireCapability,
+    requireCommitLimits,
     requireParticipant,
     sessionFor,
     store,
@@ -114,6 +115,9 @@ export const createGroundAccessOperations = ({
 
     join_document: async ({ actorId, displayName, documentId }) => {
       const visitorName = normalizeGroundDisplayName(displayName);
+      // A join appends Activity to the shared document, so it is bounded by the
+      // document byte limit like every other update and fails closed without one.
+      const { maxDocumentBytes } = requireCommitLimits();
       const activityUpdate = await captureAccessActivity({
         action: 'participant_joined',
         actor: { displayName: visitorName, participantSessionId: actorId, roleId: 'pending' },
@@ -125,6 +129,7 @@ export const createGroundAccessOperations = ({
         activityUpdate,
         displayName: visitorName,
         documentId,
+        maxDocumentBytes,
         now: now(),
         userId: actorId,
       });

@@ -83,6 +83,9 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
       const result = await callRpc('ground_commit_update', {
         p_actor_id: input.actorId,
         p_document_id: input.documentId,
+        // Only a server-composed edit names the head it was composed against;
+        // an editor update merges with concurrent edits and names none.
+        p_expected_head_sequence: input.expectedHeadSequence ?? null,
         p_expected_role_version: input.expectedRoleVersion,
         p_max_document_bytes: input.maxDocumentBytes,
         p_max_update_bytes: input.maxUpdateBytes,
@@ -133,6 +136,7 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
         p_activity_update: encodeBytea(input.activityUpdate),
         p_display_name: input.displayName,
         p_document_id: input.documentId,
+        p_max_document_bytes: input.maxDocumentBytes,
         p_now: input.now,
         p_user_id: input.userId,
       });
@@ -158,33 +162,22 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
       return data.map(participantFrom);
     },
 
+    // The snapshot and the rows above it are read by one statement. Reading them
+    // separately let a fold that committed in between delete rows the second
+    // read still needed, pairing an old snapshot with a log missing that range.
     loadState: async ({ documentId }) => {
-      const document = await selectOne(
-        'ground_documents',
-        'head_sequence, snapshot, snapshot_sequence',
-        { id: documentId },
-      );
-      if (!document) {
+      const state = await callRpc('ground_load_state', { p_document_id: documentId });
+      if (!state) {
         throw Object.assign(new Error('GROUND_UNAVAILABLE'), { code: 'GROUND_UNAVAILABLE' });
       }
 
-      const { data, error } = await client
-        .from('ground_yjs_updates')
-        .select('sequence, update_payload')
-        .eq('document_id', documentId)
-        .gt('sequence', document.snapshot_sequence)
-        .order('sequence');
-      if (error) {
-        throw groundFailure(error);
-      }
-
       return {
-        headSequence: Number(document.head_sequence),
-        snapshot: decodeBytea(document.snapshot),
-        snapshotSequence: Number(document.snapshot_sequence),
-        updates: data.map((row) => ({
+        headSequence: Number(state.headSequence),
+        snapshot: decodeBytea(state.snapshot),
+        snapshotSequence: Number(state.snapshotSequence),
+        updates: state.updates.map((row) => ({
           sequence: Number(row.sequence),
-          update: decodeBytea(row.update_payload),
+          update: decodeBytea(row.update),
         })),
       };
     },

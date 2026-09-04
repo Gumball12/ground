@@ -3,7 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createGroundService } from '../../src/server/application/ground-document-service.js';
-import { hydrateGroundYDoc } from '../../src/server/application/ground-yjs-state.js';
+import { captureGroundUpdate, hydrateGroundYDoc } from '../../src/server/application/ground-yjs-state.js';
 
 const DOCUMENT_ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 const MAX_DOCUMENT_BYTES = 200_000;
@@ -75,6 +75,12 @@ const createGroundStoreFake = ({ launchPlan = '' } = {}) => {
       const document = documentOr(input.documentId);
       const actor = participantOr(document, input.actorId);
       if (actor.roleVersion !== input.expectedRoleVersion) {
+        throw Object.assign(new Error('GROUND_STALE_STATE'), { code: 'GROUND_STALE_STATE' });
+      }
+      // Mirrors the head requirement: a server-composed edit names the head it
+      // was composed against and is refused once another commit has moved it.
+      if (input.expectedHeadSequence !== undefined
+        && input.expectedHeadSequence !== document.headSequence) {
         throw Object.assign(new Error('GROUND_STALE_STATE'), { code: 'GROUND_STALE_STATE' });
       }
       document.headSequence += 1;
@@ -237,6 +243,37 @@ test('join creates Pending without returning document state', async () => {
   assert.equal('capabilities' in result.session, false);
   assert.equal('snapshot' in result, false);
   assert.equal('updates' in result, false);
+});
+
+// A join appends Activity to the shared document, so it is bounded by the same
+// document byte limit as every other update and fails closed without one.
+test('join_document sends the document byte limit to the store', async () => {
+  const store = createGroundStoreFake();
+  const service = buildService(store);
+  await seedDocument(service);
+
+  await service.join_document({
+    actorId: 'user-reviewer',
+    displayName: 'Reviewer Agent',
+    documentId: DOCUMENT_ID,
+  });
+
+  const [{ input }] = store.calls.filter(({ name }) => name === 'join');
+  assert.equal(input.maxDocumentBytes, MAX_DOCUMENT_BYTES);
+});
+
+test('join_document fails closed when no document byte limit is calibrated', async () => {
+  const store = createGroundStoreFake();
+  await seedDocument(buildService(store));
+  const service = buildService(store, { limits: { maxUpdateBytes: MAX_UPDATE_BYTES } });
+
+  await assert.rejects(service.join_document({
+    actorId: 'user-reviewer',
+    displayName: 'Reviewer Agent',
+    documentId: DOCUMENT_ID,
+  }), (thrown) => groundCode(thrown) === 'GROUND_TEMPORARILY_UNAVAILABLE');
+
+  assert.deepEqual(store.calls.filter(({ name }) => name === 'join'), []);
 });
 
 test('three generated id collisions fail with GROUND_TEMPORARILY_UNAVAILABLE and no fourth call', async () => {
@@ -730,6 +767,125 @@ test('webmcp_apply leaves the document unchanged when one replacement is stale',
   );
 
   assert.equal(store.documents.get(DOCUMENT_ID).headSequence, before);
+});
+
+// A text-only request can name one occurrence only. The hosted apply path and
+// the local proposal path both refuse a repeated target; a Proposal anchored to
+// the first occurrence would point the Owner at a passage the agent never meant.
+test('webmcp_propose refuses a target that occurs more than once', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K now, budget $100K later.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const before = store.documents.get(DOCUMENT_ID).headSequence;
+
+  await assert.rejects(
+    service.webmcp_propose({
+      actorId: 'user-owner',
+      documentId: DOCUMENT_ID,
+      expectedText: '$100K',
+      replacementText: '$110K',
+    }),
+    (thrown) => groundCode(thrown) === 'GROUND_STALE_STATE',
+  );
+
+  assert.equal(store.documents.get(DOCUMENT_ID).headSequence, before);
+});
+
+// An editor commit that lands between a WebMCP load and its commit, exactly as
+// a concurrent participant's keystroke would.
+const commitConcurrentEditorText = (store, text) => {
+  const document = store.documents.get(DOCUMENT_ID);
+  const context = hydrateGroundYDoc({ snapshot: document.snapshot, updates: document.updates });
+  const update = captureGroundUpdate(context, ({ ytext }) => ytext.insert(ytext.length, text));
+  document.headSequence += 1;
+  document.updates.push({ sequence: document.headSequence, update });
+};
+
+const readDocumentText = (store) => {
+  const document = store.documents.get(DOCUMENT_ID);
+  return hydrateGroundYDoc({ snapshot: document.snapshot, updates: document.updates })
+    .ytext.toString();
+};
+
+// Two WebMCP applies can validate the same target against the same text. The
+// commit names the head that text came from, so the second is refused once the
+// first has moved it; the editor path merges concurrent edits and names none.
+test('webmcp_apply commits against the head it loaded and the editor path does not', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const head = store.documents.get(DOCUMENT_ID).headSequence;
+
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+  await service.append_update({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    update: Buffer.from([1, 2, 3]).toString('base64'),
+  });
+
+  const [applied, appended] = store.calls
+    .filter(({ name }) => name === 'commitUpdate')
+    .map(({ input }) => input.expectedHeadSequence);
+  assert.equal(applied, head);
+  assert.equal(appended, undefined);
+});
+
+test('webmcp_apply recomposes against a newer head after a concurrent commit', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const commitUpdate = store.commitUpdate;
+  let interleaved = false;
+  store.commitUpdate = async (input) => {
+    if (!interleaved) {
+      interleaved = true;
+      commitConcurrentEditorText(store, 'Appendix.\n');
+    }
+    return commitUpdate(input);
+  };
+
+  const applied = await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+
+  const commits = store.calls.filter(({ name }) => name === 'commitUpdate');
+  assert.equal(commits.length, 2);
+  assert.equal(commits[1].input.expectedHeadSequence, commits[0].input.expectedHeadSequence + 1);
+  assert.equal(applied.sequence, store.documents.get(DOCUMENT_ID).headSequence);
+  assert.equal(readDocumentText(store), 'Budget $110K.\nAppendix.\n');
+});
+
+test('webmcp_apply gives up after three commits refused for a moved head', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  const commitUpdate = store.commitUpdate;
+  store.commitUpdate = async (input) => {
+    commitConcurrentEditorText(store, 'More.\n');
+    return commitUpdate(input);
+  };
+
+  await assert.rejects(
+    service.webmcp_apply({
+      actorId: 'user-owner',
+      documentId: DOCUMENT_ID,
+      expectedText: '$100K',
+      replacementText: '$110K',
+    }),
+    (thrown) => groundCode(thrown) === 'GROUND_STALE_STATE',
+  );
+
+  assert.equal(store.calls.filter(({ name }) => name === 'commitUpdate').length, 3);
+  assert.equal(store.calls.filter(({ name }) => name === 'loadState').length, 3);
+  assert.equal(readDocumentText(store), 'Budget $100K.\nMore.\nMore.\nMore.\n');
 });
 
 const RATE_HMAC_KEY = 'ground-test-rate-key';

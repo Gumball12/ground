@@ -15,6 +15,8 @@ const encodeBase64 = (bytes) => Buffer.from(bytes ?? []).toString('base64');
 // update, so accepting one here would let a client forge an audit row.
 const EDITOR_OPERATION_KINDS = Object.freeze(['document_edit', 'proposal_create']);
 
+const COMMIT_ATTEMPTS = 3;
+
 const readReplacements = ({ expectedText, replacementText, replacements }) => {
   if (replacements === undefined) {
     return [{ expectedText, replacementText }];
@@ -25,12 +27,19 @@ const readReplacements = ({ expectedText, replacementText, replacements }) => {
   return replacements;
 };
 
-const replaceUniqueText = ({ context, expectedText, replacementText }) => {
-  const text = context.ytext.toString();
+// A text-only request can name exactly one occurrence. A missing or repeated
+// occurrence means the caller composed against text the document no longer
+// holds in that form, so both are stale.
+const locateUniqueText = (text, expectedText) => {
   const from = text.indexOf(requireText(expectedText));
   if (from < 0 || text.indexOf(expectedText, from + 1) >= 0) {
     throw groundError('GROUND_STALE_STATE');
   }
+  return from;
+};
+
+const replaceUniqueText = ({ context, expectedText, replacementText }) => {
+  const from = locateUniqueText(context.ytext.toString(), expectedText);
   context.ytext.delete(from, expectedText.length);
   if (replacementText) {
     context.ytext.insert(from, replacementText);
@@ -64,6 +73,31 @@ export const createGroundDocumentOperations = ({ helpers }) => {
       });
     } catch {
       // The next read tries again.
+    }
+  };
+
+  // A server-composed edit is validated against the document it loaded, and its
+  // commit names that head. A commit landing in between yields
+  // GROUND_STALE_STATE, so the edit is recomposed against the new head a bounded
+  // number of times; a target that no longer matches fails on its own instead.
+  const commitComposed = async ({ compose, documentId, operationKind, participant, source }) => {
+    for (let attempt = 1; ; attempt += 1) {
+      const { context, state } = await loadContext(documentId);
+      const update = captureGroundUpdate(context, (mutable) => compose({ context: mutable, state }));
+      try {
+        return await commitCapturedUpdate({
+          documentId,
+          expectedHeadSequence: state.headSequence,
+          operationKind,
+          participant,
+          source,
+          update,
+        });
+      } catch (error) {
+        if (error?.code !== 'GROUND_STALE_STATE' || attempt >= COMMIT_ATTEMPTS) {
+          throw error;
+        }
+      }
     }
   };
 
@@ -121,18 +155,16 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         documentId,
       });
       requireCommitLimits();
-      const { context } = await loadContext(documentId);
-      const update = captureGroundUpdate(context, (mutable) => resolveProposal(mutable, {
-        actor: actorFrom(owner),
-        proposalId: requireText(proposalId),
-        resolution: requireText(resolution),
-      }));
-      return commitCapturedUpdate({
+      return commitComposed({
+        compose: ({ context }) => resolveProposal(context, {
+          actor: actorFrom(owner),
+          proposalId: requireText(proposalId),
+          resolution: requireText(resolution),
+        }),
         documentId,
         operationKind: 'proposal_resolve',
         participant: owner,
         source: 'owner_decision',
-        update,
       });
     },
 
@@ -146,29 +178,27 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         documentId,
       });
       requireCommitLimits();
-      const { context } = await loadContext(documentId);
-      const update = captureGroundUpdate(context, (mutable) => {
-        for (const edit of edits) {
-          replaceUniqueText({
-            context: mutable,
-            expectedText: edit.expectedText,
-            replacementText: edit.replacementText,
+      return commitComposed({
+        compose: ({ context }) => {
+          for (const edit of edits) {
+            replaceUniqueText({
+              context,
+              expectedText: edit.expectedText,
+              replacementText: edit.replacementText,
+            });
+          }
+          appendActivity(context.activity, {
+            action: 'document_edit',
+            actor: actorFrom(participant),
+            outcome: 'applied',
+            source: 'webmcp_apply',
+            target: 'document',
           });
-        }
-        appendActivity(mutable.activity, {
-          action: 'document_edit',
-          actor: actorFrom(participant),
-          outcome: 'applied',
-          source: 'webmcp_apply',
-          target: 'document',
-        });
-      });
-      return commitCapturedUpdate({
+        },
         documentId,
         operationKind: 'document_edit',
         participant,
         source: 'webmcp_apply',
-        update,
       });
     },
 
@@ -179,27 +209,22 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         documentId,
       });
       requireCommitLimits();
-      const { context, state } = await loadContext(documentId);
-      const from = context.ytext.toString().indexOf(requireText(expectedText));
-      if (from < 0) {
-        throw groundError('GROUND_STALE_STATE');
-      }
-      const update = captureGroundUpdate(context, (mutable) => {
-        createProposal(mutable, {
-          actor: actorFrom(participant),
-          anchor: anchorFor(mutable.ytext, from, from + expectedText.length),
-          baseRevision: String(state.headSequence),
-          expectedText,
-          replacementText: replacementText ?? '',
-          source: 'webmcp_proposal',
-        });
-      });
-      return commitCapturedUpdate({
+      return commitComposed({
+        compose: ({ context, state }) => {
+          const from = locateUniqueText(context.ytext.toString(), expectedText);
+          createProposal(context, {
+            actor: actorFrom(participant),
+            anchor: anchorFor(context.ytext, from, from + expectedText.length),
+            baseRevision: String(state.headSequence),
+            expectedText,
+            replacementText: replacementText ?? '',
+            source: 'webmcp_proposal',
+          });
+        },
         documentId,
         operationKind: 'proposal_create',
         participant,
         source: 'webmcp_proposal',
-        update,
       });
     },
 

@@ -5,6 +5,7 @@ import {
   TEST_MAX_DOCUMENT_BYTES,
   TEST_MAX_UPDATE_BYTES,
   commitRawUpdate,
+  commitRawUpdateExpectingHead,
   createAdminClient,
   createAnonymousClient,
   createDocumentAsAdmin,
@@ -112,6 +113,26 @@ test('rejects a previous role_version without allocating an update sequence', as
   assert.deepEqual(await readUpdateRows(scenario.documentId), []);
 });
 
+// A server-composed edit names the head it was composed against. Another commit
+// that moved the head since would make the composition describe a document
+// that no longer exists, so the commit is refused and nothing is allocated.
+test('rejects a commit naming a stale head without allocating a sequence', async () => {
+  const scenario = await createActiveOwnerScenario();
+  const [first, second, third] = createTextUpdates('A', 'B', 'C');
+  const { sequence } = await commitRawUpdate(scenario, first);
+  const before = await readDocumentHead(scenario.documentId);
+
+  await assert.rejects(
+    commitRawUpdateExpectingHead(scenario, second, sequence - 1),
+    /GROUND_STALE_STATE/u,
+  );
+  assert.deepEqual(await readDocumentHead(scenario.documentId), before);
+  assert.equal((await readUpdateRows(scenario.documentId)).length, 1);
+
+  const committed = await commitRawUpdateExpectingHead(scenario, third, sequence);
+  assert.equal(committed.sequence, sequence + 1);
+});
+
 test('a newly created Pending participant appends one join Activity only once', async () => {
   const owner = await createAnonymousClient();
   const visitor = await createAnonymousClient();
@@ -123,6 +144,7 @@ test('a newly created Pending participant appends one join Activity only once', 
     p_activity_update: encodeUpdate(activityUpdate),
     p_display_name: displayName,
     p_document_id: documentId,
+    p_max_document_bytes: TEST_MAX_DOCUMENT_BYTES,
     p_now: new Date().toISOString(),
     p_user_id: userId,
   });

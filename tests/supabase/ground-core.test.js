@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  TEST_MAX_DOCUMENT_BYTES,
   createAdminClient,
   createAnonymousClient,
   createDocumentAsAdmin,
@@ -13,6 +14,7 @@ const joinDocumentAsAdmin = async ({ documentId, userId, displayName, now = new 
   const { data, error } = await createAdminClient().rpc('ground_join_document', {
     p_display_name: displayName,
     p_document_id: documentId,
+    p_max_document_bytes: TEST_MAX_DOCUMENT_BYTES,
     p_now: now,
     p_user_id: userId,
   });
@@ -150,6 +152,7 @@ test('join keeps a later visitor Pending and hides the document', async () => {
   const { error: browserRpcError } = await visitor.client.rpc('ground_join_document', {
     p_display_name: 'Bypassed',
     p_document_id: documentId,
+    p_max_document_bytes: TEST_MAX_DOCUMENT_BYTES,
     p_now: new Date().toISOString(),
     p_user_id: visitor.userId,
   });

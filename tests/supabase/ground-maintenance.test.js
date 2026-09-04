@@ -3,17 +3,20 @@ import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import * as Y from 'yjs';
 import {
+  TEST_MAX_DOCUMENT_BYTES,
   TEST_MAX_UPDATE_BYTES,
   callAdminRpc,
   commitRawUpdate,
   createActiveEditorScenario,
   createAdminClient,
   createAnonymousClient,
+  createDocumentAsAdmin,
   decodeUpdate,
   encodeUpdate,
   readDocumentHead,
   readParticipantsAsAdmin,
   readUpdateRows,
+  uniqueDocumentId,
 } from './ground-supabase-fixture.js';
 
 const EXPIRED_AT = '2026-01-01T00:00:00.000Z';
@@ -36,6 +39,7 @@ const joinDocumentAsAdmin = (input) => callAdminRpc('ground_join_document', {
   p_activity_update: encodeUpdate(input.activityUpdate ?? Buffer.alloc(0)),
   p_display_name: input.displayName,
   p_document_id: input.documentId,
+  p_max_document_bytes: input.maxDocumentBytes,
   p_now: input.now,
   p_user_id: input.userId,
 });
@@ -212,6 +216,82 @@ test('compaction bounded by the captured candidate keeps a newer committed row',
   );
 });
 
+// Two hydrations can fold the same document from different heads. Once the
+// newer fold has committed, the older candidate's snapshot no longer covers the
+// rows the newer fold deleted, so accepting it would drop those rows for good.
+test('a compaction candidate at or below the stored snapshot changes neither snapshot nor log', async () => {
+  const scenario = await createActiveEditorScenario();
+  await commitTextUpdates(scenario, 'A', 'B', 'C');
+  const newerHead = (await readDocumentHead(scenario.documentId)).head_sequence;
+  await compactDocumentAsAdmin({
+    candidateSequence: newerHead,
+    documentId: scenario.documentId,
+    snapshot: Buffer.from('newer snapshot'),
+  });
+  const before = await readDocumentRecord(scenario.documentId);
+  const rowsBefore = await readUpdateRows(scenario.documentId);
+
+  for (const candidateSequence of [newerHead - 1, newerHead]) {
+    await assert.rejects(compactDocumentAsAdmin({
+      candidateSequence,
+      documentId: scenario.documentId,
+      snapshot: Buffer.from('older snapshot'),
+    }), { code: 'GROUND_STALE_STATE' });
+  }
+
+  assert.deepEqual(await readDocumentRecord(scenario.documentId), before);
+  assert.deepEqual(await readUpdateRows(scenario.documentId), rowsBefore);
+});
+
+// A join appends its Activity to the shared document, so the document it
+// produces is bounded like any other update. Anonymous identities are free to
+// create, so without this ceiling an unbounded number of first joins could grow
+// a document past the size its readers replay.
+test('a first join is refused when its Activity would cross the document byte limit', async () => {
+  const owner = await createAnonymousClient();
+  const visitor = await createAnonymousClient();
+  const documentId = uniqueDocumentId();
+  const snapshot = Buffer.from('seed snapshot');
+  const activityUpdate = Buffer.from('join activity');
+  await createDocumentAsAdmin({ actorId: owner.userId, documentId, snapshot });
+  const before = await readDocumentRecord(documentId);
+  const join = (maxDocumentBytes) => joinDocumentAsAdmin({
+    activityUpdate,
+    displayName: 'Visitor',
+    documentId,
+    maxDocumentBytes,
+    now: RECENT_AT,
+    userId: visitor.userId,
+  });
+
+  await assert.rejects(
+    join(snapshot.length + activityUpdate.length - 1),
+    { code: 'GROUND_UPDATE_TOO_LARGE' },
+  );
+  assert.deepEqual(await readDocumentRecord(documentId), before);
+  assert.equal((await readParticipantsAsAdmin(documentId)).length, 1);
+
+  const [joined] = await join(snapshot.length + activityUpdate.length);
+  assert.equal(joined.access_state, 'pending');
+  assert.equal((await readDocumentHead(documentId)).head_sequence, before.head_sequence + 1);
+});
+
+test('a join refuses a missing document byte limit', async () => {
+  const owner = await createAnonymousClient();
+  const visitor = await createAnonymousClient();
+  const documentId = uniqueDocumentId();
+  await createDocumentAsAdmin({ actorId: owner.userId, documentId });
+
+  await assert.rejects(joinDocumentAsAdmin({
+    displayName: 'Visitor',
+    documentId,
+    maxDocumentBytes: null,
+    now: RECENT_AT,
+    userId: visitor.userId,
+  }), { code: 'GROUND_INVALID_REQUEST' });
+  assert.equal((await readParticipantsAsAdmin(documentId)).length, 1);
+});
+
 test('rate limiting increments one fixed window atomically and denies only after its limit', async () => {
   const keyHash = randomBytes(32);
 
@@ -294,6 +374,7 @@ test('retention timestamp survives reads, denied requests, and a Pending join', 
   await joinDocumentAsAdmin({
     displayName: 'Visitor',
     documentId: scenario.documentId,
+    maxDocumentBytes: TEST_MAX_DOCUMENT_BYTES,
     now: RECENT_AT,
     userId: visitor.userId,
   });

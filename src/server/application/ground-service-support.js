@@ -140,10 +140,11 @@ export const createServiceHelpers = ({
   };
 
   const commitCapturedUpdate = ({
-    documentId, operationKind, participant, source, update,
+    documentId, expectedHeadSequence, operationKind, participant, source, update,
   }) => store.commitUpdate({
     actorId: participant.userId,
     documentId,
+    expectedHeadSequence,
     expectedRoleVersion: participant.roleVersion,
     now: now(),
     operationKind,

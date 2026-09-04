@@ -82,6 +82,7 @@ export const createPendingScenario = async () => {
   await callAdminRpc('ground_join_document', {
     p_display_name: 'Pending user',
     p_document_id: documentId,
+    p_max_document_bytes: TEST_MAX_DOCUMENT_BYTES,
     p_now: new Date().toISOString(),
     p_user_id: pending.userId,
   });
@@ -114,13 +115,11 @@ export const TEST_MAX_UPDATE_BYTES = 2_048;
 
 export const TEST_MAX_DOCUMENT_BYTES = 32_768;
 
-export const commitRawUpdate = (
-  scenario,
-  update,
+const commitParams = (scenario, update, {
+  maxDocumentBytes = TEST_MAX_DOCUMENT_BYTES,
   maxUpdateBytes = TEST_MAX_UPDATE_BYTES,
   now = new Date().toISOString(),
-  maxDocumentBytes = TEST_MAX_DOCUMENT_BYTES,
-) => callAdminRpc('ground_commit_update', {
+} = {}) => ({
   p_actor_id: scenario.editor.userId,
   p_document_id: scenario.documentId,
   p_expected_role_version: scenario.editorRoleVersion,
@@ -131,6 +130,26 @@ export const commitRawUpdate = (
   p_source: 'document_editor',
   p_update: encodeUpdate(update),
 });
+
+export const commitRawUpdate = (
+  scenario,
+  update,
+  maxUpdateBytes = TEST_MAX_UPDATE_BYTES,
+  now = new Date().toISOString(),
+  maxDocumentBytes = TEST_MAX_DOCUMENT_BYTES,
+) => callAdminRpc('ground_commit_update', commitParams(scenario, update, {
+  maxDocumentBytes,
+  maxUpdateBytes,
+  now,
+}));
+
+// A server-composed edit names the head it was composed against.
+export const commitRawUpdateExpectingHead = (scenario, update, expectedHeadSequence) => (
+  callAdminRpc('ground_commit_update', {
+    ...commitParams(scenario, update),
+    p_expected_head_sequence: expectedHeadSequence,
+  })
+);
 
 export const readParticipantsAsAdmin = async (documentId) => {
   const { data, error } = await createAdminClient()
