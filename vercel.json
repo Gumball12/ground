@@ -9,7 +9,8 @@
       "includeFiles": "{collabmd.governance.json,docs/demo/launch-plan.md}"
     },
     "api/app-config.js": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "includeFiles": "{collabmd.governance.json,docs/demo/launch-plan.md}"
     }
   },
   "rewrites": [

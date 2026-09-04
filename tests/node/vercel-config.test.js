@@ -29,18 +29,19 @@ test('rewrites only a 22-character document id to index.html', async () => {
 // a list. Vercel rejects the whole configuration before building when it is an
 // array, so the pattern is resolved here against the real files the Function
 // reads at runtime.
-test('keeps the Ground API a Function that can read the manifest and demo document', async () => {
+test('keeps both Ground Functions able to read the manifest and demo document', async () => {
   const config = await readJson('vercel.json');
-  const { includeFiles } = config.functions['api/ground.js'];
+  for (const functionName of ['api/ground.js', 'api/app-config.js']) {
+    const { includeFiles, maxDuration } = config.functions[functionName];
 
-  assert.equal(typeof includeFiles, 'string');
-  assert.equal(includeFiles.length <= 256, true);
-  assert.deepEqual(globSync(includeFiles).toSorted(), [
-    'collabmd.governance.json',
-    'docs/demo/launch-plan.md',
-  ]);
-  assert.equal(Number.isInteger(config.functions['api/ground.js'].maxDuration), true);
-  assert.equal(Number.isInteger(config.functions['api/app-config.js'].maxDuration), true);
+    assert.equal(typeof includeFiles, 'string', functionName);
+    assert.equal(includeFiles.length <= 256, true, functionName);
+    assert.deepEqual(globSync(includeFiles).toSorted(), [
+      'collabmd.governance.json',
+      'docs/demo/launch-plan.md',
+    ], functionName);
+    assert.equal(Number.isInteger(maxDuration), true, functionName);
+  }
 });
 
 // A rewrite is only reached when no file or Function matches, and the pattern
