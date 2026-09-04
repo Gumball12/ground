@@ -4,12 +4,35 @@ import {
   GROUND_COMPACTION_UPDATE_CANDIDATES,
   GROUND_LIMIT_CANDIDATES,
   GROUND_MAX_REQUEST_BYTES,
+  GROUND_MAX_UPDATE_BYTES_CEILING,
   GROUND_MEASUREMENT_RUNS,
+  GROUND_RATE_LIMITS,
   groundP95,
   measureGroundLimits,
 } from '../src/domain/ground-hosted-contract.js';
 
 const UNREACHABLE_MS = Number.MAX_SAFE_INTEGER;
+
+// The deployed boundary rate-limits this runner like any other caller. One
+// document per candidate keeps the whole run inside the hourly creation window,
+// and appends are spaced so no ten-second window holds more than the mutation
+// limit. Samples are repeated reads of that one document.
+const CANDIDATE_COUNT = GROUND_LIMIT_CANDIDATES.length + GROUND_COMPACTION_UPDATE_CANDIDATES.length;
+const MUTATION_PACE_MS = Math.ceil(
+  (GROUND_RATE_LIMITS.mutation.windowSeconds * 1_000) / GROUND_RATE_LIMITS.mutation.limit,
+);
+
+// A refused request means the run itself is outside the boundary, so it stops
+// instead of recording the refusal as a candidate that failed on its merits.
+class RateLimitedError extends Error {}
+
+const rethrowRateLimited = (error) => {
+  if (error instanceof RateLimitedError) {
+    throw error;
+  }
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const readTarget = () => {
   const flagIndex = process.argv.indexOf('--target');
@@ -52,6 +75,9 @@ const createCaller = ({ accessToken, target }) => {
       method: 'POST',
     });
     const text = await response.text();
+    if (response.status === 429) {
+      throw new RateLimitedError(`${body.operation} was refused by the rate limit: ${text}`);
+    }
     if (!response.ok) {
       throw new Error(`${body.operation} failed with ${response.status}: ${text}`);
     }
@@ -70,15 +96,33 @@ const createCaller = ({ accessToken, target }) => {
   };
 };
 
+// The encoded update stays at or under `bytes`, so a chunk sized to the update
+// ceiling is accepted rather than refused for a few bytes of framing. The
+// framing grows with the length prefix, so a small margin covers that too.
+const FRAMING_MARGIN_BYTES = 4;
+
 const encodeSizedUpdate = (bytes) => {
-  const document = new Y.Doc();
-  const text = document.getText('codemirror');
-  let update = Y.encodeStateAsUpdate(document);
-  while (update.byteLength < bytes) {
-    text.insert(text.length, 'x'.repeat(Math.max(1, bytes - update.byteLength)));
-    update = Y.encodeStateAsUpdate(document);
+  const encode = (length) => {
+    const document = new Y.Doc();
+    document.getText('codemirror').insert(0, 'x'.repeat(length));
+    return Y.encodeStateAsUpdate(document);
+  };
+  const framing = encode(1).byteLength - 1 + FRAMING_MARGIN_BYTES;
+  return Buffer.from(encode(Math.max(1, bytes - framing))).toString('base64');
+};
+
+// A candidate larger than one accepted update is built from several updates,
+// each within the update ceiling and spaced at the mutation pace, so document
+// sizes above the ceiling can be measured at all.
+const appendSizedDocument = async (call, documentId, bytes) => {
+  for (let appended = 0; appended < bytes; appended += GROUND_MAX_UPDATE_BYTES_CEILING) {
+    await call({
+      documentId,
+      operation: 'append_update',
+      update: encodeSizedUpdate(Math.min(GROUND_MAX_UPDATE_BYTES_CEILING, bytes - appended)),
+    });
+    await sleep(MUTATION_PACE_MS);
   }
-  return Buffer.from(update).toString('base64');
 };
 
 const timed = async (work) => {
@@ -87,28 +131,33 @@ const timed = async (work) => {
   return performance.now() - started;
 };
 
+const createCalibrationDocument = async (call) => {
+  const created = await call({ displayName: 'Calibration', operation: 'create_document' });
+  return created.documentId;
+};
+
+const timedHydrate = (call, documentId) => timed(() => call({
+  documentId,
+  operation: 'hydrate_document',
+}));
+
 const measureCandidate = async ({ bytes, call, takeLargestRequestBytes }) => {
   const hydrateDurations = [];
   const reconnectDurations = [];
   const failures = [];
-  const update = encodeSizedUpdate(bytes);
   takeLargestRequestBytes();
+  let run = 0;
 
-  for (let run = 0; run < GROUND_MEASUREMENT_RUNS; run += 1) {
-    try {
-      const created = await call({ displayName: 'Calibration', operation: 'create_document' });
-      await call({ documentId: created.documentId, operation: 'append_update', update });
-      hydrateDurations.push(await timed(() => call({
-        documentId: created.documentId,
-        operation: 'hydrate_document',
-      })));
-      reconnectDurations.push(await timed(() => call({
-        documentId: created.documentId,
-        operation: 'hydrate_document',
-      })));
-    } catch (error) {
-      failures.push({ message: error.message, run });
+  try {
+    const documentId = await createCalibrationDocument(call);
+    await appendSizedDocument(call, documentId, bytes);
+    for (; run < GROUND_MEASUREMENT_RUNS; run += 1) {
+      hydrateDurations.push(await timedHydrate(call, documentId));
+      reconnectDurations.push(await timedHydrate(call, documentId));
     }
+  } catch (error) {
+    rethrowRateLimited(error);
+    failures.push({ message: error.message, run });
   }
 
   return {
@@ -124,20 +173,20 @@ const measureReplay = async ({ call, updateCount }) => {
   const durations = [];
   const failures = [];
   const update = encodeSizedUpdate(1_024);
+  let run = 0;
 
-  for (let run = 0; run < GROUND_MEASUREMENT_RUNS; run += 1) {
-    try {
-      const created = await call({ displayName: 'Calibration', operation: 'create_document' });
-      for (let index = 0; index < updateCount; index += 1) {
-        await call({ documentId: created.documentId, operation: 'append_update', update });
-      }
-      durations.push(await timed(() => call({
-        documentId: created.documentId,
-        operation: 'hydrate_document',
-      })));
-    } catch (error) {
-      failures.push({ message: error.message, run });
+  try {
+    const documentId = await createCalibrationDocument(call);
+    for (let index = 0; index < updateCount; index += 1) {
+      await call({ documentId, operation: 'append_update', update });
+      await sleep(MUTATION_PACE_MS);
     }
+    for (; run < GROUND_MEASUREMENT_RUNS; run += 1) {
+      durations.push(await timedHydrate(call, documentId));
+    }
+  } catch (error) {
+    rethrowRateLimited(error);
+    failures.push({ message: error.message, run });
   }
 
   return { durations, failures, updateCount };
@@ -145,6 +194,12 @@ const measureReplay = async ({ call, updateCount }) => {
 
 const run = async () => {
   const target = readTarget();
+  if (CANDIDATE_COUNT > GROUND_RATE_LIMITS.create.limit) {
+    throw new Error(
+      `${CANDIDATE_COUNT} candidates need more documents than the hourly creation limit of `
+      + `${GROUND_RATE_LIMITS.create.limit} allows.`,
+    );
+  }
   const accessToken = await createSession(target);
   const { call, takeLargestRequestBytes } = createCaller({ accessToken, target });
 
@@ -179,6 +234,7 @@ const run = async () => {
     documentResults,
     maxRequestBytes,
     maxRequestBytesCeiling: GROUND_MAX_REQUEST_BYTES,
+    mutationPaceMs: MUTATION_PACE_MS,
     rawDocuments,
     rawReplays,
     replayResults,
