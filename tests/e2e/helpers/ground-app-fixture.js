@@ -10,12 +10,23 @@ import {
   installModelContextHarness,
   replaceEditorContent,
 } from './app-fixture.js';
+import {
+  attachEvidenceScreenshot,
+  attachEvidenceVideo,
+  withEvidenceVideo,
+} from './evidence-artifacts.js';
 
 export const test = base.extend({
   // Playwright requires an object destructuring pattern for the fixtures
   // argument, and this worker fixture needs none of them.
   // eslint-disable-next-line no-empty-pattern
   groundServer: [async ({}, use) => {
+    // A hosted smoke run targets a deployed URL and starts no local server.
+    const hostedBaseURL = process.env.GROUND_E2E_BASE_URL;
+    if (hostedBaseURL) {
+      await use({ baseURL: hostedBaseURL, close: async () => {} });
+      return;
+    }
     const server = await startGroundLocalServer();
     try {
       await use(server);
@@ -34,14 +45,19 @@ export const openGroundContext = async (
   browser,
   baseURL,
   displayName,
-  { withModelContext = false } = {},
+  { testInfo = null, videoName = null, withModelContext = false } = {},
 ) => {
-  const context = await browser.newContext({
+  const contextOptions = {
     baseURL,
     colorScheme: 'light',
     reducedMotion: 'reduce',
     viewport: { height: 720, width: 1280 },
-  });
+  };
+  const context = await browser.newContext(
+    videoName && testInfo
+      ? withEvidenceVideo(contextOptions, testInfo, videoName)
+      : contextOptions,
+  );
   const page = await context.newPage();
   // The harness installs through `addInitScript`, so it has to be in place
   // before the first navigation of this page.
@@ -50,7 +66,14 @@ export const openGroundContext = async (
   }
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  return { context, displayName, errors, page };
+  return { context, displayName, errors, page, video: page.video(), videoName };
+};
+
+// A video file is only readable once its context closes, so closing and
+// attaching belong together.
+export const closeGroundContext = async ({ context, testInfo, video, videoName }) => {
+  await context.close();
+  await attachEvidenceVideo({ name: videoName, testInfo, video });
 };
 
 export const submitGroundDisplayName = async (page, displayName) => {
@@ -152,6 +175,7 @@ export const readGroundActivity = async (page) => {
 };
 
 export {
+  attachEvidenceScreenshot,
   executeCachedTool as executeCachedGroundTool,
   executeRegisteredTool as executeGroundTool,
   expect,

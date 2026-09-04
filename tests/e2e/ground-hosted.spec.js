@@ -1,5 +1,7 @@
 import {
   assignGroundRole,
+  attachEvidenceScreenshot,
+  closeGroundContext,
   createGroundDocument,
   executeCachedGroundTool,
   executeGroundTool,
@@ -19,21 +21,25 @@ import {
 
 const DOCUMENT_ROUTE = /\/[A-Za-z0-9_-]{22}$/u;
 
-// Each flow drives three anonymous browser contexts against a real Supabase
-// stack, so it needs more than the shared default budget.
+// Each flow drives up to three anonymous browser contexts against a real
+// Supabase stack, so it needs more than the shared default budget.
 test.describe.configure({ timeout: 120_000 });
 
 test('creates, shares, joins Pending, and assigns both Roles', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
 
   await expect(owner.page).toHaveURL(DOCUMENT_ROUTE);
   expect(created.docId).toMatch(/^[A-Za-z0-9_-]{22}$/u);
   await expectGroundEditor(owner.page, { editable: true });
   await expect(owner.page.locator('#shareGroundDocument')).toBeVisible();
+  await attachEvidenceScreenshot({ name: 'ground-owner-document', page: owner.page, testInfo });
 
   // The share link is the canonical route only; the recovery token never leaks.
   const shareUrl = `${groundServer.baseURL}/${created.docId}`;
@@ -45,16 +51,19 @@ test('creates, shares, joins Pending, and assigns both Roles', async ({
     groundServer.baseURL,
     created.docId,
     'Writer Agent',
+    { testInfo, videoName: 'editor-flow' },
   );
   const reviewer = await joinGroundDocument(
     browser,
     groundServer.baseURL,
     created.docId,
     'Reviewer Agent',
+    { testInfo, videoName: 'reviewer-flow' },
   );
 
   await expectGroundPending(editor.page);
   await expectGroundPending(reviewer.page);
+  await attachEvidenceScreenshot({ name: 'ground-pending', page: editor.page, testInfo });
 
   // A Pending visitor may not list participants, so it sees no roster at all.
   await expect(editor.page.locator('#participantBar [data-participant-session-id]')).toHaveCount(0);
@@ -68,11 +77,19 @@ test('creates, shares, joins Pending, and assigns both Roles', async ({
   await expectGroundEditor(editor.page, { editable: true });
   await expectGroundEditor(reviewer.page, { editable: false });
 
+  // Reopened only to record the granted Roles; the helper closes it each time.
+  await owner.page.locator('#manageAccessBtn').click();
+  await expect(owner.page.locator('#manageAccessDialog')).toHaveAttribute('open', '');
+  await attachEvidenceScreenshot({ name: 'ground-manage-access', page: owner.page, testInfo });
+  await owner.page.locator('#manageAccessDialog').getByRole('button', { name: 'Close' }).click();
+
   expect(owner.errors).toEqual([]);
   expect(editor.errors).toEqual([]);
   expect(reviewer.errors).toEqual([]);
 
-  await Promise.all([owner.context.close(), editor.context.close(), reviewer.context.close()]);
+  await closeGroundContext({ ...reviewer, testInfo });
+  await closeGroundContext({ ...editor, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 test('an unknown document shows the status-only unavailable surface', async ({
@@ -97,33 +114,27 @@ test('an unknown document shows the status-only unavailable surface', async ({
 test('a second session receives a safe denial for another document', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
 
   const outsider = await openGroundContext(browser, groundServer.baseURL, 'Outsider');
   const second = await createGroundDocument(outsider.page, 'Outsider');
   expect(second.docId).not.toBe(created.docId);
 
-  const denied = await outsider.page.evaluate(async (documentId) => {
-    const stored = Object.keys(localStorage)
-      .filter((key) => key.startsWith('sb-'))
-      .map((key) => localStorage.getItem(key))[0];
-    const response = await fetch('/api/ground', {
-      body: JSON.stringify({ documentId, operation: 'hydrate_document' }),
-      headers: {
-        authorization: `Bearer ${JSON.parse(stored).access_token}`,
-        'content-type': 'application/json',
-      },
-      method: 'POST',
-    });
-    return { body: await response.text(), status: response.status };
-  }, created.docId);
+  const denied = await postGroundOperation(outsider.page, {
+    documentId: created.docId,
+    operation: 'hydrate_document',
+  });
 
   expect(denied.status).toBe(404);
   expect(denied.body).toBe('{"code":"GROUND_UNAVAILABLE"}');
 
-  await Promise.all([owner.context.close(), outsider.context.close()]);
+  await outsider.context.close();
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 const SOURCE_TEXT = '# Launch plan\n\nBudget is $100K.\n\nTarget: seed.\n';
@@ -166,15 +177,18 @@ const waitForStableHead = async (page, docId) => {
 test('human and WebMCP edits converge in every context after a reconnect', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
   const editor = await joinGroundDocument(
     browser,
     groundServer.baseURL,
     created.docId,
     'Writer Agent',
-    { withModelContext: true },
+    { testInfo, videoName: 'editor-flow', withModelContext: true },
   );
 
   await expectGroundPending(editor.page);
@@ -195,6 +209,7 @@ test('human and WebMCP edits converge in every context after a reconnect', async
 
   const converged = SOURCE_TEXT.replace('$100K', '$110K');
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(converged);
+  await attachEvidenceScreenshot({ name: 'ground-concurrent-edit', page: owner.page, testInfo });
 
   await editor.context.setOffline(true);
   const offlineEdit = `${converged}\nWritten while the Editor was offline.\n`;
@@ -214,21 +229,25 @@ test('human and WebMCP edits converge in every context after a reconnect', async
   ).toBe(offlineEdit);
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(offlineEdit);
 
-  await Promise.all([owner.context.close(), editor.context.close()]);
+  await closeGroundContext({ ...editor, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 test('two same-anchor proposals group as one Conflict that survives a reload', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
   const reviewer = await joinGroundDocument(
     browser,
     groundServer.baseURL,
     created.docId,
     'Reviewer Agent',
-    { withModelContext: true },
+    { testInfo, videoName: 'reviewer-flow', withModelContext: true },
   );
 
   // The Owner can only list a participant who has finished joining.
@@ -259,6 +278,7 @@ test('two same-anchor proposals group as one Conflict that survives a reload', a
   await expect(group).toHaveAttribute('data-unlocated', 'false');
   await expect(group.locator('.review-group-title')).toContainText('Location');
   await expect(proposalCardFor(owner.page, 'two')).toHaveCount(1);
+  await attachEvidenceScreenshot({ name: 'ground-proposal-conflicts', page: owner.page, testInfo });
 
   owner.page.once('dialog', (dialog) => dialog.accept());
   await proposalCardFor(owner.page, 'one')
@@ -283,21 +303,25 @@ test('two same-anchor proposals group as one Conflict that survives a reload', a
     SOURCE_TEXT.replace('seed', 'one'),
   );
 
-  await Promise.all([owner.context.close(), reviewer.context.close()]);
+  await closeGroundContext({ ...reviewer, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 test('every Activity row carries a full record and the exact WebMCP source', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
   const editor = await joinGroundDocument(
     browser,
     groundServer.baseURL,
     created.docId,
     'Writer Agent',
-    { withModelContext: true },
+    { testInfo, videoName: 'editor-flow', withModelContext: true },
   );
 
   // The Owner can only list a participant who has finished joining.
@@ -344,7 +368,8 @@ test('every Activity row carries a full record and the exact WebMCP source', asy
   expect(sources).toContain('Access management');
   expect(sources.every(Boolean)).toBe(true);
 
-  await Promise.all([owner.context.close(), editor.context.close()]);
+  await closeGroundContext({ ...editor, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 // The server reauthorizes every WebMCP execution, so a tool cached before the
@@ -352,15 +377,18 @@ test('every Activity row carries a full record and the exact WebMCP source', asy
 test('a revoked Editor is denied mid-flight and rebuilt from server state', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
   const editor = await joinGroundDocument(
     browser,
     groundServer.baseURL,
     created.docId,
     'Writer Agent',
-    { withModelContext: true },
+    { testInfo, videoName: 'editor-flow', withModelContext: true },
   );
 
   // The Owner can only list a participant who has finished joining.
@@ -420,20 +448,28 @@ test('a revoked Editor is denied mid-flight and rebuilt from server state', asyn
   await expect(editor.page.locator('#editorContainer')).not.toContainText('Launch plan');
   await expect(editor.page.locator('#governanceRail')).toBeHidden();
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(accepted);
+  await attachEvidenceScreenshot({ name: 'ground-revoked', page: editor.page, testInfo });
 
-  await Promise.all([owner.context.close(), editor.context.close()]);
+  await closeGroundContext({ ...editor, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 test('recovery makes a new browser the sole Owner and retires the used link', async ({
   browser,
   groundServer,
-}) => {
-  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
   const created = await createGroundDocument(owner.page, 'Owner');
   await expectGroundEditor(owner.page, { editable: true });
   expect(created.recoveryUrl).toContain('#recover=');
 
-  const claimant = await openGroundContext(browser, groundServer.baseURL, 'Recovered Owner');
+  const claimant = await openGroundContext(browser, groundServer.baseURL, 'Recovered Owner', {
+    testInfo,
+    videoName: 'recovery-flow',
+  });
   await claimant.page.goto(created.recoveryUrl);
   await submitGroundDisplayName(claimant.page, 'Recovered Owner');
 
@@ -448,6 +484,12 @@ test('recovery makes a new browser the sole Owner and retires the used link', as
   expect(new URL(claimant.page.url()).hash).toBe('');
   await expectGroundEditor(claimant.page, { editable: true });
   await expect(claimant.page.locator('#manageAccessBtn')).toBeVisible();
+  // Recorded after the dialog closes so no recovery token reaches the image.
+  await attachEvidenceScreenshot({
+    name: 'ground-recovered-owner',
+    page: claimant.page,
+    testInfo,
+  });
 
   await expect(owner.page.locator('#governanceStatusPanel')).toContainText('Access revoked');
   await expect(owner.page.locator('.cm-editor')).toHaveCount(0);
@@ -458,11 +500,9 @@ test('recovery makes a new browser the sole Owner and retires the used link', as
   await expect(replay.page.locator('#groundUnavailable')).toBeVisible();
   await expect(replay.page.locator('.cm-editor')).toHaveCount(0);
 
-  await Promise.all([
-    owner.context.close(),
-    claimant.context.close(),
-    replay.context.close(),
-  ]);
+  await replay.context.close();
+  await closeGroundContext({ ...claimant, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
 });
 
 test('an oversized update is refused and allocates no sequence', async ({

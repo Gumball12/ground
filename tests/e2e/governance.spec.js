@@ -1,5 +1,8 @@
-import { unlink } from 'node:fs/promises';
-
+import {
+  attachEvidenceScreenshot,
+  attachEvidenceVideo,
+  withEvidenceVideo,
+} from './helpers/evidence-artifacts.js';
 import {
   assignGovernedRole,
   copyGovernedParticipantSession,
@@ -31,43 +34,6 @@ const FORBIDDEN_LEGACY_IDS = [
   'toolbarPresence',
   'shareBtn',
 ];
-
-const isEvidenceRun = (testInfo) => (
-  testInfo.project.name === 'governance-evidence'
-);
-
-const attachEvidenceScreenshot = async ({ name, page, testInfo }) => {
-  if (!isEvidenceRun(testInfo)) {
-    return;
-  }
-
-  const screenshotPath = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path: screenshotPath });
-  await testInfo.attach(name, {
-    contentType: 'image/png',
-    path: screenshotPath,
-  });
-  await unlink(screenshotPath);
-};
-
-const withEvidenceVideo = (contextOptions, testInfo, name) => ({
-  ...contextOptions,
-  ...(isEvidenceRun(testInfo)
-    ? { recordVideo: { dir: testInfo.outputPath(`${name}-source`), size: contextOptions.viewport } }
-    : {}),
-});
-
-const attachEvidenceVideo = async ({ name, testInfo, video }) => {
-  if (!isEvidenceRun(testInfo) || !video) {
-    return;
-  }
-  const videoPath = await video.path();
-  await testInfo.attach(name, {
-    contentType: 'video/webm',
-    path: videoPath,
-  });
-  await unlink(videoPath);
-};
 
 const closeManageAccess = async (ownerPage) => {
   const dialog = ownerPage.locator('#manageAccessDialog');

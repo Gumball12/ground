@@ -52,6 +52,7 @@
     "test:e2e:headed": "npm run build && playwright test --headed",
     "test:e2e:evidence": "npm run build && playwright test --config=playwright.evidence.config.js",
     "test:e2e:ground": "npm run build && playwright test tests/e2e/ground-hosted.spec.js",
+    "test:e2e:ground:evidence": "npm run build && playwright test --config=playwright.ground-evidence.config.js",
     "test:e2e:governance:prebuilt": "playwright test tests/e2e/governance.spec.js",
     "test:e2e:prebuilt": "playwright test",
     "test:guardrails": "node --test tests/node/guardrails/*.test.js",

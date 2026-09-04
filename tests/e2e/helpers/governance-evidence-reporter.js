@@ -1,18 +1,21 @@
 import { stat } from 'node:fs/promises';
 
-const REQUIRED_SCREENSHOT_NAMES = [
-  'focused-manage-access',
-  'focused-owner-workspace',
-  'focused-pending',
-  'focused-proposal-conflicts',
-  'focused-revoked',
-];
-const MEANINGFUL_VIDEO_NAMES = new Set([
-  'owner-flow',
-  'reviewer-flow',
-  'takeover-flow',
-  'writer-flow',
-]);
+const GOVERNANCE_REQUIREMENTS = Object.freeze({
+  expectedTestCount: 6,
+  meaningfulVideoNames: new Set([
+    'owner-flow',
+    'reviewer-flow',
+    'takeover-flow',
+    'writer-flow',
+  ]),
+  requiredScreenshotNames: Object.freeze([
+    'focused-manage-access',
+    'focused-owner-workspace',
+    'focused-pending',
+    'focused-proposal-conflicts',
+    'focused-revoked',
+  ]),
+});
 
 const validateAttachmentFile = async (attachment, errors, title) => {
   if (!attachment.path) {
@@ -29,18 +32,22 @@ const validateAttachmentFile = async (attachment, errors, title) => {
   }
 };
 
-export async function validateGovernanceEvidenceResults(results = []) {
+// Shared by every curated Evidence run. The requirements decide how many flows
+// are expected, which videos count as meaningful, and which screenshots the run
+// must produce; the rules themselves never differ between products.
+export async function validateEvidenceResults(results = [], requirements = GOVERNANCE_REQUIREMENTS) {
+  const { expectedTestCount, meaningfulVideoNames, requiredScreenshotNames } = requirements;
   const errors = [];
   const screenshotNames = [];
   let traceCount = 0;
-  if (results.length !== 6) {
-    errors.push(`Expected 6 governance tests, received ${results.length}.`);
+  if (results.length !== expectedTestCount) {
+    errors.push(`Expected ${expectedTestCount} evidence tests, received ${results.length}.`);
   }
 
   for (const result of results) {
     const attachments = Array.isArray(result.attachments) ? result.attachments : [];
     const videos = attachments.filter((attachment) => attachment.contentType === 'video/webm');
-    if (!videos.some((attachment) => MEANINGFUL_VIDEO_NAMES.has(attachment.name))) {
+    if (!videos.some((attachment) => meaningfulVideoNames.has(attachment.name))) {
       errors.push(`${result.title} must attach at least one meaningful video.`);
     }
     for (const attachment of attachments) {
@@ -57,8 +64,8 @@ export async function validateGovernanceEvidenceResults(results = []) {
   }
 
   const actualScreenshots = screenshotNames.toSorted();
-  if (JSON.stringify(actualScreenshots) !== JSON.stringify(REQUIRED_SCREENSHOT_NAMES)) {
-    errors.push(`Expected focused PNG attachments ${REQUIRED_SCREENSHOT_NAMES.join(', ')}, received ${actualScreenshots.join(', ')}.`);
+  if (JSON.stringify(actualScreenshots) !== JSON.stringify([...requiredScreenshotNames])) {
+    errors.push(`Expected focused PNG attachments ${requiredScreenshotNames.join(', ')}, received ${actualScreenshots.join(', ')}.`);
   }
   if (traceCount !== 0) {
     errors.push(`Expected 0 trace attachments, received ${traceCount}.`);
@@ -66,9 +73,17 @@ export async function validateGovernanceEvidenceResults(results = []) {
   return errors;
 }
 
+export const validateGovernanceEvidenceResults = (results = []) => (
+  validateEvidenceResults(results, GOVERNANCE_REQUIREMENTS)
+);
+
 export default class GovernanceEvidenceReporter {
   constructor() {
     this.results = new Map();
+  }
+
+  getRequirements() {
+    return GOVERNANCE_REQUIREMENTS;
   }
 
   onTestEnd(test, result) {
@@ -80,7 +95,8 @@ export default class GovernanceEvidenceReporter {
   }
 
   async onEnd(result) {
-    const errors = await validateGovernanceEvidenceResults(Array.from(this.results.values()));
+    const requirements = this.getRequirements();
+    const errors = await validateEvidenceResults(Array.from(this.results.values()), requirements);
     if (errors.length > 0) {
       errors.forEach((error) => console.error(`[evidence] ${error}`));
       return { status: 'failed' };
@@ -88,7 +104,7 @@ export default class GovernanceEvidenceReporter {
     const videoCount = Array.from(this.results.values()).reduce((count, testResult) => (
       count + testResult.attachments.filter((attachment) => attachment.contentType === 'video/webm').length
     ), 0);
-    console.log(`[evidence] validated 6 flows, 5 PNG, ${videoCount} meaningful WebM, 0 trace`);
+    console.log(`[evidence] validated ${requirements.expectedTestCount} flows, ${requirements.requiredScreenshotNames.length} PNG, ${videoCount} meaningful WebM, 0 trace`);
     return { status: result.status };
   }
 
