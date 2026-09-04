@@ -79,6 +79,9 @@ export const closeGroundContext = async ({ context, testInfo, video, videoName }
 export const submitGroundDisplayName = async (page, displayName) => {
   const dialog = page.locator('#displayNameDialog');
   await expect(dialog).toHaveAttribute('open', '');
+  // A name is required before Ground creates or joins, so the prompt offers no
+  // way out: the local shell's Cancel control is removed rather than hidden.
+  await expect(page.locator('#displayNameCancel')).toHaveCount(0);
   await page.locator('#displayNameInput').fill(displayName);
   await page.locator('#displayNameSubmit').click();
   await expect(dialog).not.toHaveAttribute('open', '');

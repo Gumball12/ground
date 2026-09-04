@@ -41,7 +41,9 @@ const idle = async () => {
 };
 
 const createGroundWorkspaceHarness = ({
+  createError = null,
   createResult = { documentId: CREATED_ID, recoveryToken: 'created-token' },
+  initializeError = null,
   initialSync,
   recoverResult = { recoveryToken: 'rotated-token', sequence: 7 },
   snapshots = [PENDING],
@@ -49,9 +51,12 @@ const createGroundWorkspaceHarness = ({
   const pendingSnapshots = [...snapshots];
   const displayNamePrompt = deferred();
   const historyCalls = [];
+  const notifications = [];
   const sessions = [];
   const apiCalls = [];
   const governanceListeners = new Set();
+  // Mutable so a test can let the next session succeed after a failed one.
+  const settings = { initializeError };
 
   const entry = {
     currentView: null,
@@ -80,9 +85,15 @@ const createGroundWorkspaceHarness = ({
 
   const governance = {
     destroyCalls: 0,
+    failures: [],
     roles: {},
     snapshot: null,
     startCalls: [],
+    // Mirrors the client's own failure path: no snapshot, a retryable status.
+    reportFailure: (error) => {
+      governance.failures.push(error);
+      governance.publish(null, 'retryable-error');
+    },
     recover: async (input) => {
       apiCalls.push({ input, operation: 'recover_owner' });
       return recoverResult;
@@ -124,6 +135,11 @@ const createGroundWorkspaceHarness = ({
       },
       initialize: async () => {
         session.initializeCalls += 1;
+        if (settings.initializeError) {
+          // A connection fails asynchronously, like the network it comes from.
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          throw settings.initializeError;
+        }
       },
       waitForInitialSync: () => initialSync?.promise ?? Promise.resolve(),
     };
@@ -136,6 +152,9 @@ const createGroundWorkspaceHarness = ({
       request: async (operation, input) => {
         apiCalls.push({ input, operation });
         if (operation === 'create_document') {
+          if (createError) {
+            throw createError;
+          }
           return createResult;
         }
         throw Object.assign(new Error(operation), { code: 'GROUND_INVALID_REQUEST' });
@@ -148,10 +167,13 @@ const createGroundWorkspaceHarness = ({
       pushState: (_state, _title, url) => historyCalls.push({ kind: 'push', url }),
       replaceState: (_state, _title, url) => historyCalls.push({ kind: 'replace', url }),
     },
+    notify: (message) => notifications.push(message),
     origin: ORIGIN,
   });
 
-  return { apiCalls, controller, entry, governance, historyCalls, sessions };
+  return {
+    apiCalls, controller, entry, governance, historyCalls, notifications, sessions, settings,
+  };
 };
 
 it('keeps a new visitor Pending after only a display name and creates no editor', async () => {
@@ -276,6 +298,89 @@ it('replaces the recovery url before requesting recovery and shows the new link 
     recoveryToken: 'used-token',
   });
   expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${DOCUMENT_ID}#recover=rotated-token`]);
+});
+
+// The Owner may change an Active participant's Role. The editor session reads
+// its capabilities once, so a new Role version rebuilds it from authoritative
+// state the same way a rejected edit does.
+it('rebuilds the editor session when an Active Role version changes', async () => {
+  const harness = createGroundWorkspaceHarness({ snapshots: [ACTIVE] });
+  const started = harness.controller.start({ docId: DOCUMENT_ID, type: 'document' });
+  await idle();
+  harness.entry.resolveDisplayName('Editor');
+  await started;
+
+  harness.governance.publish({
+    ...ACTIVE,
+    capabilities: ['document.read', 'document.suggest'],
+    roleId: 'reviewer',
+    version: 3,
+  });
+  await idle();
+
+  expect(harness.sessions[0].destroyCalls).toBe(1);
+  expect(harness.sessions.length).toBe(2);
+  expect(harness.sessions[1].initializeCalls).toBe(1);
+  expect(harness.entry.currentView).toBe('document');
+});
+
+it('keeps the editor session when a refreshed snapshot carries the same Role version', async () => {
+  const harness = createGroundWorkspaceHarness({ snapshots: [ACTIVE] });
+  const started = harness.controller.start({ docId: DOCUMENT_ID, type: 'document' });
+  await idle();
+  harness.entry.resolveDisplayName('Editor');
+  await started;
+
+  harness.governance.publish({ ...ACTIVE, participants: [{ participantSessionId: 'x' }] });
+  await idle();
+
+  expect(harness.sessions.length).toBe(1);
+  expect(harness.sessions[0].destroyCalls).toBe(0);
+});
+
+// A session that fails to connect must not block the next snapshot from
+// building a fresh one, and the participant needs the retry the status panel
+// offers rather than a page that stays blank.
+it('discards a session that fails to initialize and reports a retryable failure', async () => {
+  const failure = Object.assign(new Error('CHANNEL_ERROR'), { code: 'GROUND_TEMPORARILY_UNAVAILABLE' });
+  const harness = createGroundWorkspaceHarness({ initializeError: failure, snapshots: [ACTIVE] });
+  const started = harness.controller.start({ docId: DOCUMENT_ID, type: 'document' });
+  await idle();
+  harness.entry.resolveDisplayName('Editor');
+  await started;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await idle();
+
+  expect(harness.sessions.length).toBe(1);
+  expect(harness.sessions[0].destroyCalls).toBe(1);
+  expect(harness.governance.failures).toEqual([failure]);
+  expect(harness.entry.currentView).toBe('unavailable');
+
+  harness.settings.initializeError = null;
+  harness.governance.publish(ACTIVE);
+  await idle();
+
+  expect(harness.sessions.length).toBe(2);
+  expect(harness.entry.currentView).toBe('document');
+});
+
+// The name prompt has already closed when creation is refused, so the landing
+// page would otherwise look as if nothing had been asked of it.
+it('reports a refused creation and opens no document', async () => {
+  const harness = createGroundWorkspaceHarness({
+    createError: Object.assign(new Error('429'), { code: 'GROUND_RATE_LIMITED' }),
+  });
+  const creating = harness.controller.createDocument();
+  await idle();
+  harness.entry.resolveDisplayName('Owner');
+  await creating;
+
+  expect(harness.notifications).toEqual([
+    'Too many documents were created recently. Try again later.',
+  ]);
+  expect(harness.historyCalls).toEqual([]);
+  expect(harness.entry.recoveryLinks).toEqual([]);
+  expect(harness.sessions).toEqual([]);
 });
 
 it('releases the governance client and session on destroy', async () => {

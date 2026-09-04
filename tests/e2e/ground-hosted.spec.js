@@ -100,6 +100,47 @@ test('creates, shares, joins Pending, and assigns both Roles', async ({
   await closeGroundContext({ ...owner, testInfo });
 });
 
+// The Owner may change an Active participant's Role from Manage Access. The
+// promoted participant's editor has to follow without a reload, since its
+// capabilities were read once when the session was built.
+test('an Active Role update reaches the participant without a reload', async ({
+  browser,
+  groundServer,
+}, testInfo) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner', {
+    testInfo,
+    videoName: 'owner-flow',
+  });
+  const created = await createGroundDocument(owner.page, 'Owner');
+  const participant = await joinGroundDocument(
+    browser,
+    groundServer.baseURL,
+    created.docId,
+    'Reviewer Agent',
+    { testInfo, videoName: 'participant-flow' },
+  );
+  await expectGroundPending(participant.page);
+
+  await assignGroundRole(owner.page, 'Reviewer Agent', 'reviewer');
+  await expectGroundEditor(participant.page, { editable: false });
+
+  await assignGroundRole(owner.page, 'Reviewer Agent', 'editor');
+  await expectGroundEditor(participant.page, { editable: true });
+
+  // The rebuilt session persists like any Editor's: the Owner sees the edit.
+  await replaceGroundEditorContent(participant.page, 'Promoted without a reload.');
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe('Promoted without a reload.');
+
+  await assignGroundRole(owner.page, 'Reviewer Agent', 'reviewer');
+  await expectGroundEditor(participant.page, { editable: false });
+
+  expect(owner.errors).toEqual([]);
+  expect(participant.errors).toEqual([]);
+
+  await closeGroundContext({ ...participant, testInfo });
+  await closeGroundContext({ ...owner, testInfo });
+});
+
 test('an unknown document shows the status-only unavailable surface', async ({
   browser,
   groundServer,

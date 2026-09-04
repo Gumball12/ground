@@ -6,17 +6,24 @@ const recoveryUrl = ({ docId, origin, recoveryToken }) => (
   `${origin}/${docId}#recover=${recoveryToken}`
 );
 
+const CREATE_FAILURE_MESSAGES = Object.freeze({
+  GROUND_RATE_LIMITED: 'Too many documents were created recently. Try again later.',
+});
+const CREATE_FAILURE_FALLBACK = 'The document could not be created. Try again.';
+
 export class GroundWorkspaceController {
-  constructor({ api, createSession, entry, governance, history, origin }) {
+  constructor({ api, createSession, entry, governance, history, notify = () => {}, origin }) {
     this.api = api;
     this.createSession = createSession;
     this.entry = entry;
     this.governance = governance;
     this.history = history;
+    this.notify = notify;
     this.origin = origin;
     this.displayName = '';
     this.docId = null;
     this.session = null;
+    this.sessionVersion = null;
     this.unsubscribe = governance.subscribe((snapshot, transition) => {
       void this.#applySnapshot(snapshot, transition);
     });
@@ -36,9 +43,16 @@ export class GroundWorkspaceController {
 
   async createDocument() {
     const displayName = await this.#requireDisplayName();
-    const { documentId, recoveryToken } = await this.api.request('create_document', {
-      displayName,
-    });
+    let created;
+    try {
+      created = await this.api.request('create_document', { displayName });
+    } catch (error) {
+      // The name prompt has already closed, so a refused creation needs its own
+      // notice or the landing page looks as if nothing had been asked of it.
+      this.notify(CREATE_FAILURE_MESSAGES[error?.code] ?? CREATE_FAILURE_FALLBACK);
+      return;
+    }
+    const { documentId, recoveryToken } = created;
     this.history.pushState({ docId: documentId }, '', `/${documentId}`);
     this.entry.showRecoveryLink(recoveryUrl({
       docId: documentId,
@@ -99,9 +113,13 @@ export class GroundWorkspaceController {
   }
 
   async #showEditor(snapshot) {
-    if (this.session) {
+    if (this.session && this.sessionVersion === snapshot.version) {
       return;
     }
+    // A new Role version carries capabilities the editor session read once at
+    // construction, so the session is rebuilt from authoritative state the same
+    // way a rejected edit rebuilds it.
+    this.#destroySession();
     const session = this.createSession({
       docId: this.docId,
       onAuthoritativeReload: () => {
@@ -110,8 +128,20 @@ export class GroundWorkspaceController {
       snapshot,
     });
     this.session = session;
-    await session.initialize(this.docId);
-    await session.waitForInitialSync();
+    this.sessionVersion = snapshot.version;
+    try {
+      await session.initialize(this.docId);
+      await session.waitForInitialSync();
+    } catch (error) {
+      // A session that never connected must not block the next snapshot from
+      // building a fresh one, and the participant needs the retry the status
+      // panel offers rather than a page that stays blank.
+      if (this.session === session) {
+        this.#destroySession();
+        this.governance.reportFailure(error);
+      }
+      return;
+    }
     if (this.session === session) {
       this.entry.showDocument();
     }
@@ -132,5 +162,6 @@ export class GroundWorkspaceController {
   #destroySession() {
     this.session?.destroy();
     this.session = null;
+    this.sessionVersion = null;
   }
 }

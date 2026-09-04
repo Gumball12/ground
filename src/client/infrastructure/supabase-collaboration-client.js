@@ -281,13 +281,25 @@ export class SupabaseCollaborationClient {
         operationKind,
         update: encodeBase64(merged),
       });
-      this.#advanceApplied(sequence);
+      this.#acknowledgeLocal(sequence);
       if (this.pendingUpdates.length === 0) {
         this.unsynchronizedLocalChanges = false;
       }
     } catch (error) {
       this.#freeze(error?.code ?? 'GROUND_TEMPORARILY_UNAVAILABLE');
     }
+  }
+
+  // The response proves only that the local update holds `sequence`. A
+  // concurrent participant may hold the one just before it, and that notice may
+  // still be in flight, so the applied head advances directly only across a
+  // contiguous run; any other acknowledgement is a notice with a gap to fetch.
+  #acknowledgeLocal(sequence) {
+    if (sequence === this.appliedSequence + 1) {
+      this.#advanceApplied(sequence);
+      return;
+    }
+    this.#handleNotice({ sequence });
   }
 
   // A rejected or unconfirmed write means local state may no longer match the
@@ -351,6 +363,10 @@ export class SupabaseCollaborationClient {
     this.unsynchronizedLocalChanges = false;
     this.pendingUpdates = [];
     this.pendingKind = null;
+    // A sequence the server already committed is not undone by tearing this
+    // client down; the rebuilt session hydrates it. Settling the waiters keeps
+    // a WebMCP tool from hanging on a client that will never observe it.
+    this.sequenceWaiters.forEach(({ resolve }) => resolve());
     this.sequenceWaiters = [];
     this.remotePresence = {};
 

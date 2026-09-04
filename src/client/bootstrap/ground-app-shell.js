@@ -20,9 +20,11 @@ import { ToastController } from '../presentation/toast-controller.js';
 const RECOVERY_PARAM = 'recover';
 
 // Ground has no vault, no tab takeover and no WebSocket transport, so the local
-// tab-lock dialog never belongs in its accessibility tree.
-const removeTabLockDialog = (elements) => {
+// tab-lock dialog never belongs in its accessibility tree. Its name prompt has
+// no "skip" either: a name is required before a document is created or joined.
+const removeGroundlessControls = (elements) => {
   elements.tabLockOverlay?.remove();
+  elements.displayNameCancel?.remove();
 };
 
 export class GroundAppShell {
@@ -41,7 +43,7 @@ export class GroundAppShell {
 
   async initialize() {
     const config = globalThis.__COLLABMD_CONFIG__ ?? {};
-    removeTabLockDialog(this.elements);
+    removeGroundlessControls(this.elements);
 
     this.toastController = new ToastController(this.elements.toastContainer);
     this.themeController = new ThemeController({ doc: this.doc });
@@ -99,6 +101,7 @@ export class GroundAppShell {
         recoveryLinkInput: this.elements.groundRecoveryLink,
         shareButton: this.elements.shareGroundDocument,
       },
+      notify: (message) => this.toastController.show(message),
       onCreateDocument: () => {
         void this.controller.createDocument();
       },
@@ -141,6 +144,7 @@ export class GroundAppShell {
       entry: this.entry,
       governance: this.governance,
       history: this.history,
+      notify: (message) => this.toastController.show(message),
       origin: this.location.origin,
     });
   }

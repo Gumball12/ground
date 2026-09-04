@@ -222,6 +222,50 @@ it('refreshes only for a personal access notice about the open document', async 
   expect(client.snapshot.state).toBe('revoked');
 });
 
+// The hydration protocol subscribes and waits for the acknowledgement before it
+// fetches. An assignment made between the join and the subscription would
+// otherwise be announced to no one, leaving the participant Pending until a
+// reload.
+it('subscribes to the personal access channel and waits for it before joining', async () => {
+  const order = [];
+  const { client, supabase } = createClient({
+    join_document: () => {
+      order.push('join');
+      return { session: PENDING_SESSION };
+    },
+  });
+  const openChannel = supabase.channel;
+  supabase.channel = (...args) => {
+    const channel = openChannel(...args);
+    const subscribe = channel.subscribe;
+    channel.subscribe = (callback) => {
+      order.push('subscribe');
+      return subscribe(callback);
+    };
+    return channel;
+  };
+
+  await client.start({ displayName: 'Visitor', docId: DOCUMENT_ID });
+
+  expect(order).toEqual(['subscribe', 'join']);
+});
+
+it('applies an access notice that lands while the join request is in flight', async () => {
+  const { client, supabase } = createClient({
+    get_session: { session: OWNER_SESSION },
+    join_document: async () => {
+      await accessNotice(supabase, { accessState: 'active', documentId: DOCUMENT_ID });
+      return { session: PENDING_SESSION };
+    },
+    list_participants: { participants: PARTICIPANTS },
+  });
+
+  const snapshot = await client.start({ displayName: 'Visitor', docId: DOCUMENT_ID });
+
+  expect(snapshot.state).toBe('active');
+  expect(client.snapshot.state).toBe('active');
+});
+
 it('routes Owner decisions through the documented operations', async () => {
   const { api, client } = createClient({
     assign_role: { sequence: 9, session: OWNER_SESSION },

@@ -31,15 +31,18 @@ export class GroundGovernanceClient {
   async start({ displayName, docId }) {
     const generation = this.#begin(docId);
     try {
+      // The personal access channel is subscribed and acknowledged before the
+      // join, as the document channel is before hydration. An assignment made
+      // between the two would otherwise be announced to no one.
+      await this.#subscribeAccess({ docId, generation });
       const { session } = await this.api.request('join_document', {
         displayName,
         documentId: docId,
       });
       const snapshot = await this.#applySession(session, { docId, generation });
-      if (snapshot) {
-        this.#subscribeAccess({ docId, generation });
-      }
-      return snapshot;
+      // A notice handled during the join may already have published a newer
+      // snapshot, which is then the one this start reports.
+      return snapshot ?? (this.#isCurrent({ docId, generation }) ? this.snapshot : null);
     } catch (error) {
       this.#failed(error, { docId, generation });
       throw error;
@@ -89,6 +92,13 @@ export class GroundGovernanceClient {
       documentId: docId,
       recoveryToken,
     });
+  }
+
+  // The workspace reports a failure that happens after a snapshot was published,
+  // such as an editor session that could not connect, so it surfaces through the
+  // same retryable status this client's own requests produce.
+  reportFailure(error) {
+    this.#failed(error, { docId: this.docId, generation: this.generation });
   }
 
   destroy() {
@@ -148,15 +158,30 @@ export class GroundGovernanceClient {
   }
 
   #subscribeAccess({ docId, generation }) {
-    this.channel = this.supabase
-      .channel(`ground-access:${this.userId}`, { config: { private: true } })
-      .on('broadcast', { event: 'access' }, ({ payload }) => {
-        if (payload?.documentId !== docId || !this.#isCurrent({ docId, generation })) {
-          return undefined;
-        }
-        return this.refresh().catch(() => {});
-      })
-      .subscribe();
+    return new Promise((resolve, reject) => {
+      let joined = false;
+      this.channel = this.supabase
+        .channel(`ground-access:${this.userId}`, { config: { private: true } })
+        .on('broadcast', { event: 'access' }, ({ payload }) => {
+          if (payload?.documentId !== docId || !this.#isCurrent({ docId, generation })) {
+            return undefined;
+          }
+          return this.refresh().catch(() => {});
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            if (!joined) {
+              joined = true;
+              resolve();
+            }
+            return;
+          }
+          if (!joined
+            && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
+            reject(Object.assign(new Error(status), { code: 'GROUND_TEMPORARILY_UNAVAILABLE' }));
+          }
+        });
+    });
   }
 
   #begin(docId) {

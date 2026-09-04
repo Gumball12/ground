@@ -450,6 +450,57 @@ it('resolves waitForSequence once that sequence is applied', async () => {
   expect(client.getText()).toBe('One Two');
 });
 
+// The append response proves only that the local update holds that sequence. A
+// concurrent participant may hold the one just before it, and that notice may
+// still be in flight, so the applied head must not skip over it.
+it('fetches a concurrent sequence the local append was ordered after', async () => {
+  const harness = createCollaborationHarness();
+  const first = encodeText('One');
+  harness.setHydrate({ headSequence: 1, snapshot: first, snapshotSequence: 1, updates: [] });
+  const { bindings, client } = await startClient(harness);
+  const remote = appendText([first], ' Two');
+  // Another participant's update took sequence 2 just before ours took 3.
+  harness.setAppendResult({ sequence: 3 });
+  const gapFetch = harness.deferHydrate();
+
+  bindings.ytext.insert(bindings.ytext.length, ' Three');
+  await client.waitForPendingUpdates();
+  gapFetch.resolve({
+    headSequence: 3,
+    snapshot: first,
+    snapshotSequence: 1,
+    updates: [
+      { sequence: 2, update: remote },
+      { sequence: 3, update: harness.appended[0].update },
+    ],
+  });
+  await client.syncChain;
+  // The delayed notice for the concurrent sequence adds nothing new.
+  await harness.channel.emitUpdate({ sequence: 2 });
+
+  expect(client.getText()).toContain(' Two');
+  expect(client.getText()).toContain(' Three');
+  expect(client.appliedSequence).toBe(3);
+});
+
+// A committed sequence the server already holds is not undone by tearing this
+// client down; the rebuilt session hydrates it. A tool waiting on it must not
+// hang forever.
+it('settles a pending sequence wait when the client is destroyed', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const { client } = await startClient(harness);
+  let settled = false;
+  void client.waitForSequence(5).then(() => {
+    settled = true;
+  });
+
+  client.destroy();
+  await flush();
+
+  expect(settled).toBe(true);
+});
+
 it('stops persisting and clears state after destroy', async () => {
   const harness = createCollaborationHarness();
   harness.setHydrate(emptyHydrate);

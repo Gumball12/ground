@@ -34,6 +34,7 @@ const createEntry = ({ clipboard } = {}) => {
   document.body.innerHTML = GROUND_MARKUP;
   const copied = [];
   const created = [];
+  const notifications = [];
   const controller = new GroundEntryController({
     clipboard: clipboard ?? {
       writeText: async (value) => {
@@ -53,10 +54,11 @@ const createEntry = ({ clipboard } = {}) => {
       recoveryLinkInput: document.getElementById('groundRecoveryLink'),
       shareButton: document.getElementById('shareGroundDocument'),
     },
+    notify: (message) => notifications.push(message),
     onCreateDocument: () => created.push(true),
     origin: ORIGIN,
   });
-  return { controller, copied, created };
+  return { controller, copied, created, notifications };
 };
 
 it('shows only the landing surface and reports a create request', () => {
@@ -94,12 +96,107 @@ it('shows a status-only unavailable surface', () => {
   expect(document.getElementById('shareGroundDocument').hidden).toBe(true);
 });
 
-it('copies the canonical share link without a query or fragment', async () => {
-  const { controller, copied } = createEntry();
+it('copies the canonical share link without a query or fragment and confirms it', async () => {
+  const { controller, copied, notifications } = createEntry();
 
   await controller.copyShareLink(DOCUMENT_ID);
 
   expect(copied).toEqual([`${ORIGIN}/${DOCUMENT_ID}`]);
+  expect(notifications).toEqual(['Share link copied.']);
+});
+
+// The share link is the address the page already shows, so a failed copy points
+// there instead of at the readonly field inside the closed recovery dialog.
+it('points at the address bar when the share link cannot reach the clipboard', async () => {
+  const { controller, notifications } = createEntry({
+    clipboard: {
+      writeText: async () => {
+        throw new Error('denied');
+      },
+    },
+  });
+
+  await controller.copyShareLink(DOCUMENT_ID);
+
+  expect(notifications).toEqual(['Copying failed. Copy the share link from the address bar.']);
+  const recoveryInput = document.getElementById('groundRecoveryLink');
+  expect(recoveryInput.value).toBe('');
+  expect(document.activeElement).not.toBe(recoveryInput);
+});
+
+// Ground always asks for a name before it creates or joins, so dismissing the
+// prompt has nothing to fall back to: Escape is refused, and a close the
+// browser forces anyway reopens the prompt with the request still pending.
+it('refuses to dismiss the display name prompt without a name', async () => {
+  const { controller } = createEntry();
+  const dialog = document.getElementById('displayNameDialog');
+  let resolved = null;
+  void controller.requestDisplayName().then((name) => {
+    resolved = name;
+  });
+
+  const cancel = new Event('cancel', { cancelable: true });
+  dialog.dispatchEvent(cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+
+  dialog.close();
+  await new Promise((settle) => setTimeout(settle, 0));
+  expect(dialog.open).toBe(true);
+  expect(resolved).toBe(null);
+
+  // The reopened prompt still answers the original request.
+  document.getElementById('displayNameInput').value = 'Owner';
+  document.getElementById('displayNameForm').dispatchEvent(
+    new Event('submit', { bubbles: true, cancelable: true }),
+  );
+  await new Promise((settle) => setTimeout(settle, 0));
+  expect(resolved).toBe('Owner');
+  expect(dialog.open).toBe(false);
+});
+
+it('keeps the prompt open for a name that is only whitespace', async () => {
+  const { controller } = createEntry();
+  const dialog = document.getElementById('displayNameDialog');
+  const form = document.getElementById('displayNameForm');
+  const input = document.getElementById('displayNameInput');
+  const requested = controller.requestDisplayName();
+
+  input.value = '   ';
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  expect(dialog.open).toBe(true);
+  expect(input.validationMessage).not.toBe('');
+
+  input.value = 'Owner';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+  expect(await requested).toBe('Owner');
+  expect(dialog.open).toBe(false);
+});
+
+// Two callers waiting on the same prompt share it, so one submission answers
+// both and no second submit listener survives to resolve a later request twice.
+it('shares one open prompt between concurrent display name requests', async () => {
+  const { controller } = createEntry();
+
+  const first = controller.requestDisplayName();
+  const second = controller.requestDisplayName();
+
+  expect(second).toBe(first);
+  document.getElementById('displayNameInput').value = 'Owner';
+  document.getElementById('displayNameForm').dispatchEvent(
+    new Event('submit', { bubbles: true, cancelable: true }),
+  );
+  expect(await first).toBe('Owner');
+
+  // A later request opens a fresh prompt rather than reusing the settled one.
+  const third = controller.requestDisplayName();
+  expect(third).not.toBe(first);
+  document.getElementById('displayNameInput').value = 'Again';
+  document.getElementById('displayNameForm').dispatchEvent(
+    new Event('submit', { bubbles: true, cancelable: true }),
+  );
+  expect(await third).toBe('Again');
 });
 
 it('resolves the display name from the existing dialog form', async () => {
