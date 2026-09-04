@@ -186,7 +186,8 @@ test('a second session receives a safe denial for another document', async ({
   await closeGroundContext({ ...owner, testInfo });
 });
 
-const SOURCE_TEXT = '# Launch plan\n\nBudget is $100K.\n\nTarget: seed.\n';
+const SOURCE_TEXT = '# Launch plan\n\nBudget is $100K.\n\nTarget: seed.\n\nStatus: Draft.\n';
+const SECOND_OWNER_EDIT = SOURCE_TEXT.replace('Status: Draft.', 'Status: Ready.');
 
 const proposalCardFor = (page, proposedText) => page
   .locator('#governanceReviewPanel [data-proposal-id]')
@@ -247,6 +248,8 @@ test('human and WebMCP edits converge in every context after a reconnect', async
 
   await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
   await expect.poll(async () => getGroundEditorText(editor.page)).toBe(SOURCE_TEXT);
+  await replaceGroundEditorContent(owner.page, SECOND_OWNER_EDIT);
+  await expect.poll(async () => getGroundEditorText(editor.page)).toBe(SECOND_OWNER_EDIT);
 
   const read = await executeGroundTool(editor.page, 'collabmd_read_active_document');
   const applied = await executeGroundTool(editor.page, 'collabmd_apply_text_edits', {
@@ -256,7 +259,7 @@ test('human and WebMCP edits converge in every context after a reconnect', async
   });
   expect(applied.replacementCount).toBe(1);
 
-  const converged = SOURCE_TEXT.replace('$100K', '$110K');
+  const converged = SECOND_OWNER_EDIT.replace('$100K', '$110K');
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(converged);
   await attachEvidenceScreenshot({ name: 'ground-concurrent-edit', page: owner.page, testInfo });
 
@@ -307,6 +310,8 @@ test('two same-anchor proposals group as one Conflict that survives a reload', a
 
   await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
   await expect.poll(async () => getGroundEditorText(reviewer.page)).toBe(SOURCE_TEXT);
+  await replaceGroundEditorContent(owner.page, SECOND_OWNER_EDIT);
+  await expect.poll(async () => getGroundEditorText(reviewer.page)).toBe(SECOND_OWNER_EDIT);
 
   const read = await executeGroundTool(reviewer.page, 'collabmd_read_active_document');
   for (const newText of ['one', 'two']) {
@@ -334,7 +339,7 @@ test('two same-anchor proposals group as one Conflict that survives a reload', a
     .locator('[data-proposal-resolution="apply_proposed"]')
     .click();
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(
-    SOURCE_TEXT.replace('seed', 'one'),
+    SECOND_OWNER_EDIT.replace('seed', 'one'),
   );
 
   // Accepting one proposal moves the text under the other, which the product
@@ -349,7 +354,7 @@ test('two same-anchor proposals group as one Conflict that survives a reload', a
   await expect(proposalCardFor(owner.page, 'one')).toHaveCount(0);
   await expect(proposalCardFor(owner.page, 'two')).toContainText('Conflict');
   await expect.poll(async () => getGroundEditorText(owner.page)).toBe(
-    SOURCE_TEXT.replace('seed', 'one'),
+    SECOND_OWNER_EDIT.replace('seed', 'one'),
   );
 
   await closeGroundContext({ ...reviewer, testInfo });

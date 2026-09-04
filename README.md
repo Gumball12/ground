@@ -273,6 +273,10 @@ Participant awareness and cursors, exact-text revision guard, and WebMCP
 integration. The added layer governs the supported browser and WebMCP flows; it
 is not a new CRDT editor or a general authorization system.
 
+Ground keeps participant identity and online state in private Realtime Presence.
+Cursor and viewport Awareness uses a separate throttled private Broadcast topic,
+so normal editing cannot exhaust Presence limits or interrupt document notices.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE). CollabMD attribution and its original license

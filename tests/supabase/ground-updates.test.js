@@ -6,6 +6,7 @@ import {
   TEST_MAX_UPDATE_BYTES,
   commitRawUpdate,
   commitRawUpdateExpectingHead,
+  createActiveEditorScenario,
   createAdminClient,
   createAnonymousClient,
   createDocumentAsAdmin,
@@ -234,6 +235,46 @@ test('Pending and unrelated clients receive CHANNEL_ERROR for document Realtime'
   const unrelatedChannel = unrelated.client.channel(`ground-document:${scenario.documentId}`, {
     config: { private: true },
   });
+
+  assert.deepEqual(await Promise.all([
+    waitForDeniedSubscription(pendingChannel),
+    waitForDeniedSubscription(unrelatedChannel),
+  ]), ['CHANNEL_ERROR', 'CHANNEL_ERROR']);
+});
+
+test('Active participants exchange private Awareness broadcasts', async (t) => {
+  const scenario = await createActiveEditorScenario();
+  const { owner, editor } = scenario;
+  t.after(() => disconnect(owner.client, editor.client));
+  await Promise.all([
+    owner.client.realtime.setAuth(owner.session.access_token),
+    editor.client.realtime.setAuth(editor.session.access_token),
+  ]);
+  const topic = `ground-awareness:${scenario.documentId}`;
+  const ownerChannel = owner.client.channel(topic, { config: { private: true } });
+  const editorChannel = editor.client.channel(topic, { config: { private: true } });
+  const received = receiveNextBroadcast(ownerChannel, 'awareness');
+
+  await Promise.all([subscribe(ownerChannel), subscribe(editorChannel)]);
+  assert.equal(await editorChannel.send({
+    event: 'awareness',
+    payload: { update: 'AQ==' },
+    type: 'broadcast',
+  }), 'ok');
+  assert.deepEqual((await received).payload, { update: 'AQ==' });
+});
+
+test('Pending and unrelated clients cannot join document Awareness', async (t) => {
+  const scenario = await createPendingScenario();
+  const unrelated = await createAnonymousClient();
+  t.after(() => disconnect(scenario.pending.client, unrelated.client));
+  await Promise.all([
+    scenario.pending.client.realtime.setAuth(scenario.pending.session.access_token),
+    unrelated.client.realtime.setAuth(unrelated.session.access_token),
+  ]);
+  const topic = `ground-awareness:${scenario.documentId}`;
+  const pendingChannel = scenario.pending.client.channel(topic, { config: { private: true } });
+  const unrelatedChannel = unrelated.client.channel(topic, { config: { private: true } });
 
   assert.deepEqual(await Promise.all([
     waitForDeniedSubscription(pendingChannel),

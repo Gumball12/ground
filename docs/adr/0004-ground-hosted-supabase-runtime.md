@@ -4,9 +4,10 @@ Ground stores every durable document fact in one hosted Supabase project:
 Postgres for documents, participants, ordered Yjs updates and snapshots;
 anonymous Auth for the invisible session that identifies a participant;
 Realtime for private per-document sequence notices and per-participant access
-notices; and Cron for the scheduled retention sweep. Vercel runs the Vite build
-and two stateless Functions and keeps no document state, no room registry, and
-no session memory between requests.
+notices, participant Presence, and ephemeral cursor/viewport Broadcasts; and
+Cron for the scheduled retention sweep. Vercel runs the Vite build and two
+stateless Functions and keeps no document state, no room registry, and no
+session memory between requests.
 
 This is the decision that lets a Role outlive a restart. CollabMD's local
 product keeps Roles in the memory of one long-lived Node process, so a restart
@@ -20,6 +21,12 @@ hydration rather than trusting Broadcast replay, because Broadcast is not
 retained. Compaction folds a prefix of the log into a snapshot. Ground therefore
 needs no stateful websocket server, which is what makes a stateless function
 runtime viable.
+
+**Presence is not cursor transport.** The private `ground-document:<docId>`
+topic uses Presence only for low-frequency participant identity and online
+state. Cursor and viewport Awareness is coalesced and sent on the separate
+private `ground-awareness:<docId>` Broadcast topic. Awareness remains ephemeral,
+never advances the document sequence, and never participates in authorization.
 
 **Authorization lives in the database and the server.** Row-level security
 scopes every table to the participant's own document, and the mutating functions

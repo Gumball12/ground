@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import { expect, it } from 'vitest';
 
 import { SupabaseCollaborationClient } from '../../src/client/infrastructure/supabase-collaboration-client.js';
@@ -64,6 +65,7 @@ const createCollaborationHarness = () => {
   const hydrateQueue = [];
   let hydrateResponse = { headSequence: 0, snapshot: '', snapshotSequence: 0, updates: [] };
   let appendResult = null;
+  let closeRemovedChannelsSynchronously = false;
 
   const api = {
     request: async (operation, input) => {
@@ -89,6 +91,8 @@ const createCollaborationHarness = () => {
         handlers: new Map(),
         options,
         presence: {},
+        sent: [],
+        subscribed: false,
         subscribeCallback: null,
         topic,
         tracked: [],
@@ -100,12 +104,21 @@ const createCollaborationHarness = () => {
           channel.subscribeCallback = callback;
           return channel;
         },
+        send: async (message) => {
+          channel.sent.push(message);
+          return 'ok';
+        },
         track: async (state) => {
           channel.tracked.push(state);
         },
         untrack: async () => {},
         presenceState: () => channel.presence,
-        emitSubscribed: () => channel.subscribeCallback?.('SUBSCRIBED'),
+        emitSubscribed: () => {
+          channel.subscribed = true;
+          return channel.subscribeCallback?.('SUBSCRIBED');
+        },
+        emitStatus: (status) => channel.subscribeCallback?.(status),
+        emitBroadcast: (event, payload) => channel.handlers.get(`broadcast:${event}`)?.({ payload }),
         emitUpdate: (payload) => channel.handlers.get('broadcast:update')({ payload }),
         emitPresenceSync: (presence) => {
           channel.presence = presence;
@@ -115,7 +128,11 @@ const createCollaborationHarness = () => {
       channels.push(channel);
       return channel;
     },
-    removeChannel: () => {},
+    removeChannel: (channel) => {
+      if (closeRemovedChannelsSynchronously) {
+        channel.emitStatus('CLOSED');
+      }
+    },
   };
 
   return {
@@ -124,7 +141,11 @@ const createCollaborationHarness = () => {
     calls,
     channels,
     get channel() {
-      return channels.at(-1);
+      return channels.filter(({ topic }) => topic === `ground-document:${DOCUMENT_ID}`).at(-1)
+        ?? channels.at(-1);
+    },
+    get awarenessChannel() {
+      return channels.filter(({ topic }) => topic === `ground-awareness:${DOCUMENT_ID}`).at(-1);
     },
     createClient: (overrides = {}) => new SupabaseCollaborationClient({
       api,
@@ -141,6 +162,9 @@ const createCollaborationHarness = () => {
     setAppendResult: (result) => {
       appendResult = result;
     },
+    setCloseRemovedChannelsSynchronously: () => {
+      closeRemovedChannelsSynchronously = true;
+    },
     setHydrate: (response) => {
       hydrateResponse = response;
     },
@@ -152,8 +176,12 @@ const emptyHydrate = { headSequence: 0, snapshot: '', snapshotSequence: 0, updat
 const startClient = async (harness, overrides) => {
   const client = harness.createClient(overrides);
   const initializing = client.initialize(DOCUMENT_ID);
-  await flush();
-  harness.channel.emitSubscribed();
+  for (let round = 0; round < 4; round += 1) {
+    await flush();
+    harness.channels.filter(({ subscribed }) => !subscribed).forEach((channel) => {
+      channel.emitSubscribed();
+    });
+  }
   return { bindings: await initializing, client };
 };
 
@@ -173,6 +201,7 @@ it('subscribes before hydrating and buffers a notice that arrives during the fet
   expect(harness.calls).toEqual([]);
 
   harness.channel.emitSubscribed();
+  harness.awarenessChannel.emitSubscribed();
   await flush();
   expect(harness.calls).toEqual(['hydrate_document']);
 
@@ -323,12 +352,69 @@ it('repeats subscribe, hydrate and the gap check on reconnect', async () => {
 
   const reconnected = client.reconnect(ACTIVE_SNAPSHOT);
   await flush();
-  expect(harness.channels.length).toBe(channelsBeforeReconnect + 1);
+  expect(harness.channels.length).toBe(channelsBeforeReconnect + 2);
   harness.channel.emitSubscribed();
+  harness.awarenessChannel.emitSubscribed();
   await reconnected;
 
   expect(harness.calls.length).toBeGreaterThan(callsBeforeReconnect);
   expect(client.initialSyncComplete).toBe(true);
+});
+
+it('requests one authoritative reload when a joined document channel fails', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const reloads = [];
+  const { client } = await startClient(harness, {
+    onAuthoritativeReload: (detail) => reloads.push(detail),
+  });
+
+  harness.channel.emitStatus('CHANNEL_ERROR');
+  harness.channel.emitStatus('CLOSED');
+  await flush();
+
+  expect(client.frozen).toBe(true);
+  expect(reloads).toEqual([{
+    reason: 'GROUND_TEMPORARILY_UNAVAILABLE',
+    status: 'frozen',
+  }]);
+});
+
+it('ignores close events from channels replaced during reconnect', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const reloads = [];
+  const { client } = await startClient(harness, {
+    onAuthoritativeReload: (detail) => reloads.push(detail),
+  });
+  const previousDocumentChannel = harness.channel;
+  const previousAwarenessChannel = harness.awarenessChannel;
+
+  const reconnecting = client.reconnect(ACTIVE_SNAPSHOT);
+  await flush();
+  previousDocumentChannel.emitStatus('CLOSED');
+  previousAwarenessChannel.emitStatus('CLOSED');
+  harness.channel.emitSubscribed();
+  harness.awarenessChannel.emitSubscribed();
+  await reconnecting;
+
+  expect(client.frozen).toBe(false);
+  expect(reloads).toEqual([]);
+});
+
+it('does not freeze when an intentional disconnect closes channels synchronously', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const reloads = [];
+  const { client } = await startClient(harness, {
+    onAuthoritativeReload: (detail) => reloads.push(detail),
+  });
+  harness.setCloseRemovedChannelsSynchronously();
+
+  client.pauseForDisconnect();
+
+  expect(client.frozen).toBe(false);
+  expect(reloads).toEqual([]);
 });
 
 // Supabase resends the join push after a dropped socket, so the same subscribe
@@ -401,22 +487,160 @@ it('renders one online participant for two Presence entries sharing a user id', 
     .toEqual(['other-user', USER_ID].toSorted());
 });
 
-it('publishes the local name and viewport through Presence', async () => {
+it('keeps cursor and viewport changes off Presence', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const { bindings, client } = await startClient(harness, {
+    localUser: { color: '#123456', name: 'Editor' },
+  });
+  const trackCount = harness.channel.tracked.length;
+
+  for (let index = 0; index < 10; index += 1) {
+    bindings.awareness.setLocalStateField('cursor', { anchor: index, head: index });
+    client.setLocalViewport({ topLine: index + 1, viewportRatio: 0.5 });
+  }
+  await flush();
+
+  expect(harness.channel.tracked).toHaveLength(trackCount);
+});
+
+it('coalesces local Awareness changes onto a private Broadcast channel', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const { bindings, client } = await startClient(harness, {
+    localUser: { color: '#123456', name: 'Editor' },
+  });
+
+  expect(harness.awarenessChannel.options.config.private).toBe(true);
+  for (let index = 0; index < 10; index += 1) {
+    bindings.awareness.setLocalStateField('cursor', { anchor: index, head: index });
+    client.setLocalViewport({ topLine: index + 1, viewportRatio: 0.5 });
+  }
+
+  await new Promise((resolve) => window.setTimeout(resolve, 300));
+
+  expect(harness.awarenessChannel.sent).toHaveLength(1);
+  expect(harness.awarenessChannel.sent[0]).toMatchObject({
+    event: 'awareness',
+    type: 'broadcast',
+  });
+  expect(typeof harness.awarenessChannel.sent[0].payload.update).toBe('string');
+});
+
+it('applies a remote Awareness Broadcast without echoing it', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const { client } = await startClient(harness);
+  const remoteDoc = new Y.Doc();
+  const remoteAwareness = new Awareness(remoteDoc);
+  remoteAwareness.setLocalState({
+    user: { color: '#abcdef', name: 'Reviewer' },
+    viewport: { topLine: 7, viewportRatio: 0.5 },
+  });
+  const sentBefore = harness.awarenessChannel.sent.length;
+
+  harness.awarenessChannel.emitBroadcast('awareness', {
+    update: toBase64(encodeAwarenessUpdate(remoteAwareness, [remoteDoc.clientID])),
+  });
+  await flush();
+
+  expect(client.awareness.getStates().get(remoteDoc.clientID)).toEqual(
+    remoteAwareness.getLocalState(),
+  );
+  expect(harness.awarenessChannel.sent).toHaveLength(sentBefore);
+  remoteAwareness.destroy();
+  remoteDoc.destroy();
+});
+
+it('removes Awareness for clients no longer present', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const { client } = await startClient(harness);
+  const remoteDoc = new Y.Doc();
+  const remoteAwareness = new Awareness(remoteDoc);
+  remoteAwareness.setLocalState({ user: { color: '#abcdef', name: 'Reviewer' } });
+  harness.awarenessChannel.emitBroadcast('awareness', {
+    update: toBase64(encodeAwarenessUpdate(remoteAwareness, [remoteDoc.clientID])),
+  });
+  await harness.channel.emitPresenceSync({
+    'other-user': [{
+      clientId: remoteDoc.clientID,
+      user: { color: '#abcdef', name: 'Reviewer' },
+      userId: 'other-user',
+    }],
+  });
+  expect(client.awareness.getStates().has(remoteDoc.clientID)).toBe(true);
+
+  await harness.channel.emitPresenceSync({});
+
+  expect(client.awareness.getStates().has(remoteDoc.clientID)).toBe(false);
+  remoteAwareness.destroy();
+  remoteDoc.destroy();
+});
+
+it('combines Presence identity with Broadcast cursor and viewport state', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  const awarenessChanges = [];
+  const { client } = await startClient(harness, {
+    onAwarenessChange: (users) => awarenessChanges.push(users),
+    resolveAwarenessCursor: (cursor) => (cursor ? { cursorHead: 9 } : null),
+  });
+  const remoteDoc = new Y.Doc();
+  const remoteAwareness = new Awareness(remoteDoc);
+  remoteAwareness.setLocalState({
+    cursor: { anchor: 'a', head: 'b' },
+    viewport: { topLine: 7, viewportRatio: 0.5 },
+  });
+  await harness.channel.emitPresenceSync({
+    'other-user': [{
+      clientId: remoteDoc.clientID,
+      user: { color: '#abcdef', name: 'Reviewer' },
+      userId: 'other-user',
+    }],
+  });
+  const changeCountBeforeBroadcast = awarenessChanges.length;
+  harness.awarenessChannel.emitBroadcast('awareness', {
+    update: toBase64(encodeAwarenessUpdate(remoteAwareness, [remoteDoc.clientID])),
+  });
+  await flush();
+
+  expect(client.collectUsers((cursor) => (
+    cursor ? { cursorHead: 9 } : null
+  ))).toEqual([expect.objectContaining({
+    cursorHead: 9,
+    hasCursor: true,
+    name: 'Reviewer',
+    viewport: { topLine: 7, viewportRatio: 0.5 },
+  })]);
+  expect(awarenessChanges).toHaveLength(changeCountBeforeBroadcast + 1);
+  expect(awarenessChanges.at(-1)).toEqual([expect.objectContaining({
+    cursorHead: 9,
+    hasCursor: true,
+    name: 'Reviewer',
+  })]);
+  remoteAwareness.destroy();
+  remoteDoc.destroy();
+});
+
+it('publishes a renamed participant through Presence without cursor or viewport', async () => {
   const harness = createCollaborationHarness();
   harness.setHydrate(emptyHydrate);
   const { client } = await startClient(harness, {
     localUser: { color: '#123456', name: 'Editor' },
   });
+  const trackCount = harness.channel.tracked.length;
 
-  expect(client.setLocalViewport({ topLine: 12, viewportRatio: 0.5 }))
-    .toEqual({ topLine: 12, viewportRatio: 0.5 });
+  client.setLocalViewport({ topLine: 12, viewportRatio: 0.5 });
   expect(client.setUserName('Renamed Editor')).toBe('Renamed Editor');
   await flush();
 
+  expect(harness.channel.tracked).toHaveLength(trackCount + 1);
   const latest = harness.channel.tracked.at(-1);
   expect(latest.userId).toBe(USER_ID);
   expect(latest.user.name).toBe('Renamed Editor');
-  expect(latest.viewport).toEqual({ topLine: 12, viewportRatio: 0.5 });
+  expect(latest).not.toHaveProperty('cursor');
+  expect(latest).not.toHaveProperty('viewport');
 });
 
 it('resolves waitForSequence once that sequence is applied', async () => {
