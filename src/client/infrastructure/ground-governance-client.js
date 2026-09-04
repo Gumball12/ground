@@ -81,8 +81,14 @@ export class GroundGovernanceClient {
     return this.#request('resolve_proposal', { proposalId, resolution });
   }
 
-  async recover({ displayName, recoveryToken }) {
-    return this.#request('recover_owner', { displayName, recoveryToken });
+  // Recovery precedes `start`, so the document id comes from the caller. Going
+  // through `#request` here would send the `null` this client still holds.
+  async recover({ displayName, docId, recoveryToken }) {
+    return this.api.request('recover_owner', {
+      displayName,
+      documentId: docId,
+      recoveryToken,
+    });
   }
 
   destroy() {

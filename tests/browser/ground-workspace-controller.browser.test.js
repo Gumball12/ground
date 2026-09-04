@@ -269,6 +269,12 @@ it('replaces the recovery url before requesting recovery and shows the new link 
   );
   expect(harness.historyCalls[replaceIndex]).toEqual({ kind: 'replace', url: `/${DOCUMENT_ID}` });
   expect(recoverIndex).toBeGreaterThanOrEqual(0);
+  // The governance client has no session yet, so the controller supplies the id.
+  expect(harness.apiCalls[recoverIndex].input).toEqual({
+    displayName: 'Owner',
+    docId: DOCUMENT_ID,
+    recoveryToken: 'used-token',
+  });
   expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${DOCUMENT_ID}#recover=rotated-token`]);
 });
 

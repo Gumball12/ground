@@ -1,13 +1,20 @@
 import {
   assignGroundRole,
   createGroundDocument,
+  executeCachedGroundTool,
+  executeGroundTool,
   expect,
   expectGroundEditor,
   expectGroundPending,
+  getGroundEditorText,
   joinGroundDocument,
   openGroundContext,
+  postGroundOperation,
+  readGroundActivity,
+  replaceGroundEditorContent,
   submitGroundDisplayName,
   test,
+  waitForGroundTool,
 } from './helpers/ground-app-fixture.js';
 
 const DOCUMENT_ROUTE = /\/[A-Za-z0-9_-]{22}$/u;
@@ -117,4 +124,369 @@ test('a second session receives a safe denial for another document', async ({
   expect(denied.body).toBe('{"code":"GROUND_UNAVAILABLE"}');
 
   await Promise.all([owner.context.close(), outsider.context.close()]);
+});
+
+const SOURCE_TEXT = '# Launch plan\n\nBudget is $100K.\n\nTarget: seed.\n';
+
+const proposalCardFor = (page, proposedText) => page
+  .locator('#governanceReviewPanel [data-proposal-id]')
+  .filter({ hasText: `Proposed: ${proposedText}` });
+
+// `filter({ has })` queries the inner locator against each candidate group, so
+// the inner selector has to be relative rather than rooted at the panel.
+const conflictGroupFor = (page, proposedText) => page
+  .locator('#governanceReviewPanel [data-conflict-group]')
+  .filter({
+    has: page.locator('[data-proposal-id]').filter({ hasText: `Proposed: ${proposedText}` }),
+  })
+  .first();
+
+const hydrateHeadSequence = async (page, docId) => {
+  const result = await postGroundOperation(page, {
+    documentId: docId,
+    operation: 'hydrate_document',
+  });
+  return JSON.parse(result.body).headSequence;
+};
+
+// Waits until the server has accepted every pending update, so a reconnect
+// cannot be rescued by a Broadcast that was still in flight.
+const waitForStableHead = async (page, docId) => {
+  let previous = -1;
+  await expect.poll(async () => {
+    const current = await hydrateHeadSequence(page, docId);
+    const stable = current === previous;
+    previous = current;
+    return stable;
+  }).toBe(true);
+};
+
+// An Editor that loses its connection misses every Broadcast sent meanwhile, so
+// only a fresh hydration on reconnect can bring the document back into line.
+test('human and WebMCP edits converge in every context after a reconnect', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  const editor = await joinGroundDocument(
+    browser,
+    groundServer.baseURL,
+    created.docId,
+    'Writer Agent',
+    { withModelContext: true },
+  );
+
+  await expectGroundPending(editor.page);
+  await assignGroundRole(owner.page, 'Writer Agent', 'editor');
+  await expectGroundEditor(editor.page, { editable: true });
+  await waitForGroundTool(editor.page, 'collabmd_apply_text_edits');
+
+  await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
+  await expect.poll(async () => getGroundEditorText(editor.page)).toBe(SOURCE_TEXT);
+
+  const read = await executeGroundTool(editor.page, 'collabmd_read_active_document');
+  const applied = await executeGroundTool(editor.page, 'collabmd_apply_text_edits', {
+    path: created.docId,
+    replacements: [{ newText: '$110K', oldText: '$100K' }],
+    revision: read.revision,
+  });
+  expect(applied.replacementCount).toBe(1);
+
+  const converged = SOURCE_TEXT.replace('$100K', '$110K');
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(converged);
+
+  await editor.context.setOffline(true);
+  const offlineEdit = `${converged}\nWritten while the Editor was offline.\n`;
+  await replaceGroundEditorContent(owner.page, offlineEdit);
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(offlineEdit);
+  await waitForStableHead(owner.page, created.docId);
+
+  // Without this the test could pass while still connected, proving nothing.
+  // The Editor must genuinely miss the edit before the reconnect is meaningful.
+  expect(await getGroundEditorText(editor.page)).toBe(converged);
+
+  await editor.context.setOffline(false);
+
+  await expect.poll(
+    async () => getGroundEditorText(editor.page),
+    { timeout: 30_000 },
+  ).toBe(offlineEdit);
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(offlineEdit);
+
+  await Promise.all([owner.context.close(), editor.context.close()]);
+});
+
+test('two same-anchor proposals group as one Conflict that survives a reload', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  const reviewer = await joinGroundDocument(
+    browser,
+    groundServer.baseURL,
+    created.docId,
+    'Reviewer Agent',
+    { withModelContext: true },
+  );
+
+  // The Owner can only list a participant who has finished joining.
+  await expectGroundPending(reviewer.page);
+  await assignGroundRole(owner.page, 'Reviewer Agent', 'reviewer');
+  await expectGroundEditor(reviewer.page, { editable: false });
+  await waitForGroundTool(reviewer.page, 'collabmd_propose_text_edit');
+
+  await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
+  await expect.poll(async () => getGroundEditorText(reviewer.page)).toBe(SOURCE_TEXT);
+
+  const read = await executeGroundTool(reviewer.page, 'collabmd_read_active_document');
+  for (const newText of ['one', 'two']) {
+    await executeGroundTool(reviewer.page, 'collabmd_propose_text_edit', {
+      newText,
+      oldText: 'seed',
+      path: created.docId,
+      revision: read.revision,
+    });
+  }
+
+  // Both proposals resolve to the same anchor range, so they share one located
+  // group rather than appearing as two independent review items.
+  await owner.page.locator('[data-governance-tab="review"]').click();
+  const group = conflictGroupFor(owner.page, 'one');
+  await expect(group).toHaveCount(1);
+  await expect(group.locator('[data-proposal-id]')).toHaveCount(2);
+  await expect(group).toHaveAttribute('data-unlocated', 'false');
+  await expect(group.locator('.review-group-title')).toContainText('Location');
+  await expect(proposalCardFor(owner.page, 'two')).toHaveCount(1);
+
+  owner.page.once('dialog', (dialog) => dialog.accept());
+  await proposalCardFor(owner.page, 'one')
+    .locator('[data-proposal-resolution="apply_proposed"]')
+    .click();
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(
+    SOURCE_TEXT.replace('seed', 'one'),
+  );
+
+  // Accepting one proposal moves the text under the other, which the product
+  // reports as a Conflict rather than a still-applicable Proposal.
+  await expect(proposalCardFor(owner.page, 'two')).toContainText('Conflict');
+
+  await owner.page.reload();
+  await submitGroundDisplayName(owner.page, 'Owner');
+  await expectGroundEditor(owner.page, { editable: true });
+
+  await owner.page.locator('[data-governance-tab="review"]').click();
+  await expect(proposalCardFor(owner.page, 'one')).toHaveCount(0);
+  await expect(proposalCardFor(owner.page, 'two')).toContainText('Conflict');
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(
+    SOURCE_TEXT.replace('seed', 'one'),
+  );
+
+  await Promise.all([owner.context.close(), reviewer.context.close()]);
+});
+
+test('every Activity row carries a full record and the exact WebMCP source', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  const editor = await joinGroundDocument(
+    browser,
+    groundServer.baseURL,
+    created.docId,
+    'Writer Agent',
+    { withModelContext: true },
+  );
+
+  // The Owner can only list a participant who has finished joining.
+  await expectGroundPending(editor.page);
+  await assignGroundRole(owner.page, 'Writer Agent', 'editor');
+  await expectGroundEditor(editor.page, { editable: true });
+  await waitForGroundTool(editor.page, 'collabmd_apply_text_edits');
+
+  await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
+  await expect.poll(async () => getGroundEditorText(editor.page)).toBe(SOURCE_TEXT);
+
+  const read = await executeGroundTool(editor.page, 'collabmd_read_active_document');
+  await executeGroundTool(editor.page, 'collabmd_apply_text_edits', {
+    path: created.docId,
+    replacements: [{ newText: '$110K', oldText: '$100K' }],
+    revision: read.revision,
+  });
+  const proposeRead = await executeGroundTool(editor.page, 'collabmd_read_active_document');
+  await executeGroundTool(editor.page, 'collabmd_propose_text_edit', {
+    newText: 'launched',
+    oldText: 'seed',
+    path: created.docId,
+    revision: proposeRead.revision,
+  });
+
+  await expect.poll(async () => (await readGroundActivity(owner.page)).length)
+    .toBeGreaterThanOrEqual(4);
+  const rows = await readGroundActivity(owner.page);
+
+  for (const row of rows) {
+    expect(row.id, JSON.stringify(row)).toBeTruthy();
+    expect(row.time, JSON.stringify(row)).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expect(row.text).toMatch(/Page session: \S+/u);
+    expect(row.text).toMatch(/Role: \S+/u);
+    expect(row.text).toMatch(/Source: \S+/u);
+    expect(row.text).toMatch(/Outcome: \S+ · Target: \S+/u);
+    expect(row.text).not.toContain('Source: Unknown');
+    expect(row.text).not.toContain('Target: undefined');
+  }
+
+  const sources = rows.map(({ text }) => text.match(/Source: ([^O]+?)(?= ?Outcome)/u)?.[1]?.trim());
+  expect(sources).toContain('WebMCP apply');
+  expect(sources).toContain('WebMCP proposal');
+  expect(sources).toContain('Access management');
+  expect(sources.every(Boolean)).toBe(true);
+
+  await Promise.all([owner.context.close(), editor.context.close()]);
+});
+
+// The server reauthorizes every WebMCP execution, so a tool cached before the
+// revocation must still be refused while the client is still catching up.
+test('a revoked Editor is denied mid-flight and rebuilt from server state', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  const editor = await joinGroundDocument(
+    browser,
+    groundServer.baseURL,
+    created.docId,
+    'Writer Agent',
+    { withModelContext: true },
+  );
+
+  // The Owner can only list a participant who has finished joining.
+  await expectGroundPending(editor.page);
+  await assignGroundRole(owner.page, 'Writer Agent', 'editor');
+  await expectGroundEditor(editor.page, { editable: true });
+  await waitForGroundTool(editor.page, 'collabmd_apply_text_edits');
+
+  await replaceGroundEditorContent(owner.page, SOURCE_TEXT);
+  await expect.poll(async () => getGroundEditorText(editor.page)).toBe(SOURCE_TEXT);
+
+  const read = await executeGroundTool(editor.page, 'collabmd_read_active_document');
+  await executeGroundTool(editor.page, 'collabmd_apply_text_edits', {
+    path: created.docId,
+    replacements: [{ newText: '$110K', oldText: '$100K' }],
+    revision: read.revision,
+  });
+  const accepted = SOURCE_TEXT.replace('$100K', '$110K');
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(accepted);
+
+  // Hold the Editor's Access refresh so the cached tool runs while the client
+  // still believes it is an Editor.
+  const refreshGate = Promise.withResolvers();
+  let refreshRequested = false;
+  await editor.page.route('**/api/ground', async (route) => {
+    if (route.request().postDataJSON()?.operation === 'get_session') {
+      refreshRequested = true;
+      await refreshGate.promise;
+    }
+    await route.continue();
+  });
+
+  owner.page.once('dialog', (dialog) => dialog.accept());
+  await owner.page.locator('#manageAccessBtn').click();
+  const dialog = owner.page.locator('#manageAccessDialog');
+  await expect(dialog).toHaveAttribute('open', '');
+  await dialog
+    .locator('[data-participant-session-id]')
+    .filter({ hasText: 'Writer Agent' })
+    .getByRole('button', { name: 'Revoke access' })
+    .click();
+  await expect.poll(() => refreshRequested).toBe(true);
+
+  await expect(executeCachedGroundTool(editor.page, 'collabmd_apply_text_edits', {
+    path: created.docId,
+    replacements: [{ newText: 'Denied', oldText: 'Target' }],
+    revision: read.revision,
+  })).rejects.toThrow();
+
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(accepted);
+  expect(await getGroundEditorText(owner.page)).not.toContain('Denied');
+
+  refreshGate.resolve();
+
+  await expect(editor.page.locator('#governanceStatusPanel')).toContainText('Access revoked');
+  await expect(editor.page.locator('.cm-editor')).toHaveCount(0);
+  await expect(editor.page.locator('#editorContainer')).not.toContainText('Launch plan');
+  await expect(editor.page.locator('#governanceRail')).toBeHidden();
+  await expect.poll(async () => getGroundEditorText(owner.page)).toBe(accepted);
+
+  await Promise.all([owner.context.close(), editor.context.close()]);
+});
+
+test('recovery makes a new browser the sole Owner and retires the used link', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  await expectGroundEditor(owner.page, { editable: true });
+  expect(created.recoveryUrl).toContain('#recover=');
+
+  const claimant = await openGroundContext(browser, groundServer.baseURL, 'Recovered Owner');
+  await claimant.page.goto(created.recoveryUrl);
+  await submitGroundDisplayName(claimant.page, 'Recovered Owner');
+
+  const recoveryDialog = claimant.page.locator('#groundRecoveryDialog');
+  await expect(recoveryDialog).toHaveAttribute('open', '');
+  const rotatedUrl = await claimant.page.locator('#groundRecoveryLink').inputValue();
+  expect(rotatedUrl).not.toBe(created.recoveryUrl);
+  await claimant.page.locator('#closeGroundRecovery').click();
+
+  // The used token leaves the address before the request, so a reload or a
+  // shared screenshot cannot replay it.
+  expect(new URL(claimant.page.url()).hash).toBe('');
+  await expectGroundEditor(claimant.page, { editable: true });
+  await expect(claimant.page.locator('#manageAccessBtn')).toBeVisible();
+
+  await expect(owner.page.locator('#governanceStatusPanel')).toContainText('Access revoked');
+  await expect(owner.page.locator('.cm-editor')).toHaveCount(0);
+
+  const replay = await openGroundContext(browser, groundServer.baseURL, 'Replay');
+  await replay.page.goto(created.recoveryUrl);
+  await submitGroundDisplayName(replay.page, 'Replay');
+  await expect(replay.page.locator('#groundUnavailable')).toBeVisible();
+  await expect(replay.page.locator('.cm-editor')).toHaveCount(0);
+
+  await Promise.all([
+    owner.context.close(),
+    claimant.context.close(),
+    replay.context.close(),
+  ]);
+});
+
+test('an oversized update is refused and allocates no sequence', async ({
+  browser,
+  groundServer,
+}) => {
+  const owner = await openGroundContext(browser, groundServer.baseURL, 'Owner');
+  const created = await createGroundDocument(owner.page, 'Owner');
+  await expectGroundEditor(owner.page, { editable: true });
+
+  const before = await hydrateHeadSequence(owner.page, created.docId);
+
+  // 120,000 base64 characters decode to 90,000 bytes, above the local runtime's
+  // 64,000 byte update limit and far below the request body cap, so the update
+  // limit is the boundary under test.
+  const refused = await postGroundOperation(owner.page, {
+    documentId: created.docId,
+    operation: 'append_update',
+    update: 'A'.repeat(120_000),
+  });
+
+  expect(refused.status).toBe(413);
+  expect(JSON.parse(refused.body)).toEqual({ code: 'GROUND_UPDATE_TOO_LARGE' });
+  expect(await hydrateHeadSequence(owner.page, created.docId)).toBe(before);
+
+  await owner.context.close();
 });

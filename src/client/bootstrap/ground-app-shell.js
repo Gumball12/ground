@@ -186,7 +186,10 @@ export class GroundAppShell {
         this.comments = session.collaborationClient.commentThreads;
         this.activity?.observe(() => this.#handleActivityChange());
         this.comments?.observe(() => this.renderGovernance());
-        this.renderGovernance();
+        // Activity delivered while this session was still connecting produced no
+        // observer event, so an Owner would never learn about a visitor who
+        // joined during startup. Reconcile once now that the wiring is in place.
+        this.#handleActivityChange();
       },
       waitForInitialSync: () => session.waitForInitialSync(null),
     };
@@ -276,7 +279,11 @@ export class GroundAppShell {
     const fragment = (this.location.hash ?? '').replace(/^#/u, '');
     const recoveryToken = new URLSearchParams(fragment).get(RECOVERY_PARAM);
     if (route.type === 'document' && recoveryToken) {
-      await this.controller.recoverOwner({ docId: route.docId, recoveryToken });
+      // A used or forged token cannot establish the claimed identity, so the
+      // page stays status-only rather than falling back to an ordinary join.
+      await this.controller
+        .recoverOwner({ docId: route.docId, recoveryToken })
+        .catch(() => this.entry.showUnavailable());
       return;
     }
     await this.controller.start(route);

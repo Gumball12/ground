@@ -53,7 +53,7 @@ export class GroundWorkspaceController {
   async recoverOwner({ docId, recoveryToken }) {
     this.history.replaceState({ docId }, '', `/${docId}`);
     const displayName = await this.#requireDisplayName();
-    const recovered = await this.governance.recover({ displayName, recoveryToken });
+    const recovered = await this.governance.recover({ displayName, docId, recoveryToken });
     this.entry.showRecoveryLink(recoveryUrl({
       docId,
       origin: this.origin,

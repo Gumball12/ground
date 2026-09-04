@@ -254,6 +254,22 @@ it('routes Owner decisions through the documented operations', async () => {
   expect(recovery.recoveryToken).toBe('rotated-token');
 });
 
+// Recovery runs before any session exists, so the client cannot fall back to a
+// document id that only `start` would have captured.
+it('sends the document id when recovering before any session has started', async () => {
+  const { api, client } = createClient({
+    recover_owner: { recoveryToken: 'rotated-token', sequence: 12 },
+  });
+
+  await client.recover({ displayName: 'Owner', docId: DOCUMENT_ID, recoveryToken: 'token' });
+
+  expect(api.calls.find((call) => call.operation === 'recover_owner').input).toEqual({
+    displayName: 'Owner',
+    documentId: DOCUMENT_ID,
+    recoveryToken: 'token',
+  });
+});
+
 it('publishes a stable failure transition and keeps no snapshot', async () => {
   const { client, transitions } = createClient({
     join_document: () => {

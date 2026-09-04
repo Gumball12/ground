@@ -1,6 +1,15 @@
 import { expect, test as base } from '@playwright/test';
 
 import { startGroundLocalServer } from '../../../scripts/serve-ground-local.mjs';
+// Ground reuses the local suite's WebMCP harness and editor probes. Importing
+// them runs no filesystem work; the vault helpers only compute paths.
+import {
+  executeCachedTool,
+  executeRegisteredTool,
+  getEditorText,
+  installModelContextHarness,
+  replaceEditorContent,
+} from './app-fixture.js';
 
 export const test = base.extend({
   // Playwright requires an object destructuring pattern for the fixtures
@@ -21,7 +30,12 @@ export const test = base.extend({
 
 // Each participant is a separate browser context, so each gets its own anonymous
 // Supabase identity exactly as a separate person or agent would.
-export const openGroundContext = async (browser, baseURL, displayName) => {
+export const openGroundContext = async (
+  browser,
+  baseURL,
+  displayName,
+  { withModelContext = false } = {},
+) => {
   const context = await browser.newContext({
     baseURL,
     colorScheme: 'light',
@@ -29,6 +43,11 @@ export const openGroundContext = async (browser, baseURL, displayName) => {
     viewport: { height: 720, width: 1280 },
   });
   const page = await context.newPage();
+  // The harness installs through `addInitScript`, so it has to be in place
+  // before the first navigation of this page.
+  if (withModelContext) {
+    await installModelContextHarness(page);
+  }
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   return { context, displayName, errors, page };
@@ -58,8 +77,8 @@ export const createGroundDocument = async (page, displayName) => {
   return { docId, recoveryUrl };
 };
 
-export const joinGroundDocument = async (browser, baseURL, docId, displayName) => {
-  const participant = await openGroundContext(browser, baseURL, displayName);
+export const joinGroundDocument = async (browser, baseURL, docId, displayName, options = {}) => {
+  const participant = await openGroundContext(browser, baseURL, displayName, options);
   await participant.page.goto(`/${docId}`);
   await submitGroundDisplayName(participant.page, displayName);
   return participant;
@@ -79,6 +98,11 @@ export const expectGroundEditor = async (page, { editable }) => {
 // Only an Owner may list participants, so Roles are assigned from the Owner's
 // Manage access dialog by the name each visitor submitted.
 export const assignGroundRole = async (ownerPage, displayName, roleId) => {
+  // The Owner learns about a new visitor when the document's Activity advances,
+  // so the roster has to carry the visitor before the dialog can list them.
+  await expect(
+    ownerPage.locator('#participantBar [data-participant-session-id]').filter({ hasText: displayName }),
+  ).toHaveCount(1);
   await ownerPage.locator('#manageAccessBtn').click();
   const dialog = ownerPage.locator('#manageAccessDialog');
   await expect(dialog).toHaveAttribute('open', '');
@@ -93,4 +117,44 @@ export const assignGroundRole = async (ownerPage, displayName, roleId) => {
   await expect(dialog).not.toHaveAttribute('open', '');
 };
 
-export { expect };
+// Sends one operation with the page's own anonymous session, which is how a
+// direct API probe reaches the boundary without going through the UI.
+export const postGroundOperation = (page, body) => page.evaluate(async (payload) => {
+  const stored = Object.keys(localStorage)
+    .filter((key) => key.startsWith('sb-'))
+    .map((key) => localStorage.getItem(key))[0];
+  const response = await fetch('/api/ground', {
+    body: JSON.stringify(payload),
+    headers: {
+      authorization: `Bearer ${JSON.parse(stored).access_token}`,
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  });
+  return { body: await response.text(), status: response.status };
+}, body);
+
+export const waitForGroundTool = async (page, name) => {
+  await expect.poll(async () => page.evaluate((toolName) => (
+    Boolean(window.__COLLABMD_MODEL_CONTEXT__?.registered?.[toolName])
+  ), name), { timeout: 15_000 }).toBe(true);
+};
+
+export const readGroundActivity = async (page) => {
+  await page.locator('[data-governance-tab="activity"]').click();
+  return page.locator('#governanceActivityPanel [data-activity-id]').evaluateAll((rows) => (
+    rows.map((row) => ({
+      id: row.dataset.activityId,
+      text: row.textContent ?? '',
+      time: row.querySelector('time')?.getAttribute('datetime') ?? '',
+    }))
+  ));
+};
+
+export {
+  executeCachedTool as executeCachedGroundTool,
+  executeRegisteredTool as executeGroundTool,
+  expect,
+  getEditorText as getGroundEditorText,
+  replaceEditorContent as replaceGroundEditorContent,
+};

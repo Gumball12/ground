@@ -331,6 +331,37 @@ it('repeats subscribe, hydrate and the gap check on reconnect', async () => {
   expect(client.initialSyncComplete).toBe(true);
 });
 
+// Supabase resends the join push after a dropped socket, so the same subscribe
+// callback reports SUBSCRIBED again on the same channel. Broadcast is never
+// replayed, so only repeating the hydration protocol recovers what was missed.
+it('rehydrates when the existing channel rejoins after a dropped connection', async () => {
+  const harness = createCollaborationHarness();
+  const first = encodeText('First');
+  harness.setHydrate({
+    headSequence: 1,
+    snapshot: first,
+    snapshotSequence: 0,
+    updates: [],
+  });
+  const { bindings } = await startClient(harness);
+  expect(bindings.ytext.toString()).toBe('First');
+
+  const channelsBeforeRejoin = harness.channels.length;
+  harness.setHydrate({
+    headSequence: 2,
+    snapshot: first,
+    snapshotSequence: 0,
+    updates: [{ sequence: 2, update: appendText([first], ' and second') }],
+  });
+
+  harness.channel.emitSubscribed();
+  await flush();
+  await flush();
+
+  expect(harness.channels.length).toBe(channelsBeforeRejoin);
+  expect(bindings.ytext.toString()).toBe('First and second');
+});
+
 it('renders one online participant for two Presence entries sharing a user id', async () => {
   const harness = createCollaborationHarness();
   harness.setHydrate(emptyHydrate);

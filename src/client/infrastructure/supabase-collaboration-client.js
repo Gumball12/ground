@@ -142,6 +142,7 @@ export class SupabaseCollaborationClient {
 
   #subscribeAndWait() {
     return new Promise((resolve, reject) => {
+      let joined = false;
       this.channel = this.supabase
         .channel(`ground-document:${this.docId}`, { config: { private: true } })
         .on('broadcast', { event: 'update' }, ({ payload }) => this.#handleNotice(payload ?? {}))
@@ -149,14 +150,35 @@ export class SupabaseCollaborationClient {
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             void this.#trackPresence();
+            // Supabase resends the join push after a dropped socket, so this
+            // reports SUBSCRIBED again on the same channel. Broadcast is never
+            // replayed, so the hydration protocol has to run again.
+            if (joined) {
+              this.#resync();
+              return;
+            }
+            joined = true;
             resolve();
             return;
           }
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (!joined
+            && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
             reject(Object.assign(new Error(status), { code: 'GROUND_TEMPORARILY_UNAVAILABLE' }));
           }
         });
     });
+  }
+
+  // `#syncToHead` alone cannot recover a rejoin: the client still holds the head
+  // it knew before the drop, so it has to fetch once before checking for a gap.
+  #resync() {
+    if (this.destroying || this.frozen) {
+      return;
+    }
+    this.syncChain = this.syncChain
+      .then(() => this.#hydrate())
+      .then(() => this.#syncToHead())
+      .catch(() => {});
   }
 
   async #hydrate() {
