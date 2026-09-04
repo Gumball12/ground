@@ -15,3 +15,16 @@ test('uses Node 24 across local, container, package, and workflow metadata', asy
     assert.doesNotMatch(await readFile(path, 'utf8'), /node-version:\s*26/u);
   }
 });
+
+// The metadata above is enforced; the prose telling a reader and an agent which
+// runtime to install is not, and drifted to a version this repository never ran.
+test('the reader and agent instructions name the runtime the repository requires', async () => {
+  const { engines } = JSON.parse(await readFile('package.json', 'utf8'));
+  const supportedMajor = engines.node.replace('>=', '');
+
+  for (const path of ['README.md', 'AGENTS.md']) {
+    const document = await readFile(path, 'utf8');
+    const named = [...document.matchAll(/Node\.js (\d+)/gu)].map(([, major]) => major);
+    assert.deepEqual([...new Set(named)], [supportedMajor], path);
+  }
+});

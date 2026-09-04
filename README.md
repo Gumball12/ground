@@ -86,7 +86,7 @@ not a durable security audit log.
 
 ## Requirements
 
-- Node.js 26 or newer, and npm.
+- Node.js 24 or newer, and npm.
 - Docker, for the local Supabase stack used by Ground.
 - ripgrep (`rg`). Global text search in the local product shells out to it, and
   the Docker image installs it. On macOS, `brew install ripgrep`.

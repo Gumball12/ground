@@ -34,7 +34,7 @@ config changes.
 
 ## Runtime and commands
 
-- Node.js 26 (`.tool-versions`, CI, and `package.json` require it).
+- Node.js 24 (`.tool-versions`, CI, and `package.json` require it).
 - Use `npm`; CI uses `npm ci` and this repo commits `package-lock.json`.
 - Install: `npm install`
 - Build: `npm run build`
