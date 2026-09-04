@@ -150,6 +150,11 @@ export class GovernanceUiController {
   render(state = {}) {
     this.state = {
       activity: Array.isArray(state.activity) ? state.activity : [],
+      // The Participant bar draws who is connected now; Manage Access draws the
+      // durable roster. They are different lists and must stay separate.
+      connectedParticipants: Array.isArray(state.connectedParticipants)
+        ? state.connectedParticipants
+        : [],
       connectionState: state.connectionState ?? { status: 'disconnected', unreachable: false },
       participants: Array.isArray(state.participants) ? state.participants : [],
       reviewGroups: Array.isArray(state.reviewGroups) ? state.reviewGroups : [],
@@ -163,6 +168,7 @@ export class GovernanceUiController {
     const accessState = this.state.shellState.accessState;
     const active = ready && accessState === 'active';
     const owner = active && isOwner(this.state);
+
     const showParticipants = ready && ['active', 'pending', 'revoked'].includes(accessState);
 
     this.renderStatus();
@@ -308,7 +314,7 @@ export class GovernanceUiController {
     connection.dataset.governanceConnection = '';
 
     const list = createElement('div', { className: 'participant-list' });
-    this.state.participants.forEach((participant) => {
+    this.state.connectedParticipants.forEach((participant) => {
       const self = participant.participantSessionId === this.state.session?.participantSessionId;
       list.appendChild(this.createParticipant(participant, { self }));
     });
@@ -322,7 +328,6 @@ export class GovernanceUiController {
   createParticipant(participant, { self = false } = {}) {
     const item = createElement('article', { className: 'participant-item' });
     item.dataset.participantSessionId = participant.participantSessionId;
-    item.dataset.participantKind = participant.kind === 'ai' ? 'ai' : 'human';
     item.dataset.grantState = STATE_LABELS[participant.state] ? participant.state : 'pending';
     if (self) {
       item.dataset.self = 'true';
@@ -331,7 +336,7 @@ export class GovernanceUiController {
     const avatar = appendText(
       item,
       'span',
-      participant.kind === 'ai' ? 'AI' : String(participant.displayName || '?').slice(0, 1).toUpperCase(),
+      String(participant.displayName || '?').slice(0, 1).toUpperCase(),
       'governance-avatar',
     );
     avatar.setAttribute('aria-hidden', 'true');
@@ -339,8 +344,11 @@ export class GovernanceUiController {
     const identity = createElement('span', { className: 'participant-identity' });
     appendText(identity, 'strong', participant.displayName || 'Unnamed', 'participant-name');
     const metadata = createElement('span', { className: 'participant-metadata' });
-    appendText(metadata, 'span', participant.kind === 'ai' ? 'AI' : 'Human');
-    appendText(metadata, 'span', titleCase(participant.roleId || 'Unassigned'));
+    // Only an Owner can read the roster a Role comes from. Every other viewer
+    // gets no Role line rather than a guess.
+    if (participant.roleId) {
+      appendText(metadata, 'span', titleCase(participant.roleId));
+    }
     appendText(
       metadata,
       'span',
@@ -404,7 +412,7 @@ export class GovernanceUiController {
     appendText(
       item,
       'p',
-      `By ${proposal.createdByDisplayName || 'Unknown'} · ${proposal.createdByKind === 'ai' ? 'AI' : 'Human'} · Role at creation: ${titleCase(proposal.createdByRole || 'unknown')} · ${titleCase(proposal.status)}`,
+      `By ${proposal.createdByDisplayName || 'Unknown'} · Role at creation: ${titleCase(proposal.createdByRole || 'unknown')} · ${titleCase(proposal.status)}`,
       'proposal-meta',
     );
 
@@ -450,7 +458,7 @@ export class GovernanceUiController {
       appendText(
         item,
         'span',
-        `${record.actor?.kind === 'ai' ? 'AI' : 'Human'} · Page session: ${record.actor?.participantSessionId || 'unknown'}`,
+        `Page session: ${record.actor?.participantSessionId || 'unknown'}`,
         'activity-meta',
       );
       appendText(item, 'span', `Role: ${titleCase(record.actor?.roleId || 'unknown')}`, 'activity-meta');
@@ -533,7 +541,7 @@ export class GovernanceUiController {
       row.dataset.owner = String(owner);
       const identity = createElement('div', { className: 'manage-access-identity' });
       appendText(identity, 'strong', participant.displayName || 'Unnamed');
-      appendText(identity, 'span', `${participant.kind === 'ai' ? 'AI' : 'Human'} · ${STATE_LABELS[participant.state] || 'Pending'}`);
+      appendText(identity, 'span', STATE_LABELS[participant.state] || 'Pending');
       row.appendChild(identity);
 
       const roleControl = document.createElement('select');

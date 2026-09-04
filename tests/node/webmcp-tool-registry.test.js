@@ -26,7 +26,9 @@ function createModelContext() {
 }
 
 function createRegistryHarness({
+  activeFilePath = 'README.md',
   authoritativeActor = null,
+  executor = null,
   roleId = 'editor',
   capabilities = capabilitiesForRole(roleId),
   state = 'active',
@@ -41,7 +43,7 @@ function createRegistryHarness({
     snapshot: {
       capabilities,
       displayName: 'Reviewer',
-      documentPath: 'README.md',
+      documentPath: activeFilePath,
       kind: 'ai',
       participantSessionId,
       roleId,
@@ -111,7 +113,8 @@ function createRegistryHarness({
     },
   };
   const registry = new WebMcpToolRegistry({
-    getActiveFilePath: () => 'README.md',
+    executor,
+    getActiveFilePath: () => activeFilePath,
     getIsTabActive: () => true,
     getSession: () => session,
     governanceClient,
@@ -442,4 +445,159 @@ test('governed edits are atomic and create conflicts without changing text', () 
     target: proposal.id,
   });
   assert.equal(updates.length, 3);
+});
+
+function createExecutorFake({ applyPromise, denyApply = false } = {}) {
+  const executor = {
+    applyCalls: [],
+    proposeCalls: [],
+    readCalls: [],
+    apply: async (input) => {
+      executor.applyCalls.push(input);
+      if (denyApply) {
+        throw Object.assign(new Error('GROUND_FORBIDDEN'), { code: 'GROUND_FORBIDDEN' });
+      }
+      return applyPromise
+        ? applyPromise
+        : { replacementCount: input.replacements.length, sequence: 9 };
+    },
+    propose: async (input) => {
+      executor.proposeCalls.push(input);
+      return { expectedText: input.oldText, replacementText: input.newText, sequence: 10 };
+    },
+    read: async (input) => {
+      executor.readCalls.push(input);
+      return { content: ORIGINAL_TEXT, headSequence: 4, path: input.path };
+    },
+  };
+  return executor;
+}
+
+const VALID_EDIT = Object.freeze({
+  path: 'README.md',
+  replacements: [{ newText: 'Hello Ground', oldText: 'Hello world' }],
+  revision: 'server-owned',
+});
+
+test('hosted apply waits for the asynchronous executor result', async () => {
+  const committed = Promise.withResolvers();
+  const executor = createExecutorFake({ applyPromise: committed.promise });
+  const harness = createRegistryHarness({ executor, roleId: 'editor' });
+  await harness.refresh();
+
+  const execution = harness.execute('collabmd_apply_text_edits', VALID_EDIT);
+  let didResolve = false;
+  void execution.then(() => {
+    didResolve = true;
+  });
+  await Promise.resolve();
+
+  assert.deepEqual(executor.applyCalls, [VALID_EDIT]);
+  assert.equal(didResolve, false);
+
+  committed.resolve({ replacementCount: 1, sequence: 9 });
+  const result = await execution;
+  assert.equal(result.replacementCount, 1);
+  assert.equal(result.sequence, 9);
+});
+
+test('hosted read passes the active document id and never reads local text', async () => {
+  const executor = createExecutorFake();
+  const harness = createRegistryHarness({ executor, roleId: 'editor' });
+  await harness.refresh();
+  harness.resetTextReadCalls();
+
+  const result = await harness.execute('collabmd_read_active_document', {});
+
+  assert.deepEqual(executor.readCalls, [{ path: 'README.md' }]);
+  assert.equal(result.content, ORIGINAL_TEXT);
+  assert.equal(harness.getTextCalls(), 0);
+});
+
+test('hosted propose leaves local text unchanged until the server applies it', async () => {
+  const executor = createExecutorFake();
+  const harness = createRegistryHarness({ executor, roleId: 'reviewer' });
+  await harness.refresh();
+
+  const result = await harness.execute('collabmd_propose_text_edit', {
+    newText: 'Hello Ground',
+    oldText: 'Hello world',
+    path: 'README.md',
+    revision: 'server-owned',
+  });
+
+  assert.deepEqual(executor.proposeCalls, [{
+    newText: 'Hello Ground',
+    oldText: 'Hello world',
+    path: 'README.md',
+    revision: 'server-owned',
+  }]);
+  assert.equal(result.sequence, 10);
+  assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('a cached hosted apply surfaces the server denial after revocation', async () => {
+  const executor = createExecutorFake({ denyApply: true });
+  const harness = createRegistryHarness({ executor, roleId: 'editor' });
+  await harness.refresh();
+
+  await assert.rejects(
+    harness.execute('collabmd_apply_text_edits', VALID_EDIT),
+    (thrown) => thrown.code === 'GROUND_FORBIDDEN',
+  );
+  assert.equal(harness.documentText(), ORIGINAL_TEXT);
+});
+
+test('omitting the executor keeps the local session implementation', async () => {
+  const harness = createRegistryHarness({ roleId: 'editor' });
+  await harness.refresh();
+  const read = await harness.execute('collabmd_read_active_document', {});
+
+  const result = await harness.execute('collabmd_apply_text_edits', {
+    path: 'README.md',
+    replacements: [{ newText: 'Hello Ground', oldText: 'Hello world' }],
+    revision: read.revision,
+  });
+
+  assert.equal(result.replacementCount, 1);
+  assert.equal(harness.documentText().includes('Hello Ground'), true);
+  assert.equal(harness.authorizationRequests.length > 0, true);
+});
+
+test('a hosted document id registers tools without a vault file extension', async () => {
+  const executor = createExecutorFake();
+  const harness = createRegistryHarness({
+    activeFilePath: 'AbCdEf0123456789_-xyZA',
+    executor,
+    roleId: 'editor',
+  });
+
+  assert.equal(await harness.refresh(), true);
+  assert.deepEqual(harness.registeredNames(), [
+    'collabmd_apply_text_edits',
+    'collabmd_propose_text_edit',
+    'collabmd_read_active_document',
+  ]);
+
+  const read = await harness.execute('collabmd_read_active_document', {});
+  assert.equal(read.path, 'AbCdEf0123456789_-xyZA');
+});
+
+test('a hosted document still requires an active synchronized session', async () => {
+  const harness = createRegistryHarness({
+    activeFilePath: 'AbCdEf0123456789_-xyZA',
+    executor: createExecutorFake(),
+    roleId: 'editor',
+  });
+  harness.setSessionSynchronized(false);
+
+  assert.equal(await harness.refresh(), false);
+  assert.deepEqual(harness.registeredNames(), []);
+});
+
+test('a vault path without an executor still requires a supported file kind', async () => {
+  const harness = createRegistryHarness({ activeFilePath: 'notes.txt', roleId: 'editor' });
+
+  assert.equal(await harness.refresh(), false);
+  assert.deepEqual(harness.registeredNames(), []);
 });

@@ -38,6 +38,10 @@ const participants = Object.freeze([
   },
 ]);
 
+// Who is connected right now, which is not the durable roster: the Pending
+// ReviewBot holds a row in Manage Access but cannot reach the document.
+const connectedParticipants = Object.freeze([participants[0], participants[2]]);
+
 const activity = Object.freeze([
   {
     action: 'direct_edit_applied',
@@ -85,6 +89,7 @@ const activity = Object.freeze([
 
 const activeOwnerState = () => ({
   activity,
+  connectedParticipants,
   connectionState: { status: 'connected', unreachable: false },
   participants,
   reviewGroups: [],
@@ -201,6 +206,39 @@ describe('GovernanceUiController focused shell', () => {
     expect(document.querySelector('.governance-avatar')).not.toHaveClass('user-avatar');
   });
 
+  it('lists only the connected participants, not the durable roster', () => {
+    const { controller } = mount();
+
+    controller.render(activeOwnerState());
+
+    const rows = [...document.querySelectorAll('#participantBar [data-participant-session-id]')];
+    expect(rows.map((row) => row.dataset.participantSessionId))
+      .toEqual(['session-owner', 'session-editor']);
+    expect(document.getElementById('participantBar').textContent).not.toContain('ReviewBot');
+  });
+
+  // Only an Owner may read the roster a Role comes from. Naming an Editor's
+  // Role "Unassigned" to a Reviewer would state something untrue.
+  it('omits the Role label for a connected participant whose Role it cannot read', () => {
+    const { controller } = mount();
+    const state = activeOwnerState();
+    state.connectedParticipants = [{
+      displayName: 'EditBot',
+      participantSessionId: 'session-editor',
+      state: 'active',
+    }];
+
+    controller.render(state);
+
+    const row = document.querySelector('#participantBar [data-participant-session-id="session-editor"]');
+    expect(row.textContent).toContain('EditBot');
+    expect(row.textContent).toContain('Active');
+    expect(row.textContent).not.toContain('Unassigned');
+    // The roster row for this participant carries `roleId: 'editor'`; reading it
+    // here would mean the bar drew the roster instead of the connected list.
+    expect(row.textContent).not.toContain('Editor');
+  });
+
   it('shows the document without Owner controls for an active non-Owner', () => {
     const { controller } = mount();
     const state = activeOwnerState();
@@ -225,10 +263,16 @@ describe('GovernanceUiController focused shell', () => {
     const state = activeOwnerState();
     state.session = { ...state.session, roleId: undefined, state: accessState };
     state.shellState = { accessState, phase: 'ready' };
+    // Realtime admits Active participants only, so this page sees no presence.
+    state.connectedParticipants = [];
 
     controller.render(state);
 
     expect(document.getElementById('participantBar')).not.toHaveAttribute('hidden');
+    // A Pending or Revoked participant reaches no Realtime channel, so the bar
+    // it keeps names nobody.
+    expect(document.querySelectorAll('#participantBar [data-participant-session-id]'))
+      .toHaveLength(0);
     expect(document.getElementById('focusedDocumentSurface')).toHaveAttribute('hidden');
     expect(document.getElementById('governanceRail')).toHaveAttribute('hidden');
     expect(document.querySelector('[data-governance-status-title]')?.textContent).toBe(expectedTitle);
@@ -271,7 +315,9 @@ describe('GovernanceUiController focused shell', () => {
       'activity-1',
     ]);
     expect(items[0].textContent).toContain('ReviewBot');
-    expect(items[0].textContent).toContain('AI');
+    // A legacy record still carries `kind`, but Ground renders no Human/AI badge.
+    expect(items[0].textContent).not.toContain('AI');
+    expect(items[0].textContent).not.toContain('Human');
     expect(items[0].textContent).toContain('session-ai');
     expect(items[0].textContent).toContain('Reviewer');
     expect(items[0].textContent).toContain('Proposal Created');
@@ -282,7 +328,7 @@ describe('GovernanceUiController focused shell', () => {
     expect(document.querySelector('[data-activity-filter]')).toBeNull();
   });
 
-  it('renders Proposal Human or AI and Role-at-creation attribution', () => {
+  it('renders Proposal author and Role-at-creation attribution without an identity badge', () => {
     const { controller } = mount();
     const state = activeOwnerState();
     state.reviewGroups = [proposalGroup()];
@@ -291,7 +337,8 @@ describe('GovernanceUiController focused shell', () => {
 
     const proposal = document.querySelector('[data-proposal-id="proposal-open"]');
     expect(proposal.textContent).toContain('ReviewBot');
-    expect(proposal.textContent).toContain('AI');
+    expect(proposal.textContent).not.toContain('AI');
+    expect(proposal.textContent).not.toContain('Human');
     expect(proposal.textContent).toContain('Reviewer');
   });
 

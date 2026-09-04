@@ -77,8 +77,8 @@ test.describe('ui visual regression', () => {
       await assignGovernedRole(ownerPage, reviewer.participantSessionId, 'reviewer');
       const dialog = ownerPage.locator('#manageAccessDialog');
       await expect(dialog).toHaveAttribute('open', '');
-      await expect(dialog.locator(`[data-participant-session-id="${writer.participantSessionId}"]`)).toContainText('AI · Active');
-      await expect(dialog.locator(`[data-participant-session-id="${reviewer.participantSessionId}"]`)).toContainText('Human · Active');
+      await expect(dialog.locator(`[data-participant-session-id="${writer.participantSessionId}"]`)).toContainText('Active');
+      await expect(dialog.locator(`[data-participant-session-id="${reviewer.participantSessionId}"]`)).toContainText('Active');
       await expect.soft(ownerPage).toHaveScreenshot('focused-manage-access.png', screenshotOptions);
       await dialog.getByRole('button', { name: 'Close' }).click();
 

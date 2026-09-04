@@ -25,9 +25,10 @@ export const appendActivity = (activityArray, record = {}) => {
     throw new TypeError('Activity must be a Y.Array.');
   }
 
+  const kind = record.actor?.kind;
   const actor = Object.freeze({
     displayName: requiredString(record.actor?.displayName, 'Actor displayName'),
-    kind: requiredString(record.actor?.kind, 'Actor kind'),
+    ...(typeof kind === 'string' && kind.length > 0 ? { kind } : {}),
     participantSessionId: requiredString(record.actor?.participantSessionId, 'Actor participantSessionId'),
     roleId: requiredString(record.actor?.roleId, 'Actor roleId'),
   });

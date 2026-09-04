@@ -22,7 +22,7 @@ const requiredString = (value, label, { allowEmpty = false } = {}) => {
 
 const normalizeActor = (actor) => ({
   displayName: requiredString(actor?.displayName, 'Actor displayName'),
-  kind: requiredString(actor?.kind, 'Actor kind'),
+  ...(typeof actor?.kind === 'string' && actor.kind.length > 0 ? { kind: actor.kind } : {}),
   participantSessionId: requiredString(actor?.participantSessionId, 'Actor participantSessionId'),
   roleId: requiredString(actor?.roleId, 'Actor roleId'),
 });

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { EditorViewAdapter } from '../../src/client/infrastructure/editor-view-adapter.js';
+import { EditorSession } from '../../src/client/infrastructure/editor-session.js';
 
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -310,5 +311,88 @@ describe('EditorViewAdapter search', () => {
     expect(adapter.getState().sliceDoc(selection.from, selection.to)).toBe('needle');
     expect(scroller.scrollTop).toBeGreaterThan(4000);
     adapter.destroy();
+  });
+});
+
+describe('EditorSession hosted transport', () => {
+  const createHostedClient = (content) => {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    ytext.insert(0, content);
+    const undoManager = new Y.UndoManager(ytext);
+    return {
+      awareness: null,
+      commentThreads: ydoc.getArray('comments'),
+      governanceActivity: ydoc.getArray('governanceActivity'),
+      initialSyncComplete: true,
+      localUser: { color: '#123456', name: 'Hosted' },
+      provider: null,
+      undoManager,
+      ydoc,
+      ytext,
+      collectUsers: () => [],
+      destroy() {
+        undoManager.destroy();
+        ydoc.destroy();
+      },
+      getLocalUser: () => ({ color: '#123456', name: 'Hosted' }),
+      getText: () => ytext.toString(),
+      hasUnsynchronizedLocalChanges: () => false,
+      initialize: async () => ({
+        awareness: null,
+        commentThreads: ydoc.getArray('comments'),
+        governanceActivity: ydoc.getArray('governanceActivity'),
+        localUser: { color: '#123456', name: 'Hosted' },
+        undoManager,
+        ydoc,
+        ytext,
+      }),
+      pauseForDisconnect: () => {},
+      reconnect: () => {},
+      setLocalViewport: () => null,
+      waitForInitialSync: async () => {},
+      waitForPendingUpdates: async () => {},
+    };
+  };
+
+  const createSession = (client) => new EditorSession({
+    canComment: false,
+    canEdit: true,
+    createCollaborationClient: () => client,
+    editorContainer: document.getElementById('editor'),
+    governed: true,
+    initialTheme: 'light',
+    lineInfoElement: null,
+    localUser: null,
+    onAwarenessChange: () => {},
+    onCommentsChange: () => {},
+    onConnectionChange: () => {},
+    onContentChange: () => {},
+    preferredUserName: 'Tester',
+  });
+
+  it('mounts an injected hosted client and leaves no editor DOM or history after destroy', async () => {
+    document.body.innerHTML = '<div id="editor"></div>';
+    const revoked = createHostedClient('Revoked draft');
+    const session = createSession(revoked);
+    await session.initialize('AbCdEf0123456789_-xyZA');
+    await nextFrame();
+
+    expect(document.querySelectorAll('#editor .cm-editor').length).toBe(1);
+    expect(session.getText()).toBe('Revoked draft');
+
+    session.destroy();
+
+    expect(document.querySelectorAll('#editor .cm-editor').length).toBe(0);
+    expect(document.getElementById('editor').textContent).toBe('');
+
+    const rebuilt = createHostedClient('Server truth');
+    const rebuiltSession = createSession(rebuilt);
+    await rebuiltSession.initialize('AbCdEf0123456789_-xyZA');
+    await nextFrame();
+
+    expect(rebuiltSession.getText()).toBe('Server truth');
+    expect(rebuilt.undoManager.undoStack.length).toBe(0);
+    rebuiltSession.destroy();
   });
 });

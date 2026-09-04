@@ -103,6 +103,7 @@ async function requireFreshCapability(governanceClient, name, path) {
 
 export class WebMcpToolRegistry {
   constructor({
+    executor = null,
     getActiveFilePath,
     getIsTabActive,
     getSession,
@@ -110,6 +111,9 @@ export class WebMcpToolRegistry {
     modelContext = globalThis.document?.modelContext ?? null,
     onDidEdit = null,
   }) {
+    // A hosted executor sends every operation to the Ground server, which
+    // reauthorizes it, so no client-only authorization result can approve one.
+    this.executor = executor;
     this.getActiveFilePath = getActiveFilePath;
     this.getIsTabActive = getIsTabActive;
     this.getSession = getSession;
@@ -121,7 +125,9 @@ export class WebMcpToolRegistry {
 
   getActiveContext({ expectedPath = null } = {}) {
     const path = this.getActiveFilePath();
-    const kind = getVaultFileKind(path);
+    // A hosted document is a Ground Markdown document addressed by id, not a
+    // vault file, so its path carries no extension to classify.
+    const kind = this.executor ? 'markdown' : getVaultFileKind(path);
     const session = this.getSession();
     if (
       !this.getIsTabActive()
@@ -189,6 +195,9 @@ export class WebMcpToolRegistry {
           },
           execute: async (_input, { signal } = {}) => {
             throwIfAborted(signal);
+            if (this.executor) {
+              return this.executor.read({ path: registration.path });
+            }
             await requireFreshCapability(
               this.governanceClient,
               'collabmd_read_active_document',
@@ -237,8 +246,15 @@ export class WebMcpToolRegistry {
           },
           execute: async (input, { signal } = {}) => {
             throwIfAborted(signal);
-            if (!input || typeof input.path !== 'string') {
+            if (!input || typeof input.path !== 'string' || typeof input.revision !== 'string') {
               throw new Error('path, revision, and replacements are required');
+            }
+            if (this.executor) {
+              return this.executor.apply({
+                path: input.path,
+                replacements: validateReplacements(input.replacements),
+                revision: input.revision,
+              });
             }
             const actor = await requireFreshCapability(
               this.governanceClient,
@@ -291,8 +307,17 @@ export class WebMcpToolRegistry {
           },
           execute: async (input, { signal } = {}) => {
             throwIfAborted(signal);
-            if (!input || typeof input.path !== 'string') {
+            if (!input || typeof input.path !== 'string' || typeof input.revision !== 'string') {
               throw new Error('path, revision, oldText, and newText are required');
+            }
+            if (this.executor) {
+              const [replacement] = validateReplacements([input]);
+              return this.executor.propose({
+                newText: replacement.newText,
+                oldText: replacement.oldText,
+                path: input.path,
+                revision: input.revision,
+              });
             }
             const actor = await requireFreshCapability(
               this.governanceClient,

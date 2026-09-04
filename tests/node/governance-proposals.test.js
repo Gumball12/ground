@@ -551,3 +551,45 @@ test('groupReviewItems groups located items by position and sorts Unlocated last
     },
   ]);
 });
+
+test('createProposal accepts an actor without a kind', () => {
+  const context = createGovernanceDoc('Budget is $100K.');
+  const kindlessActor = {
+    displayName: 'Reviewer Agent',
+    participantSessionId: 'reviewer-2',
+    roleId: 'reviewer',
+  };
+
+  const proposal = createProposal(context, proposalInput(context, 10, 15, {
+    actor: kindlessActor,
+    id: 'proposal-kindless',
+    replacementText: '$110K',
+  }));
+
+  assert.equal(proposal.createdByDisplayName, 'Reviewer Agent');
+  assert.equal(proposal.createdByRole, 'reviewer');
+  assert.deepEqual(context.activity.get(0).actor, kindlessActor);
+});
+
+test('resolveProposal accepts an Owner actor without a kind', () => {
+  const context = createGovernanceDoc('Budget is $100K.');
+  createProposal(context, proposalInput(context, 10, 15, {
+    id: 'proposal-resolve-kindless',
+    replacementText: '$110K',
+  }));
+  const kindlessOwner = {
+    displayName: 'Owner',
+    participantSessionId: 'owner-2',
+    roleId: 'owner',
+  };
+
+  const resolved = resolveProposal(context, {
+    actor: kindlessOwner,
+    proposalId: 'proposal-resolve-kindless',
+    resolution: 'apply_proposed',
+  });
+
+  assert.equal(resolved.status, 'accepted');
+  assert.equal(context.ytext.toString(), 'Budget is $110K.');
+  assert.deepEqual(context.activity.get(context.activity.length - 1).actor, kindlessOwner);
+});

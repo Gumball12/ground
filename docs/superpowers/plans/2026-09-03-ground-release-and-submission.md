@@ -318,7 +318,7 @@ Use no production data. Link the repository to the selected Supabase project and
 
 - [ ] **Step 3: Run the deterministic candidate matrix**
 
-Run ten create/hydrate/reconnect samples for `64_000`, `200_000`, `500_000`, and `1_000_000` bytes, plus replay counts `50`, `100`, and `200`. The selection algorithm is exactly the one tested in the data-foundation plan.
+Create one document per candidate, seven in all so the run stays inside the frozen hourly creation limit, then take ten hydrate and ten reconnect samples of each for `64_000`, `200_000`, `500_000`, and `1_000_000` bytes, plus replay counts `50`, `100`, and `200` appended at the frozen mutation pace. A `429` aborts the run rather than counting as a failed candidate. The selection algorithm is exactly the one tested in the data-foundation plan.
 
 Expected: JSON output names one passing document/update/compaction tuple. If no candidate passes, stop and return to architecture review; do not invent limits.
 

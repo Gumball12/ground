@@ -16,14 +16,27 @@ test('client build emits the focused hashed entry graph without the removed prev
   const mainStylesheetPath = extractAssetPath(indexHtml, /href="\.\/(assets\/[^"]+-[A-Za-z0-9_-]{8,}\.css)"/, 'main stylesheet');
   const assetFileNames = await readdir(resolve(clientDistDir, 'assets'));
   const entryBundle = await readFile(resolve(clientDistDir, mainAssetPath), 'utf8');
-  const focusedRuntimeReference = entryBundle.match(/\bmain-[A-Za-z0-9_-]+\.js\b/u)?.[0] || null;
+  // The entry chooses between the local and the Ground bootstrap at runtime, so
+  // it references both chunks; the local match must not capture the Ground one.
+  const focusedRuntimeReference = entryBundle
+    .match(/(?<!ground-)\bmain-[A-Za-z0-9_-]+\.js\b/u)?.[0] || null;
+  const groundRuntimeReference = entryBundle
+    .match(/\bground-main-[A-Za-z0-9_-]+\.js\b/u)?.[0] || null;
   assert.ok(focusedRuntimeReference, 'expected entry bundle to reference the focused runtime');
+  assert.ok(groundRuntimeReference, 'expected entry bundle to reference the Ground runtime');
   const focusedRuntime = await readFile(
     resolve(clientDistDir, 'assets', focusedRuntimeReference),
     'utf8',
   );
+  const groundRuntime = await readFile(
+    resolve(clientDistDir, 'assets', groundRuntimeReference),
+    'utf8',
+  );
 
   assert.match(focusedRuntime, /governanceStatusPanel/u);
+  assert.match(groundRuntime, /groundLanding/u);
+  assert.match(indexHtml, /rel="icon"/u);
+  await access(resolve(clientDistDir, 'assets', groundRuntimeReference), fsConstants.R_OK);
   assert.doesNotMatch(`${entryBundle}\n${focusedRuntime}`, /preview-render-worker/u);
   assert.equal(
     assetFileNames.some((fileName) => fileName.startsWith('preview-render-worker-')),

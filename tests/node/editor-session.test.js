@@ -675,3 +675,117 @@ test('EditorSession destruction releases the personal UndoManager with its Y.Doc
   assert.equal(undoDestroyCalls, 1);
   assert.equal(session.collaborationClient.ydoc, null);
 });
+
+function createHostedCollaborationFake() {
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('codemirror');
+  const pendingUpdates = { resolve: null };
+  const client = {
+    awareness: { getStates: () => new Map() },
+    commentThreads: ydoc.getArray('comments'),
+    destroyCalls: 0,
+    governanceActivity: ydoc.getArray('governanceActivity'),
+    initializeCalls: 0,
+    // Left false so `initialize` records bindings without mounting a real
+    // CodeMirror view; DOM behavior belongs in the browser suite.
+    initialSyncComplete: false,
+    localUser: { color: '#123456', name: 'Hosted' },
+    provider: null,
+    undoManager: new Y.UndoManager(ytext),
+    ydoc,
+    ytext,
+    collectUsers: () => [],
+    destroy() {
+      client.destroyCalls += 1;
+    },
+    getLocalUser: () => client.localUser,
+    getText: () => ytext.toString(),
+    hasUnsynchronizedLocalChanges: () => false,
+    async initialize() {
+      client.initializeCalls += 1;
+      return {
+        awareness: client.awareness,
+        commentThreads: client.commentThreads,
+        governanceActivity: client.governanceActivity,
+        localUser: client.localUser,
+        undoManager: client.undoManager,
+        ydoc,
+        ytext,
+      };
+    },
+    pauseForDisconnect: () => {},
+    reconnect: () => {},
+    setLocalViewport: () => null,
+    waitForInitialSync: async () => {},
+    waitForPendingUpdates: () => new Promise((resolve) => {
+      pendingUpdates.resolve = resolve;
+    }),
+  };
+  return { client, pendingUpdates };
+}
+
+const hostedSessionOptions = {
+  editorContainer: null,
+  initialTheme: 'light',
+  lineInfoElement: null,
+  localUser: null,
+  onAwarenessChange: () => {},
+  onCommentsChange: () => {},
+  onConnectionChange: () => {},
+  onContentChange: () => {},
+  preferredUserName: 'Tester',
+};
+
+test('EditorSession uses an injected collaboration client', async () => {
+  const { client } = createHostedCollaborationFake();
+  const session = new EditorSession({
+    ...hostedSessionOptions,
+    createCollaborationClient: () => client,
+  });
+
+  await session.initialize('AbCdEf0123456789_-xyZA');
+
+  assert.equal(session.collaborationClient, client);
+  assert.equal(client.initializeCalls, 1);
+  assert.equal(session.provider, null);
+});
+
+test('EditorSession waitForPendingUpdates delegates to the injected client', async () => {
+  const { client, pendingUpdates } = createHostedCollaborationFake();
+  const session = new EditorSession({
+    ...hostedSessionOptions,
+    createCollaborationClient: () => client,
+  });
+  await session.initialize('AbCdEf0123456789_-xyZA');
+
+  let settled = false;
+  const waiting = session.waitForPendingUpdates().then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+  assert.equal(settled, false);
+
+  pendingUpdates.resolve();
+  await waiting;
+  assert.equal(settled, true);
+});
+
+test('EditorSession waitForPendingUpdates resolves when the client omits it', async () => {
+  const session = new EditorSession({ ...hostedSessionOptions });
+
+  await session.waitForPendingUpdates();
+});
+
+test('EditorSession destroy releases the injected client and empties its text', async () => {
+  const { client } = createHostedCollaborationFake();
+  const session = new EditorSession({
+    ...hostedSessionOptions,
+    createCollaborationClient: () => client,
+  });
+  await session.initialize('AbCdEf0123456789_-xyZA');
+  client.ytext.insert(0, 'Revoked content');
+
+  session.destroy();
+
+  assert.equal(client.destroyCalls, 1);
+});

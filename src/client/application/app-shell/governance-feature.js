@@ -131,6 +131,9 @@ export const governanceFeature = {
     });
     this.governanceUi?.render({
       activity: context?.activity?.toArray?.() ?? [],
+      // The local room's roster is its live membership, so the bar and Manage
+      // Access read the same list here.
+      connectedParticipants: this.governanceSnapshot?.participants ?? [],
       connectionState: this.connectionState,
       participants: this.governanceSnapshot?.participants ?? [],
       reviewGroups,

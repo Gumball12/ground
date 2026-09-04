@@ -20,8 +20,22 @@ const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
 const version = args.version || packageJson.version;
 const sha256 = args.sha256;
 const outputPath = path.resolve(rootDir, args.output || 'packaging/homebrew-tap/Formula/collabmd.rb');
-const owner = args.owner || 'andes90';
-const repo = args.repo || packageJson.name;
+// The tarball comes from the repository, which the package name no longer
+// matches: the package is named for the hosted product, the repository is not.
+const [, repositoryOwner, repositoryName] = /github\.com\/([^/]+)\/([^/.]+)/u
+  .exec(packageJson.repository?.url ?? '') ?? [];
+const owner = args.owner || repositoryOwner;
+const repo = args.repo || repositoryName;
+// Homebrew links the executable the package declares, not the package itself.
+const [binaryName] = Object.keys(packageJson.bin ?? {});
+
+if (!owner || !repo) {
+  throw new Error('Missing owner or repo. Pass --owner and --repo, or set a GitHub repository URL.');
+}
+
+if (!binaryName) {
+  throw new Error('Missing executable. package.json must declare a bin entry.');
+}
 
 if (!version) {
   throw new Error('Missing version. Pass --version or set package.json version.');
@@ -55,7 +69,7 @@ const formula = `class ${className} < Formula
     system "npm", "install", *std_npm_args(prefix: false), "--include=dev"
     system "npm", "run", "build"
     system "npm", "install", *std_npm_args
-    bin.install_symlink libexec/"bin/${packageJson.name}"
+    bin.install_symlink libexec/"bin/${binaryName}"
   end
 
   test do
@@ -67,7 +81,7 @@ const formula = `class ${className} < Formula
     port = free_port
     log_path = testpath/"collabmd.log"
     pid = spawn(
-      bin/"${packageJson.name}",
+      bin/"${binaryName}",
       testpath/"vault",
       "--no-tunnel",
       "--host", "127.0.0.1",

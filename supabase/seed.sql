@@ -1,0 +1,1 @@
+-- Ground uses migrations for its deterministic local database state.
