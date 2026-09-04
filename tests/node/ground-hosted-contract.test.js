@@ -7,6 +7,8 @@ import {
   GROUND_ERROR_STATUS,
   GROUND_LIMIT_CANDIDATES,
   GROUND_OPERATION_KINDS,
+  GROUND_RATE_LIMITS,
+  GROUND_RATE_LIMIT_SCOPES,
   createGroundDocumentId,
   groundP95,
   isGroundDocumentId,
@@ -128,4 +130,33 @@ test('exposes the shared Ground error code to HTTP status contract', () => {
     GROUND_UPDATE_TOO_LARGE: 413,
   });
   assert.equal(Object.isFrozen(GROUND_ERROR_STATUS), true);
+});
+
+test('freezes the MVP fixed-window rate limits', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(GROUND_RATE_LIMITS)), {
+    create: { limit: 10, windowSeconds: 3600 },
+    join: { limit: 30, windowSeconds: 3600 },
+    mutation: { limit: 40, windowSeconds: 10 },
+  });
+  assert.equal(Object.isFrozen(GROUND_RATE_LIMITS), true);
+  assert.deepEqual(Object.keys(GROUND_RATE_LIMITS).toSorted(), ['create', 'join', 'mutation']);
+});
+
+test('maps each mutating operation to one of the three rate-limit scopes', () => {
+  assert.deepEqual({ ...GROUND_RATE_LIMIT_SCOPES }, {
+    append_update: 'mutation',
+    assign_role: 'mutation',
+    create_document: 'create',
+    join_document: 'join',
+    recover_owner: 'mutation',
+    resolve_proposal: 'mutation',
+    revoke_participant: 'mutation',
+    webmcp_apply: 'mutation',
+    webmcp_propose: 'mutation',
+  });
+  assert.equal(Object.isFrozen(GROUND_RATE_LIMIT_SCOPES), true);
+  assert.deepEqual(
+    [...new Set(Object.values(GROUND_RATE_LIMIT_SCOPES))].toSorted(),
+    Object.keys(GROUND_RATE_LIMITS).toSorted(),
+  );
 });

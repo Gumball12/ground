@@ -88,9 +88,14 @@ const forwardToRuntime = async ({ origin, request, response, runtime, url }) => 
 
   const groundResponse = await runtime.fetch(new Request(`${origin}${url.pathname}${url.search}`, {
     body,
-    headers: Object.entries(request.headers)
-      .filter(([, value]) => typeof value === 'string')
-      .map(([name, value]) => [name, value]),
+    headers: [
+      // Vercel supplies this header in production. Setting it from the socket
+      // keeps the local suite on the same network rate-limit path.
+      ['x-forwarded-for', request.socket.remoteAddress ?? '127.0.0.1'],
+      ...Object.entries(request.headers)
+        .filter(([, value]) => typeof value === 'string')
+        .map(([name, value]) => [name, value]),
+    ],
     method: request.method,
   }));
   const headers = Object.fromEntries(groundResponse.headers.entries());
@@ -116,6 +121,14 @@ export const startGroundLocalServer = async ({ host = '127.0.0.1', port = 0 } = 
     },
     // Local runs are not a calibration; Plan 3 Task 4 commits measured limits.
     limits: { maxUpdateBytes: 64_000 },
+    // Every local browser context shares one loopback address, so the frozen
+    // hourly create limit would throttle the suite itself. Enforcement of the
+    // production numbers is proved by the focused service and Supabase tests.
+    rateLimits: {
+      create: { limit: 10_000, windowSeconds: 3_600 },
+      join: { limit: 10_000, windowSeconds: 3_600 },
+      mutation: { limit: 10_000, windowSeconds: 10 },
+    },
   });
 
   listening.on('request', (request, response) => {

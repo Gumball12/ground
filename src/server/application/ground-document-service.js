@@ -8,12 +8,24 @@ export const createGroundService = ({
   initialText = '',
   limits = {},
   manifest,
+  rateLimitHmacKey,
+  rateLimits,
   store,
 }) => {
-  const helpers = createServiceHelpers({ clock, limits, manifest, store });
+  const helpers = createServiceHelpers({
+    clock,
+    limits,
+    manifest,
+    rateLimitHmacKey,
+    rateLimits,
+    store,
+  });
 
   return {
     ...createGroundAccessOperations({ createDocumentId, helpers, initialText }),
     ...createGroundDocumentOperations({ helpers }),
+    // A server-side collaborator, deliberately camelCase so it can never
+    // collide with the snake_case client operation union.
+    enforceRateLimit: helpers.enforceRateLimit,
   };
 };

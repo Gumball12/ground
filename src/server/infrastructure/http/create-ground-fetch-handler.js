@@ -1,4 +1,7 @@
-import { GROUND_ERROR_STATUS } from '../../../domain/ground-hosted-contract.js';
+import {
+  GROUND_ERROR_STATUS,
+  GROUND_RATE_LIMIT_SCOPES,
+} from '../../../domain/ground-hosted-contract.js';
 
 export const GROUND_OPERATIONS = Object.freeze([
   'create_document', 'join_document', 'get_session', 'hydrate_document',
@@ -21,6 +24,29 @@ const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
 });
 
 const errorResponse = (code) => jsonResponse(GROUND_ERROR_STATUS[code], { code });
+
+// Vercel overwrites `x-forwarded-for` and never forwards an externally supplied
+// value, so these headers are the only trustworthy client network identifier.
+// The `x-vercel-` variant additionally survives a proxy placed on top of Vercel.
+const NETWORK_ID_HEADERS = Object.freeze([
+  'x-vercel-forwarded-for',
+  'x-forwarded-for',
+  'x-real-ip',
+]);
+
+// A request arriving without any platform header shares a single rate window
+// rather than escaping the boundary.
+const UNKNOWN_NETWORK_ID = 'unknown';
+
+const readNetworkId = (request) => {
+  for (const header of NETWORK_ID_HEADERS) {
+    const value = (request.headers.get(header) ?? '').split(',')[0].trim().toLowerCase();
+    if (value) {
+      return value;
+    }
+  }
+  return UNKNOWN_NETWORK_ID;
+};
 
 const readBearerToken = (request) => {
   const header = request.headers.get('authorization') ?? '';
@@ -86,7 +112,17 @@ export const createGroundFetchHandler = ({
     }
 
     const { userId } = await authVerifier.verify(bearerToken);
-    return jsonResponse(200, await service[operation]({ actorId: userId, ...input }));
+
+    // A denied request must change no document, sequence, or Activity, so the
+    // window is taken before the operation runs.
+    const scope = GROUND_RATE_LIMIT_SCOPES[operation];
+    if (scope) {
+      await service.enforceRateLimit({ networkId: readNetworkId(request), scope, userId });
+    }
+
+    // The verified bearer identity is applied after the client body: a request
+    // that names its own `actorId` must never act as another participant.
+    return jsonResponse(200, await service[operation]({ ...input, actorId: userId }));
   };
 
   return {

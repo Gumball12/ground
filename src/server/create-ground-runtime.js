@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { GROUND_RATE_LIMITS } from '../domain/ground-hosted-contract.js';
 import { createGroundService } from './application/ground-document-service.js';
 import { loadGroundHostedEnv } from './config/ground-hosted-env.js';
 import { validateGovernanceManifest } from './config/governance-manifest.js';
@@ -12,7 +13,7 @@ const readRepoFile = (relativePath) => readFile(
   'utf8',
 );
 
-export const createGroundRuntime = async ({ env, fetchImpl, limits } = {}) => {
+export const createGroundRuntime = async ({ env, fetchImpl, limits, rateLimits } = {}) => {
   const config = loadGroundHostedEnv(env);
   const [manifestText, initialText] = await Promise.all([
     readRepoFile('collabmd.governance.json'),
@@ -31,6 +32,8 @@ export const createGroundRuntime = async ({ env, fetchImpl, limits } = {}) => {
       initialText,
       limits: limits ?? {},
       manifest: validateGovernanceManifest(JSON.parse(manifestText)),
+      rateLimitHmacKey: config.rateLimitHmacKey,
+      rateLimits: rateLimits ?? GROUND_RATE_LIMITS,
       store: createGroundSupabaseStore({
         fetchImpl,
         secretKey: config.supabaseSecretKey,

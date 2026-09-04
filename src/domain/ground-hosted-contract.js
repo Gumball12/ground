@@ -30,6 +30,28 @@ export const GROUND_ERROR_STATUS = Object.freeze({
   GROUND_UPDATE_TOO_LARGE: 413,
 });
 
+// Fixed-window rate limits frozen for the MVP. Ground adds no second window and
+// no further scope; `private.ground_rate_limits` stores exactly these three.
+export const GROUND_RATE_LIMITS = Object.freeze({
+  create: Object.freeze({ limit: 10, windowSeconds: 3_600 }),
+  join: Object.freeze({ limit: 30, windowSeconds: 3_600 }),
+  mutation: Object.freeze({ limit: 40, windowSeconds: 10 }),
+});
+
+// Every operation that can change durable state carries a scope. An operation
+// absent from this table performs no write, so it consumes no rate window.
+export const GROUND_RATE_LIMIT_SCOPES = Object.freeze({
+  append_update: 'mutation',
+  assign_role: 'mutation',
+  create_document: 'create',
+  join_document: 'join',
+  recover_owner: 'mutation',
+  resolve_proposal: 'mutation',
+  revoke_participant: 'mutation',
+  webmcp_apply: 'mutation',
+  webmcp_propose: 'mutation',
+});
+
 export const GROUND_LIMIT_CANDIDATES = Object.freeze([64_000, 200_000, 500_000, 1_000_000]);
 
 export const GROUND_COMPACTION_UPDATE_CANDIDATES = Object.freeze([50, 100, 200]);

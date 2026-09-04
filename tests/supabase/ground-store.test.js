@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import * as Y from 'yjs';
+import { GROUND_RATE_LIMITS } from '../../src/domain/ground-hosted-contract.js';
 import { createGroundService } from '../../src/server/application/ground-document-service.js';
 import { hydrateGroundYDoc } from '../../src/server/application/ground-yjs-state.js';
+import { createGroundFetchHandler } from '../../src/server/infrastructure/http/create-ground-fetch-handler.js';
 import { createGroundSupabaseStore } from '../../src/server/infrastructure/supabase/ground-supabase-store.js';
-import { createAnonymousClient } from './ground-supabase-fixture.js';
+import { createAdminClient, createAnonymousClient } from './ground-supabase-fixture.js';
 
 const MAX_UPDATE_BYTES = 64_000;
 
@@ -175,4 +179,137 @@ test('recovery rotates the token and returns a fresh one without leaking the has
     documentId: created.documentId,
     recoveryToken: created.recoveryToken,
   }), (thrown) => thrown.code === 'GROUND_UNAVAILABLE');
+});
+
+const ALLOWED_ORIGIN = 'https://ground.test';
+
+// Drives the real HTTP boundary over the real database so a denied request is
+// observed exactly as a browser would cause it.
+const buildRateLimitedHandler = ({ rateLimits, session }) => createGroundFetchHandler({
+  allowedOrigins: [ALLOWED_ORIGIN],
+  authVerifier: { verify: async () => ({ userId: session.userId }) },
+  publicConfig: { groundHosted: true },
+  service: createGroundService({
+    initialText: launchPlan,
+    limits: { maxUpdateBytes: MAX_UPDATE_BYTES },
+    manifest,
+    // A fresh key per handler keeps each run inside its own rate window.
+    rateLimitHmacKey: randomBytes(32).toString('hex'),
+    rateLimits,
+    store: createGroundSupabaseStore({
+      secretKey: process.env.SUPABASE_SECRET_KEY,
+      supabaseUrl: process.env.SUPABASE_URL,
+    }),
+  }),
+});
+
+const postOperation = (handler, body) => handler.fetch(new Request(
+  'https://ground.test/api/ground',
+  {
+    body: JSON.stringify(body),
+    headers: {
+      authorization: 'Bearer test-session',
+      'content-type': 'application/json',
+      origin: ALLOWED_ORIGIN,
+      'x-forwarded-for': '203.0.113.7',
+    },
+    method: 'POST',
+  },
+));
+
+const appendTextOperation = (documentId, value) => {
+  const ydoc = new Y.Doc();
+  const before = Y.encodeStateVector(ydoc);
+  ydoc.getText('codemirror').insert(0, value);
+  return {
+    documentId,
+    operation: 'append_update',
+    update: Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString('base64'),
+  };
+};
+
+const ownedDocumentIds = async (userId) => {
+  const { data, error } = await createAdminClient()
+    .from('ground_participants')
+    .select('document_id')
+    .eq('user_id', userId)
+    .eq('role_id', 'owner');
+  assert.equal(error, null);
+  return data.map((row) => row.document_id);
+};
+
+// The user-facing contract: request N succeeds, request N+1 is refused with 429,
+// and the refusal leaves the document, its sequence, and its Activity untouched.
+test('a rate-limited mutation returns 429 and changes no sequence or Activity', async () => {
+  const owner = await createAnonymousClient();
+  const service = buildService();
+  const created = await service.create_document({
+    actorId: owner.userId,
+    displayName: 'Owner',
+  });
+  const handler = buildRateLimitedHandler({
+    rateLimits: { mutation: { limit: 1, windowSeconds: 3_600 } },
+    session: owner,
+  });
+
+  const before = await service.webmcp_read({
+    actorId: owner.userId,
+    documentId: created.documentId,
+  });
+
+  const allowed = await postOperation(handler, appendTextOperation(created.documentId, 'accepted'));
+  assert.equal(allowed.status, 200);
+
+  const accepted = await service.webmcp_read({
+    actorId: owner.userId,
+    documentId: created.documentId,
+  });
+  assert.equal(accepted.headSequence, before.headSequence + 1);
+
+  const denied = await postOperation(handler, appendTextOperation(created.documentId, 'refused'));
+  assert.equal(denied.status, 429);
+  assert.deepEqual(await denied.json(), { code: 'GROUND_RATE_LIMITED' });
+
+  const after = await service.webmcp_read({
+    actorId: owner.userId,
+    documentId: created.documentId,
+  });
+  assert.equal(after.headSequence, accepted.headSequence);
+  assert.equal(after.text, accepted.text);
+  assert.equal(after.text.includes('refused'), false);
+  assert.deepEqual(after.activity, accepted.activity);
+});
+
+test('a rate-limited creation stores no document for the refused request', async () => {
+  const owner = await createAnonymousClient();
+  const handler = buildRateLimitedHandler({
+    rateLimits: { create: { limit: 1, windowSeconds: 3_600 } },
+    session: owner,
+  });
+
+  const allowed = await postOperation(handler, {
+    displayName: 'Owner',
+    operation: 'create_document',
+  });
+  assert.equal(allowed.status, 200);
+  const { documentId } = await allowed.json();
+
+  const denied = await postOperation(handler, {
+    displayName: 'Owner',
+    operation: 'create_document',
+  });
+  assert.equal(denied.status, 429);
+  assert.deepEqual(await denied.json(), { code: 'GROUND_RATE_LIMITED' });
+
+  assert.deepEqual(await ownedDocumentIds(owner.userId), [documentId]);
+});
+
+// A rejected request must not consume the caller's identity either: the same
+// session stays usable once its window advances.
+test('the deployed runtime carries the frozen MVP rate thresholds', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(GROUND_RATE_LIMITS)), {
+    create: { limit: 10, windowSeconds: 3600 },
+    join: { limit: 30, windowSeconds: 3600 },
+    mutation: { limit: 40, windowSeconds: 10 },
+  });
 });

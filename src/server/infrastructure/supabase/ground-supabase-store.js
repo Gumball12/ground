@@ -204,5 +204,13 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
         sequence: Number(result.sequence),
       };
     },
+
+    takeRateLimit: async (input) => callRpc('ground_take_rate_limit', {
+      p_key_hash: encodeBytea(input.keyHash),
+      p_limit: input.limit,
+      p_now: input.now,
+      p_scope: input.scope,
+      p_window_seconds: input.windowSeconds,
+    }),
   };
 };

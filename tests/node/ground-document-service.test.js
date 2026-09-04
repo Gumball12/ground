@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createGroundService } from '../../src/server/application/ground-document-service.js';
@@ -27,6 +27,7 @@ const unavailable = () => Object.assign(
 const createGroundStoreFake = ({ launchPlan = '' } = {}) => {
   const documents = new Map();
   const calls = [];
+  const rateWindows = new Map();
 
   const documentOr = (documentId) => {
     const document = documents.get(documentId);
@@ -162,6 +163,21 @@ const createGroundStoreFake = ({ launchPlan = '' } = {}) => {
       document.headSequence += 1;
       document.updates.push({ sequence: document.headSequence, update: input.activityUpdate });
       return { participant: next, sequence: document.headSequence };
+    },
+    // Mirrors `public.ground_take_rate_limit`: one aligned fixed window per
+    // scope and key hash, incremented first and compared to the limit after.
+    takeRateLimit: async (input) => {
+      record('takeRateLimit', input);
+      const seconds = Math.floor(Date.parse(input.now) / 1000);
+      const windowStart = Math.floor(seconds / input.windowSeconds) * input.windowSeconds;
+      const key = [
+        input.scope,
+        Buffer.from(input.keyHash).toString('hex'),
+        windowStart,
+      ].join(':');
+      const count = (rateWindows.get(key) ?? 0) + 1;
+      rateWindows.set(key, count);
+      return count <= input.limit;
     },
   };
 
@@ -566,4 +582,155 @@ test('webmcp_apply leaves the document unchanged when one replacement is stale',
   );
 
   assert.equal(store.documents.get(DOCUMENT_ID).headSequence, before);
+});
+
+const RATE_HMAC_KEY = 'ground-test-rate-key';
+
+const RATE_LIMITS = Object.freeze({
+  create: Object.freeze({ limit: 2, windowSeconds: 3_600 }),
+  join: Object.freeze({ limit: 3, windowSeconds: 3_600 }),
+  mutation: Object.freeze({ limit: 2, windowSeconds: 10 }),
+});
+
+const buildRateLimitedService = (store, overrides = {}) => buildService(store, {
+  rateLimitHmacKey: RATE_HMAC_KEY,
+  rateLimits: RATE_LIMITS,
+  ...overrides,
+});
+
+const expectedRateKey = (kind, value) => createHmac('sha256', RATE_HMAC_KEY)
+  .update(`${kind}:${value}`, 'utf8')
+  .digest();
+
+test('allows requests up to the scope limit and denies the next one', async () => {
+  const store = createGroundStoreFake();
+  const service = buildRateLimitedService(store);
+  const take = () => service.enforceRateLimit({
+    networkId: '203.0.113.7',
+    scope: 'create',
+    userId: 'user-owner',
+  });
+
+  await take();
+  await take();
+
+  assert.equal(await take().then(() => null, groundCode), 'GROUND_RATE_LIMITED');
+});
+
+test('starts a fresh count once the fixed window advances', async () => {
+  const store = createGroundStoreFake();
+  let clockValue = '2026-09-04T00:00:00.000Z';
+  const service = buildRateLimitedService(store, { clock: () => clockValue });
+  const take = () => service.enforceRateLimit({
+    networkId: '203.0.113.7',
+    scope: 'mutation',
+    userId: 'user-owner',
+  });
+
+  await take();
+  await take();
+  assert.equal(await take().then(() => null, groundCode), 'GROUND_RATE_LIMITED');
+
+  clockValue = '2026-09-04T00:00:10.000Z';
+  await take();
+});
+
+// The create scope also counts the request network identifier so repeatedly
+// creating fresh anonymous users cannot walk past the boundary.
+test('counts creation independently for the actor and the request network', async () => {
+  const store = createGroundStoreFake();
+  const service = buildRateLimitedService(store);
+  const take = (userId, networkId) => service.enforceRateLimit({
+    networkId,
+    scope: 'create',
+    userId,
+  });
+
+  await take('user-a', '203.0.113.7');
+  await take('user-b', '203.0.113.7');
+
+  assert.equal(
+    await take('user-c', '203.0.113.7').then(() => null, groundCode),
+    'GROUND_RATE_LIMITED',
+  );
+  await take('user-c', '198.51.100.9');
+});
+
+test('counts a join and a mutation by actor only', async () => {
+  const store = createGroundStoreFake();
+  const service = buildRateLimitedService(store);
+
+  await service.enforceRateLimit({ networkId: '203.0.113.7', scope: 'join', userId: 'user-a' });
+  await service.enforceRateLimit({ networkId: '203.0.113.7', scope: 'mutation', userId: 'user-a' });
+
+  assert.deepEqual(
+    store.calls.filter(({ name }) => name === 'takeRateLimit').map(({ input }) => ({
+      keyHash: input.keyHash,
+      limit: input.limit,
+      scope: input.scope,
+      windowSeconds: input.windowSeconds,
+    })),
+    [
+      {
+        keyHash: expectedRateKey('user', 'user-a'),
+        limit: 3,
+        scope: 'join',
+        windowSeconds: 3_600,
+      },
+      {
+        keyHash: expectedRateKey('user', 'user-a'),
+        limit: 2,
+        scope: 'mutation',
+        windowSeconds: 10,
+      },
+    ],
+  );
+});
+
+// Only the server holds the keyed hash input, so a stored window row can never
+// be traced back to an anonymous user id or a raw network address.
+test('keys a rate window by a keyed hash rather than the raw identifier', async () => {
+  const store = createGroundStoreFake();
+  const service = buildRateLimitedService(store);
+
+  await service.enforceRateLimit({
+    networkId: '203.0.113.7',
+    scope: 'create',
+    userId: 'user-owner',
+  });
+
+  const hashes = store.calls
+    .filter(({ name }) => name === 'takeRateLimit')
+    .map(({ input }) => input.keyHash);
+
+  assert.deepEqual(hashes, [
+    expectedRateKey('user', 'user-owner'),
+    expectedRateKey('network', '203.0.113.7'),
+  ]);
+  for (const hash of hashes) {
+    assert.equal(hash.length, 32);
+    const text = Buffer.from(hash).toString('latin1');
+    assert.equal(text.includes('user-owner'), false);
+    assert.equal(text.includes('203.0.113.7'), false);
+  }
+});
+
+test('fails closed when the rate-limit configuration is missing or unknown', async () => {
+  const store = createGroundStoreFake();
+  const unconfigured = buildService(store);
+  const configured = buildRateLimitedService(store);
+
+  assert.equal(
+    await unconfigured.enforceRateLimit({
+      networkId: '203.0.113.7', scope: 'create', userId: 'user-owner',
+    }).then(() => null, groundCode),
+    'GROUND_TEMPORARILY_UNAVAILABLE',
+  );
+  assert.equal(
+    await configured.enforceRateLimit({
+      networkId: '203.0.113.7', scope: 'unknown', userId: 'user-owner',
+    }).then(() => null, groundCode),
+    'GROUND_TEMPORARILY_UNAVAILABLE',
+  );
+  assert.deepEqual(store.calls.filter(({ name }) => name === 'takeRateLimit'), []);
 });

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as Y from 'yjs';
 import { appendActivity } from '../../domain/governance-activity.js';
 import { hasCapability } from '../../domain/governance-contract.js';
@@ -38,8 +38,46 @@ export const anchorFor = (ytext, from, to) => ({
   anchorStartLine: 1,
 });
 
-export const createServiceHelpers = ({ clock, limits, manifest, store }) => {
+export const createServiceHelpers = ({
+  clock,
+  limits,
+  manifest,
+  rateLimitHmacKey,
+  rateLimits,
+  store,
+}) => {
   const now = () => clock();
+
+  // Only the server holds the HMAC input, so a stored window row never reveals
+  // the anonymous user id or the raw network address it counts.
+  const rateKeyHash = (kind, value) => createHmac('sha256', rateLimitHmacKey)
+    .update(`${kind}:${value}`, 'utf8')
+    .digest();
+
+  // Creation counts the actor and the request network independently, so
+  // repeatedly creating fresh anonymous users cannot walk past the boundary.
+  const enforceRateLimit = async ({ networkId, scope, userId }) => {
+    const window = rateLimits?.[scope];
+    if (!rateLimitHmacKey || !window) {
+      throw groundError('GROUND_TEMPORARILY_UNAVAILABLE');
+    }
+    const keyed = scope === 'create'
+      ? [['user', userId], ['network', networkId]]
+      : [['user', userId]];
+
+    for (const [kind, value] of keyed) {
+      const allowed = await store.takeRateLimit({
+        keyHash: rateKeyHash(kind, value),
+        limit: window.limit,
+        now: now(),
+        scope,
+        windowSeconds: window.windowSeconds,
+      });
+      if (!allowed) {
+        throw groundError('GROUND_RATE_LIMITED');
+      }
+    }
+  };
 
   const requireUpdateLimit = () => {
     const { maxUpdateBytes } = limits;
@@ -117,6 +155,7 @@ export const createServiceHelpers = ({ clock, limits, manifest, store }) => {
   return {
     captureAccessActivity,
     commitCapturedUpdate,
+    enforceRateLimit,
     loadContext,
     manifest,
     now,
