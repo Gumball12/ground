@@ -13,7 +13,7 @@ test('pins the Ground Supabase SDK, CLI, and test commands', async () => {
 // One existing validate job gates local CollabMD plus Ground. A second workflow
 // would double the cost and could drift, so the order is asserted in place.
 test('the existing validation job runs the Ground Supabase and E2E suites in order', async () => {
-  const workflow = await readFile('.github/workflows/docker-publish.yml', 'utf8');
+  const workflow = await readFile('.github/workflows/validate.yml', 'utf8');
   const expected = [
     'node-version: 24',
     'npm ci',

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const repoRoot = process.cwd();
@@ -54,6 +54,19 @@ test('page metadata, the README, and product copy share one tagline', async () =
   assert.ok(manifest.description.startsWith(`${TAGLINE}.`), manifest.description);
   assert.ok(page.includes(`<title>${TAGLINE}</title>`), 'page title');
   assert.ok(page.includes(`content="${TAGLINE}.`), 'page description');
+});
+
+// Every Docker instruction this repository ships names the upstream CollabMD
+// image, so an image built here would be an artifact nothing pulls, carrying the
+// CollabMD CLI under the Ground name.
+test('no workflow publishes a container image', async () => {
+  const workflows = await readdir('.github/workflows');
+
+  for (const file of workflows) {
+    const workflow = await readSource(`.github/workflows/${file}`);
+    assert.doesNotMatch(workflow, /docker\/(build-push|login|metadata)-action/u, file);
+    assert.doesNotMatch(workflow, /ghcr\.io/u, file);
+  }
 });
 
 test('the license stays MIT and the README credits CollabMD upstream', async () => {
