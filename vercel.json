@@ -6,7 +6,7 @@
   "functions": {
     "api/ground.js": {
       "maxDuration": 10,
-      "includeFiles": ["collabmd.governance.json", "docs/demo/launch-plan.md"]
+      "includeFiles": "{collabmd.governance.json,docs/demo/launch-plan.md}"
     },
     "api/app-config.js": {
       "maxDuration": 10

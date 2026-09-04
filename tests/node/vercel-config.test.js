@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { globSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
@@ -24,10 +25,17 @@ test('rewrites only a 22-character document id to index.html', async () => {
   assert.equal(config.framework, null);
 });
 
+// `includeFiles` is one node-glob pattern string of at most 256 characters, not
+// a list. Vercel rejects the whole configuration before building when it is an
+// array, so the pattern is resolved here against the real files the Function
+// reads at runtime.
 test('keeps the Ground API a Function that can read the manifest and demo document', async () => {
   const config = await readJson('vercel.json');
+  const { includeFiles } = config.functions['api/ground.js'];
 
-  assert.deepEqual(config.functions['api/ground.js'].includeFiles, [
+  assert.equal(typeof includeFiles, 'string');
+  assert.equal(includeFiles.length <= 256, true);
+  assert.deepEqual(globSync(includeFiles).toSorted(), [
     'collabmd.governance.json',
     'docs/demo/launch-plan.md',
   ]);
