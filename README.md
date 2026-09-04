@@ -235,9 +235,15 @@ ten creations per hour counted for both the anonymous session and the request
 network, thirty joins per hour, and forty mutations per ten seconds. A limited
 request returns `429` and changes no document, sequence, or Activity.
 
-An update larger than the configured byte limit is rejected as one operation,
-storing no prefix and no partial Activity. A document with no accepted change
-for thirty days is deleted with all of its rows.
+An edit is rejected as one operation, storing no prefix and no partial
+Activity, when it is larger than the configured update limit or when the
+document it would produce is larger than the configured document limit. The
+document size counts what a reader replays: the snapshot, the retained update
+log, and the arriving update. Hydration folds a long log into one snapshot once
+it reaches the compaction threshold, which returns that headroom.
+
+A document with no accepted change for thirty days is deleted with all of its
+rows. Folding a log is not a change and does not postpone that deadline.
 
 ## Security and claim boundary
 
