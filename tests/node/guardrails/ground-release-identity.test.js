@@ -27,6 +27,19 @@ test('package metadata identifies Ground and keeps the CollabMD executable', asy
   assert.equal(manifest.bin.collabmd, './bin/collabmd.js');
 });
 
+// `npm ci` installs from the lockfile, so its root identity is what a clean
+// install reports the package to be.
+test('the lockfile root names the same package as the manifest', async () => {
+  const [manifest, lockfile] = await Promise.all([
+    readSource('package.json').then(JSON.parse),
+    readSource('package-lock.json').then(JSON.parse),
+  ]);
+
+  assert.equal(lockfile.name, manifest.name);
+  assert.equal(lockfile.packages[''].name, manifest.name);
+  assert.equal(lockfile.packages[''].version, manifest.version);
+});
+
 test('the license stays MIT and the README credits CollabMD upstream', async () => {
   const [license, readme] = await Promise.all([
     readSource('LICENSE'),
