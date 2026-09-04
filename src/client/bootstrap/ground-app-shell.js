@@ -271,7 +271,10 @@ export class GroundAppShell {
 
   async #startRoute() {
     const route = parseGroundRoute(this.location.pathname);
-    const recoveryToken = new URLSearchParams(this.location.search).get(RECOVERY_PARAM);
+    // The recovery token arrives in the fragment so it never reaches the server.
+    // `recoverOwner` replaces the address before it sends the token anywhere.
+    const fragment = (this.location.hash ?? '').replace(/^#/u, '');
+    const recoveryToken = new URLSearchParams(fragment).get(RECOVERY_PARAM);
     if (route.type === 'document' && recoveryToken) {
       await this.controller.recoverOwner({ docId: route.docId, recoveryToken });
       return;

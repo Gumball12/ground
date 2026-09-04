@@ -116,7 +116,7 @@ it('resolves the display name from the existing dialog form', async () => {
 
 it('shows the recovery link once, focuses the copy action, and copies on request', async () => {
   const { controller, copied } = createEntry();
-  const url = `${ORIGIN}/${DOCUMENT_ID}?recover=token`;
+  const url = `${ORIGIN}/${DOCUMENT_ID}#recover=token`;
 
   controller.showRecoveryLink(url);
 
@@ -141,7 +141,7 @@ it('selects the readonly link field when the clipboard is unavailable', async ()
       },
     },
   });
-  const url = `${ORIGIN}/${DOCUMENT_ID}?recover=token`;
+  const url = `${ORIGIN}/${DOCUMENT_ID}#recover=token`;
   controller.showRecoveryLink(url);
 
   document.getElementById('copyGroundRecoveryLink').click();

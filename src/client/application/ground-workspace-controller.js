@@ -1,7 +1,9 @@
 // Owns the Ground route, Access and editor state machine. Every collaborator is
 // injected, so this module imports no presentation or infrastructure adapter.
+// The token travels in the fragment, which a browser never sends to the server,
+// so the one-time secret cannot reach a request log or a proxy.
 const recoveryUrl = ({ docId, origin, recoveryToken }) => (
-  `${origin}/${docId}?recover=${recoveryToken}`
+  `${origin}/${docId}#recover=${recoveryToken}`
 );
 
 export class GroundWorkspaceController {

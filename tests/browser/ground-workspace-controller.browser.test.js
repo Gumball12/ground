@@ -200,7 +200,7 @@ it('navigates to one canonical segment after creating a document', async () => {
     operation: 'create_document',
   });
   expect(harness.historyCalls).toEqual([{ kind: 'push', url: `/${CREATED_ID}` }]);
-  expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${CREATED_ID}?recover=created-token`]);
+  expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${CREATED_ID}#recover=created-token`]);
   expect(harness.governance.startCalls).toEqual([{ displayName: 'Owner', docId: CREATED_ID }]);
 });
 
@@ -269,7 +269,7 @@ it('replaces the recovery url before requesting recovery and shows the new link 
   );
   expect(harness.historyCalls[replaceIndex]).toEqual({ kind: 'replace', url: `/${DOCUMENT_ID}` });
   expect(recoverIndex).toBeGreaterThanOrEqual(0);
-  expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${DOCUMENT_ID}?recover=rotated-token`]);
+  expect(harness.entry.recoveryLinks).toEqual([`${ORIGIN}/${DOCUMENT_ID}#recover=rotated-token`]);
 });
 
 it('releases the governance client and session on destroy', async () => {
