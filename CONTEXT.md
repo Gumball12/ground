@@ -2,6 +2,30 @@
 
 CollabMD turns a local markdown-and-diagram folder into a collaborative browser workspace while keeping plain files as the enduring user-facing model.
 
+## Products
+
+The repository ships two products. Every term below belongs to CollabMD unless this section says otherwise.
+
+**CollabMD**:
+The local product. A long-lived Node process serves a **Vault** folder, the filesystem is the source of truth, and Roles last only for the in-memory room lifetime.
+_Avoid_: Ground, hosted document, Supabase
+
+**Ground**:
+The hosted product. Stateless Vercel Functions serve one shareable Markdown document per link, and a single Supabase project is the durable source of truth. There is no **Vault**, no file tree, and no filesystem path.
+_Avoid_: Vault, vault source, workspace folder
+
+**Ground Document**:
+One Markdown document addressed by a 22-character identifier and shared as `/:docId`. Its content lives as an ordered Yjs update log and periodic snapshots in Supabase Postgres, never as a file.
+_Avoid_: Vault Content, Editable Vault Content, file
+
+**Ground Participant**:
+An invisible anonymous Supabase session that has joined a **Ground Document**. Unlike a CollabMD page session, a Ground Participant's Role is durable and survives a restart, a reload, and a redeploy.
+_Avoid_: Account, member, collaborator
+
+**Owner Recovery Link**:
+The one-time URL that restores Ownership of a **Ground Document**. Its token travels in the URL fragment so it never reaches a server, only its hash is stored, and using it rotates the token and Revokes the previous Owner.
+_Avoid_: Password, credential, invitation
+
 ## Language
 
 **Vault**:

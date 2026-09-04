@@ -1,6 +1,21 @@
 # AGENTS.md
 
-Guidance for coding agents working in CollabMD.
+Guidance for coding agents working in this repository.
+
+## Two products
+
+The repository ships two products that share an editor and a governance
+manifest but keep separate sources of truth.
+
+- **CollabMD (local)**: a long-lived Node process serving a folder. The
+  filesystem is the source of truth and Roles last only for the in-memory room.
+- **Ground (hosted)**: stateless Vercel Functions over one Supabase project.
+  Supabase Postgres is the source of truth, and Roles, documents, Proposals and
+  Activity survive a restart.
+
+Never move a hosted concern into the filesystem path or a local concern into
+the Supabase path. `docs/adr/0004-ground-hosted-supabase-runtime.md` records why
+the two stay separate.
 
 ## Start here
 

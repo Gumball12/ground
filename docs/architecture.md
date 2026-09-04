@@ -3,6 +3,23 @@
 CollabMD is organized as a modular layered monolith. The goal is to keep
 feature code small and easy to move without changing public behavior.
 
+## Local and hosted sources of truth
+
+The same layers serve two products with different durable stores.
+
+- **CollabMD (local)**: the filesystem is the source of truth. A long-lived Node
+  process owns the collaboration room, and Roles live only in its memory.
+- **Ground (hosted)**: one Supabase project is the source of truth. Postgres
+  holds documents, participants, ordered Yjs updates and snapshots; Realtime
+  carries sequence and access notices; Vercel Functions stay stateless between
+  requests.
+
+Filesystem and git adapters belong to the local path only. Supabase adapters
+belong to the hosted path only. Both compose in thin entry modules
+(`src/client/main.js` and `src/client/ground-main.js`) and share `src/domain/`,
+the editor, and the governance manifest. See
+`docs/adr/0004-ground-hosted-supabase-runtime.md`.
+
 ## Layers
 
 - `presentation`: DOM/UI controllers and view-only behavior.
