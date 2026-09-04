@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as Y from 'yjs';
 import {
+  TEST_MAX_DOCUMENT_BYTES,
   TEST_MAX_UPDATE_BYTES,
   commitRawUpdate,
   createAdminClient,
@@ -162,6 +163,7 @@ test('browser roles cannot mutate the update table or commit RPC', async () => {
     p_actor_id: scenario.editor.userId,
     p_document_id: scenario.documentId,
     p_expected_role_version: scenario.editorRoleVersion,
+    p_max_document_bytes: TEST_MAX_DOCUMENT_BYTES,
     p_max_update_bytes: TEST_MAX_UPDATE_BYTES,
     p_now: new Date().toISOString(),
     p_operation_kind: 'document_edit',

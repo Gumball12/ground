@@ -120,7 +120,7 @@ export const startGroundLocalServer = async ({ host = '127.0.0.1', port = 0 } = 
       SUPABASE_URL: supabase.API_URL,
     },
     // Local runs are not a calibration; Plan 3 Task 4 commits measured limits.
-    limits: { maxUpdateBytes: 64_000 },
+    limits: { compactionUpdateCount: 50, maxDocumentBytes: 200_000, maxUpdateBytes: 64_000 },
     // Every local browser context shares one loopback address, so the frozen
     // hourly create limit would throttle the suite itself. Enforcement of the
     // production numbers is proved by the focused service and Supabase tests.

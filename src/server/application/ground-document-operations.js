@@ -6,7 +6,7 @@ import {
   groundError,
   requireText,
 } from './ground-service-support.js';
-import { captureGroundUpdate } from './ground-yjs-state.js';
+import { captureGroundUpdate, encodeGroundSnapshot } from './ground-yjs-state.js';
 
 const encodeBase64 = (bytes) => Buffer.from(bytes ?? []).toString('base64');
 
@@ -40,12 +40,32 @@ const replaceUniqueText = ({ context, expectedText, replacementText }) => {
 export const createGroundDocumentOperations = ({ helpers }) => {
   const {
     commitCapturedUpdate,
+    compactionThreshold,
     loadContext,
     now,
     requireCapability,
-    requireUpdateLimit,
+    requireCommitLimits,
     store,
   } = helpers;
+
+  // Folding the log costs one snapshot encode of a Y.Doc the read already
+  // built. A failure leaves the previous snapshot and log usable, so it must
+  // never reach the reader.
+  const compactWhenLogIsLong = async ({ context, documentId, state }) => {
+    const threshold = compactionThreshold();
+    if (!threshold || state.headSequence - state.snapshotSequence < threshold) {
+      return;
+    }
+    try {
+      await store.compactDocument({
+        candidateSequence: state.headSequence,
+        documentId,
+        snapshot: encodeGroundSnapshot(context),
+      });
+    } catch {
+      // The next read tries again.
+    }
+  };
 
   return {
     append_update: async ({
@@ -67,11 +87,11 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         actorId,
         documentId,
         expectedRoleVersion: expectedRoleVersion ?? participant.roleVersion,
-        maxUpdateBytes: requireUpdateLimit(),
         now: now(),
         operationKind,
         source: 'document_editor',
         update: Buffer.from(requireText(update), 'base64'),
+        ...requireCommitLimits(),
       });
     },
 
@@ -80,8 +100,8 @@ export const createGroundDocumentOperations = ({ helpers }) => {
     // twelve-character document to a 10,051-byte response in a real local run.
     hydrate_document: async ({ actorId, documentId }) => {
       await requireCapability({ actorId, capability: 'document.read', documentId });
-      const { state } = await loadContext(documentId);
-      return {
+      const { context, state } = await loadContext(documentId);
+      const hydrated = {
         headSequence: state.headSequence,
         snapshot: encodeBase64(state.snapshot),
         snapshotSequence: state.snapshotSequence,
@@ -90,6 +110,8 @@ export const createGroundDocumentOperations = ({ helpers }) => {
           update: encodeBase64(update),
         })),
       };
+      await compactWhenLogIsLong({ context, documentId, state });
+      return hydrated;
     },
 
     resolve_proposal: async ({ actorId, documentId, proposalId, resolution }) => {
@@ -98,7 +120,7 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         capability: 'conflict.resolve',
         documentId,
       });
-      requireUpdateLimit();
+      requireCommitLimits();
       const { context } = await loadContext(documentId);
       const update = captureGroundUpdate(context, (mutable) => resolveProposal(mutable, {
         actor: actorFrom(owner),
@@ -123,7 +145,7 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         capability: 'document.edit',
         documentId,
       });
-      requireUpdateLimit();
+      requireCommitLimits();
       const { context } = await loadContext(documentId);
       const update = captureGroundUpdate(context, (mutable) => {
         for (const edit of edits) {
@@ -156,7 +178,7 @@ export const createGroundDocumentOperations = ({ helpers }) => {
         capability: 'document.suggest',
         documentId,
       });
-      requireUpdateLimit();
+      requireCommitLimits();
       const { context, state } = await loadContext(documentId);
       const from = context.ytext.toString().indexOf(requireText(expectedText));
       if (from < 0) {

@@ -84,6 +84,7 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
         p_actor_id: input.actorId,
         p_document_id: input.documentId,
         p_expected_role_version: input.expectedRoleVersion,
+        p_max_document_bytes: input.maxDocumentBytes,
         p_max_update_bytes: input.maxUpdateBytes,
         p_now: input.now,
         p_operation_kind: input.operationKind,
@@ -91,6 +92,17 @@ export const createGroundSupabaseStore = ({ fetchImpl, secretKey, supabaseUrl })
         p_update: encodeBytea(input.update),
       });
       return { sequence: Number(result.sequence) };
+    },
+
+    // Folds the log into one snapshot. The database takes the document lock and
+    // deletes only the rows the candidate sequence covers.
+    compactDocument: async (input) => {
+      const result = await callRpc('ground_compact_document', {
+        p_candidate_sequence: input.candidateSequence,
+        p_document_id: input.documentId,
+        p_snapshot: encodeBytea(input.snapshot),
+      });
+      return { snapshotSequence: Number(result.snapshotSequence) };
     },
 
     create: async (input) => {

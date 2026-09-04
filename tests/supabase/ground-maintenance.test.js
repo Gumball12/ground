@@ -98,6 +98,47 @@ test('rejects an update above the injected byte limit without allocating a seque
   assert.deepEqual(await readUpdateRows(scenario.documentId), rowsBefore);
 });
 
+// Stored bytes are what a reader replays, so the boundary counts the snapshot,
+// every retained log row, and the arriving update as one document.
+test('rejects an edit whose resulting document crosses the document byte limit', async () => {
+  const scenario = await createActiveEditorScenario();
+  await commitTextUpdates(scenario, 'A');
+  const before = await readDocumentHead(scenario.documentId);
+  const rowsBefore = await readUpdateRows(scenario.documentId);
+
+  await assert.rejects(
+    commitRawUpdate(
+      scenario,
+      Buffer.alloc(TEST_MAX_UPDATE_BYTES),
+      TEST_MAX_UPDATE_BYTES,
+      RECENT_AT,
+      TEST_MAX_UPDATE_BYTES,
+    ),
+    { code: 'GROUND_UPDATE_TOO_LARGE' },
+  );
+
+  assert.deepEqual(await readDocumentHead(scenario.documentId), before);
+  assert.deepEqual(await readUpdateRows(scenario.documentId), rowsBefore);
+});
+
+test('rejects an edit when no document byte limit is injected', async () => {
+  const scenario = await createActiveEditorScenario();
+  const before = await readDocumentHead(scenario.documentId);
+
+  await assert.rejects(
+    commitRawUpdate(
+      scenario,
+      createTextUpdates('A')[0],
+      TEST_MAX_UPDATE_BYTES,
+      RECENT_AT,
+      null,
+    ),
+    { code: 'GROUND_INVALID_REQUEST' },
+  );
+
+  assert.deepEqual(await readDocumentHead(scenario.documentId), before);
+});
+
 test('rejects an update when no byte limit is injected', async () => {
   const scenario = await createActiveEditorScenario();
   const before = await readDocumentHead(scenario.documentId);

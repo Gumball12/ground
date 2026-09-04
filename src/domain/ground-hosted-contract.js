@@ -65,6 +65,23 @@ export const GROUND_MAX_UPDATE_BYTES_CEILING = 256_000;
 // 25% of the 4.5 MB Vercel request body limit.
 export const GROUND_MAX_REQUEST_BYTES = 1_125_000;
 
+// The three limits the deployment enforces. These are provisional until a
+// measured run against the real deployment replaces them, so each is set to the
+// committed candidate that a measurement can only move in the safe direction:
+// the largest document and update sizes, and the earliest compaction.
+export const MAX_GROUND_DOCUMENT_BYTES = 1_000_000;
+
+export const MAX_GROUND_UPDATE_BYTES = GROUND_MAX_UPDATE_BYTES_CEILING;
+
+export const GROUND_COMPACTION_UPDATE_COUNT = 50;
+
+// One injection shape, so a deployment cannot supply a partial set of limits.
+export const GROUND_HOSTED_LIMITS = Object.freeze({
+  compactionUpdateCount: GROUND_COMPACTION_UPDATE_COUNT,
+  maxDocumentBytes: MAX_GROUND_DOCUMENT_BYTES,
+  maxUpdateBytes: MAX_GROUND_UPDATE_BYTES,
+});
+
 export const groundP95 = (durations) => {
   if (durations.length === 0) {
     throw new Error('A Ground p95 needs at least one measured duration.');

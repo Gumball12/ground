@@ -6,7 +6,9 @@ import { createGroundService } from '../../src/server/application/ground-documen
 import { hydrateGroundYDoc } from '../../src/server/application/ground-yjs-state.js';
 
 const DOCUMENT_ID = 'AAAAAAAAAAAAAAAAAAAAAA';
+const MAX_DOCUMENT_BYTES = 200_000;
 const MAX_UPDATE_BYTES = 64_000;
+const COMPACTION_UPDATE_COUNT = 50;
 const NOW = '2026-09-04T00:00:00.000Z';
 
 const manifest = Object.freeze({
@@ -78,6 +80,21 @@ const createGroundStoreFake = ({ launchPlan = '' } = {}) => {
       document.headSequence += 1;
       document.updates.push({ sequence: document.headSequence, update: input.update });
       return { sequence: document.headSequence };
+    },
+    // Mirrors `public.ground_compact_document`: it replaces the snapshot,
+    // advances the snapshot sequence, and drops only the folded log rows.
+    compactDocument: async (input) => {
+      record('compactDocument', input);
+      const document = documentOr(input.documentId);
+      if (input.candidateSequence > document.headSequence) {
+        throw Object.assign(new Error('GROUND_STALE_STATE'), { code: 'GROUND_STALE_STATE' });
+      }
+      document.snapshot = input.snapshot;
+      document.snapshotSequence = input.candidateSequence;
+      document.updates = document.updates.filter(
+        ({ sequence }) => sequence > input.candidateSequence,
+      );
+      return { snapshotSequence: input.candidateSequence };
     },
     create: async (input) => {
       record('create', input);
@@ -189,7 +206,11 @@ const buildService = (store, overrides = {}) => createGroundService({
   clock: () => NOW,
   createDocumentId: () => DOCUMENT_ID,
   initialText: store.launchPlan,
-  limits: { maxUpdateBytes: MAX_UPDATE_BYTES },
+  limits: {
+    compactionUpdateCount: COMPACTION_UPDATE_COUNT,
+    maxDocumentBytes: MAX_DOCUMENT_BYTES,
+    maxUpdateBytes: MAX_UPDATE_BYTES,
+  },
   manifest,
   store,
   ...overrides,
@@ -473,6 +494,133 @@ test('hydrate_document returns JSON-safe base64 bytes the browser can decode', a
   // The transported body must not inflate bytes into numeric-key objects.
   const body = JSON.stringify(hydrated);
   assert.equal(body.includes('"0":'), false);
+});
+
+test('append_update sends both committed size limits to the store', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+
+  await service.append_update({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    update: Buffer.from([1, 2, 3]).toString('base64'),
+  });
+
+  const [{ input }] = store.calls.filter(({ name }) => name === 'commitUpdate').slice(-1);
+  assert.equal(input.maxUpdateBytes, MAX_UPDATE_BYTES);
+  assert.equal(input.maxDocumentBytes, MAX_DOCUMENT_BYTES);
+});
+
+test('mutations fail closed when no document byte limit is calibrated', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  await seedDocument(buildService(store));
+  const service = buildService(store, { limits: { maxUpdateBytes: MAX_UPDATE_BYTES } });
+
+  await assert.rejects(service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  }), (thrown) => groundCode(thrown) === 'GROUND_TEMPORARILY_UNAVAILABLE');
+});
+
+// Replay cost is paid by the reader, so hydration is where a long log hurts and
+// where the Y.Doc needed to fold it has already been built.
+test('hydrate_document folds a long update log into one snapshot', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'The approved launch budget is $100K.\n' });
+  const service = buildService(store, {
+    limits: {
+      compactionUpdateCount: 2,
+      maxDocumentBytes: MAX_DOCUMENT_BYTES,
+      maxUpdateBytes: MAX_UPDATE_BYTES,
+    },
+  });
+  await seedDocument(service);
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$110K',
+    replacementText: '$120K',
+  });
+
+  const hydrated = await service.hydrate_document({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+  });
+
+  const compactions = store.calls.filter(({ name }) => name === 'compactDocument');
+  assert.equal(compactions.length, 1);
+  assert.equal(compactions[0].input.candidateSequence, hydrated.headSequence);
+
+  // The folded snapshot alone must carry the whole document.
+  const next = await service.hydrate_document({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+  });
+  assert.deepEqual(next.updates, []);
+  assert.equal(next.snapshotSequence, hydrated.headSequence);
+  assert.equal(hydrateGroundYDoc({
+    snapshot: Buffer.from(next.snapshot, 'base64'),
+    updates: [],
+  }).ytext.toString(), 'The approved launch budget is $120K.\n');
+});
+
+test('hydrate_document leaves a short update log alone', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  const service = buildService(store);
+  await seedDocument(service);
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+
+  await service.hydrate_document({ actorId: 'user-owner', documentId: DOCUMENT_ID });
+
+  assert.deepEqual(store.calls.filter(({ name }) => name === 'compactDocument'), []);
+});
+
+// Compaction only shortens replay. A failed fold must never fail the read.
+test('hydrate_document still answers when compaction fails', async () => {
+  const store = createGroundStoreFake({ launchPlan: 'Budget $100K.\n' });
+  const service = buildService({
+    ...store,
+    compactDocument: async () => { throw new Error('store offline'); },
+  }, {
+    limits: {
+      compactionUpdateCount: 1,
+      maxDocumentBytes: MAX_DOCUMENT_BYTES,
+      maxUpdateBytes: MAX_UPDATE_BYTES,
+    },
+  });
+  await seedDocument(service);
+  await service.webmcp_apply({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+    expectedText: '$100K',
+    replacementText: '$110K',
+  });
+
+  const hydrated = await service.hydrate_document({
+    actorId: 'user-owner',
+    documentId: DOCUMENT_ID,
+  });
+
+  assert.equal(hydrateGroundYDoc({
+    snapshot: Buffer.from(hydrated.snapshot, 'base64'),
+    updates: hydrated.updates.map(({ sequence, update }) => ({
+      sequence,
+      update: Buffer.from(update, 'base64'),
+    })),
+  }).ytext.toString(), 'Budget $110K.\n');
 });
 
 test('append_update audits the editor operation kind the client declares', async () => {

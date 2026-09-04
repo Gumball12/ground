@@ -11,13 +11,20 @@ import { createGroundSupabaseStore } from '../../src/server/infrastructure/supab
 import { createAdminClient, createAnonymousClient } from './ground-supabase-fixture.js';
 
 const MAX_UPDATE_BYTES = 64_000;
+const MAX_DOCUMENT_BYTES = 200_000;
+const COMPACTION_UPDATE_COUNT = 50;
 
 const manifest = Object.freeze(JSON.parse(await readFile('collabmd.governance.json', 'utf8')));
 const launchPlan = await readFile('docs/demo/launch-plan.md', 'utf8');
 
-const buildService = () => createGroundService({
+const buildService = (limits = {}) => createGroundService({
   initialText: launchPlan,
-  limits: { maxUpdateBytes: MAX_UPDATE_BYTES },
+  limits: {
+    compactionUpdateCount: COMPACTION_UPDATE_COUNT,
+    maxDocumentBytes: MAX_DOCUMENT_BYTES,
+    maxUpdateBytes: MAX_UPDATE_BYTES,
+    ...limits,
+  },
   manifest,
   store: createGroundSupabaseStore({
     secretKey: process.env.SUPABASE_SECRET_KEY,
@@ -123,6 +130,37 @@ test('the store denies a Reviewer apply and keeps the document unchanged', async
   assert.equal(decodeHydrated(hydrated).ytext.toString().includes('$100K'), true);
 });
 
+// Proves the whole fold through the real database: the service decides, the
+// store calls the compaction RPC, and the log the next reader replays is gone.
+test('hydration folds a long log into one snapshot through the real database', async () => {
+  const service = buildService({ compactionUpdateCount: 2 });
+  const owner = await createAnonymousClient();
+  const created = await service.create_document({ actorId: owner.userId, displayName: 'Owner' });
+  const read = () => service.hydrate_document({
+    actorId: owner.userId,
+    documentId: created.documentId,
+  });
+  for (const [expectedText, replacementText] of [
+    ['Writer target', 'Writer goal'],
+    ['Reviewer target', 'Reviewer goal'],
+  ]) {
+    await service.webmcp_apply({
+      actorId: owner.userId,
+      documentId: created.documentId,
+      expectedText,
+      replacementText,
+    });
+  }
+
+  const before = await read();
+  assert.equal(before.updates.length > 0, true);
+
+  const after = await read();
+  assert.deepEqual(after.updates, []);
+  assert.equal(after.snapshotSequence, before.headSequence);
+  assert.equal(decodeHydrated(after).ytext.toString().includes('Reviewer goal'), true);
+});
+
 test('the store maps a stale Owner version to GROUND_STALE_STATE', async () => {
   const service = buildService();
   const owner = await createAnonymousClient();
@@ -191,7 +229,11 @@ const buildRateLimitedHandler = ({ rateLimits, session }) => createGroundFetchHa
   publicConfig: { groundHosted: true },
   service: createGroundService({
     initialText: launchPlan,
-    limits: { maxUpdateBytes: MAX_UPDATE_BYTES },
+    limits: {
+      compactionUpdateCount: COMPACTION_UPDATE_COUNT,
+      maxDocumentBytes: MAX_DOCUMENT_BYTES,
+      maxUpdateBytes: MAX_UPDATE_BYTES,
+    },
     manifest,
     // A fresh key per handler keeps each run inside its own rate window.
     rateLimitHmacKey: randomBytes(32).toString('hex'),

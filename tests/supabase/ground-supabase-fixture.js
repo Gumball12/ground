@@ -112,15 +112,19 @@ export const createActiveEditorScenario = async () => {
 
 export const TEST_MAX_UPDATE_BYTES = 2_048;
 
+export const TEST_MAX_DOCUMENT_BYTES = 32_768;
+
 export const commitRawUpdate = (
   scenario,
   update,
   maxUpdateBytes = TEST_MAX_UPDATE_BYTES,
   now = new Date().toISOString(),
+  maxDocumentBytes = TEST_MAX_DOCUMENT_BYTES,
 ) => callAdminRpc('ground_commit_update', {
   p_actor_id: scenario.editor.userId,
   p_document_id: scenario.documentId,
   p_expected_role_version: scenario.editorRoleVersion,
+  p_max_document_bytes: maxDocumentBytes,
   p_max_update_bytes: maxUpdateBytes,
   p_now: now,
   p_operation_kind: 'document_edit',

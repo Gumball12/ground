@@ -4,11 +4,15 @@ import {
   GROUND_ACCESS_STATES,
   GROUND_ACTIVITY_SOURCES,
   GROUND_COMPACTION_UPDATE_CANDIDATES,
+  GROUND_COMPACTION_UPDATE_COUNT,
   GROUND_ERROR_STATUS,
   GROUND_LIMIT_CANDIDATES,
+  GROUND_MAX_UPDATE_BYTES_CEILING,
   GROUND_OPERATION_KINDS,
   GROUND_RATE_LIMITS,
   GROUND_RATE_LIMIT_SCOPES,
+  MAX_GROUND_DOCUMENT_BYTES,
+  MAX_GROUND_UPDATE_BYTES,
   createGroundDocumentId,
   groundP95,
   isGroundDocumentId,
@@ -62,6 +66,13 @@ test('excludes a candidate whose p95 hydrate exceeds the release target', () => 
   ]);
 
   assert.equal(result.maxDocumentBytes, 64_000);
+});
+
+test('commits one deployable value for every measured hosted limit', () => {
+  assert.ok(GROUND_LIMIT_CANDIDATES.includes(MAX_GROUND_DOCUMENT_BYTES));
+  assert.ok(GROUND_COMPACTION_UPDATE_CANDIDATES.includes(GROUND_COMPACTION_UPDATE_COUNT));
+  assert.ok(MAX_GROUND_UPDATE_BYTES <= GROUND_MAX_UPDATE_BYTES_CEILING);
+  assert.ok(MAX_GROUND_UPDATE_BYTES <= MAX_GROUND_DOCUMENT_BYTES);
 });
 
 test('caps the update limit at 256000 bytes without exceeding the document limit', () => {

@@ -79,12 +79,25 @@ export const createServiceHelpers = ({
     }
   };
 
-  const requireUpdateLimit = () => {
-    const { maxUpdateBytes } = limits;
-    if (!Number.isInteger(maxUpdateBytes) || maxUpdateBytes <= 0) {
+  // A commit is bounded by the single update and by the document it produces.
+  // An uncalibrated deployment refuses the mutation instead of accepting an
+  // unbounded one, so both values are read together and before any work.
+  const requireCommitLimits = () => {
+    const { maxDocumentBytes, maxUpdateBytes } = limits;
+    const bounded = (value) => Number.isInteger(value) && value > 0;
+    if (!bounded(maxDocumentBytes) || !bounded(maxUpdateBytes)) {
       throw groundError('GROUND_TEMPORARILY_UNAVAILABLE');
     }
-    return maxUpdateBytes;
+    return { maxDocumentBytes, maxUpdateBytes };
+  };
+
+  // Compaction only shortens replay, so an uncalibrated threshold disables it
+  // rather than failing the read that would have triggered it.
+  const compactionThreshold = () => {
+    const { compactionUpdateCount } = limits;
+    return Number.isInteger(compactionUpdateCount) && compactionUpdateCount > 0
+      ? compactionUpdateCount
+      : undefined;
   };
 
   const sessionFor = (participant, documentId) => {
@@ -132,11 +145,11 @@ export const createServiceHelpers = ({
     actorId: participant.userId,
     documentId,
     expectedRoleVersion: participant.roleVersion,
-    maxUpdateBytes: requireUpdateLimit(),
     now: now(),
     operationKind,
     source,
     update,
+    ...requireCommitLimits(),
   });
 
   const captureAccessActivity = async ({ action, actor, documentId, outcome, target }) => {
@@ -155,13 +168,14 @@ export const createServiceHelpers = ({
   return {
     captureAccessActivity,
     commitCapturedUpdate,
+    compactionThreshold,
     enforceRateLimit,
     loadContext,
     manifest,
     now,
     requireCapability,
+    requireCommitLimits,
     requireParticipant,
-    requireUpdateLimit,
     sessionFor,
     store,
   };
