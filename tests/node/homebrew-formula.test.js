@@ -34,3 +34,33 @@ test('homebrew formula generator includes asset build steps and static asset ver
     await rm(tempDir, { force: true, recursive: true });
   }
 });
+
+// The package is named for the hosted product while the executable keeps the
+// CollabMD name, so the formula has to follow `bin`, not the package name.
+test('homebrew formula installs the declared executable and the real repository', async () => {
+  const tempDir = await mkdtemp(resolve(tmpdir(), 'ground-formula-'));
+  const outputPath = resolve(tempDir, 'collabmd.rb');
+
+  try {
+    await execFile(process.execPath, [
+      resolve(rootDir, 'scripts/render-homebrew-formula.mjs'),
+      '--sha256', 'a'.repeat(64),
+      '--output', outputPath,
+    ], {
+      cwd: rootDir,
+    });
+
+    const formula = await readFile(outputPath, 'utf8');
+    const manifest = JSON.parse(await readFile(resolve(rootDir, 'package.json'), 'utf8'));
+    const [binaryName] = Object.keys(manifest.bin);
+
+    assert.equal(binaryName, 'collabmd');
+    assert.match(formula, new RegExp(`bin\\.install_symlink libexec/"bin/${binaryName}"`, 'u'));
+    assert.match(formula, new RegExp(`bin/"${binaryName}"`, 'u'));
+    assert.doesNotMatch(formula, /ground-webmcp/u);
+    // The tarball lives in the Ground repository, not one named for the package.
+    assert.match(formula, /github\.com\/[^/]+\/ground\/archive/u);
+  } finally {
+    await rm(tempDir, { force: true, recursive: true });
+  }
+});
