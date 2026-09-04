@@ -11,8 +11,9 @@ The same layers serve two products with different durable stores.
   process owns the collaboration room, and Roles live only in its memory.
 - **Ground (hosted)**: one Supabase project is the source of truth. Postgres
   holds documents, participants, ordered Yjs updates and snapshots; Realtime
-  carries sequence and access notices; Vercel Functions stay stateless between
-  requests.
+  carries sequence and access notices, low-frequency participant Presence, and
+  throttled cursor/viewport Broadcasts on a separate awareness topic; Vercel
+  Functions stay stateless between requests.
 
 Filesystem and git adapters belong to the local path only. Supabase adapters
 belong to the hosted path only. Both compose in thin entry modules

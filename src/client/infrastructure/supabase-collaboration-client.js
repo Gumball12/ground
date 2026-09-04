@@ -1,4 +1,9 @@
-import { Awareness } from 'y-protocols/awareness';
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { createRandomUser, normalizeUserName } from '../domain/room.js';
@@ -7,6 +12,7 @@ import { createRandomUser, normalizeUserName } from '../domain/room.js';
 const REMOTE_ORIGIN = Symbol('ground-remote');
 // `createProposal` transacts with this exact string in src/domain/governance-proposals.js.
 const PROPOSAL_CREATE_ORIGIN = 'governance-proposal-create';
+const AWARENESS_BROADCAST_DELAY_MS = 250;
 const MAX_SYNC_ROUNDS = 8;
 
 const decodeBase64 = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
@@ -46,6 +52,8 @@ export class SupabaseCollaborationClient {
     this.userId = userId;
 
     this.awareness = null;
+    this.awarenessBroadcastTimer = null;
+    this.awarenessChannel = null;
     this.channel = null;
     this.commentThreads = null;
     this.docId = null;
@@ -86,6 +94,14 @@ export class SupabaseCollaborationClient {
       }
       this.#scheduleFlush();
     };
+    this.handleAwarenessUpdate = (_changes, origin) => {
+      if (origin === 'local') {
+        this.#scheduleAwarenessBroadcast();
+      }
+    };
+    this.handleAwarenessChange = () => {
+      this.onAwarenessChange?.(this.collectUsers(this.resolveAwarenessCursor));
+    };
   }
 
   async initialize(docId) {
@@ -99,9 +115,8 @@ export class SupabaseCollaborationClient {
     this.localUser = this.providedLocalUser ?? createRandomUser(this.preferredUserName);
     this.awareness = new Awareness(this.ydoc);
     this.awareness.setLocalStateField('user', this.localUser);
-    this.awareness.on('update', () => {
-      void this.#trackPresence();
-    });
+    this.awareness.on('change', this.handleAwarenessChange);
+    this.awareness.on('update', this.handleAwarenessUpdate);
 
     await this.#connect();
 
@@ -121,7 +136,10 @@ export class SupabaseCollaborationClient {
     this.beginInitialSync();
     this.buffered.clear();
     this.buffering = true;
-    await this.#subscribeAndWait();
+    await Promise.all([
+      this.#subscribeAndWait(),
+      this.#subscribeAwarenessAndWait(),
+    ]);
     await this.#hydrate();
     await this.#syncToHead();
     this.buffering = false;
@@ -145,10 +163,11 @@ export class SupabaseCollaborationClient {
       let joined = false;
       // Realtime assigns a random Presence key per connection unless the channel
       // names one, which would list each of a participant's tabs separately.
-      this.channel = this.supabase
-        .channel(`ground-document:${this.docId}`, {
-          config: { presence: { key: this.userId }, private: true },
-        })
+      const channel = this.supabase.channel(`ground-document:${this.docId}`, {
+        config: { presence: { key: this.userId }, private: true },
+      });
+      this.channel = channel;
+      channel
         .on('broadcast', { event: 'update' }, ({ payload }) => this.#handleNotice(payload ?? {}))
         .on('presence', { event: 'sync' }, () => this.#handlePresenceSync())
         .subscribe((status) => {
@@ -165,12 +184,49 @@ export class SupabaseCollaborationClient {
             resolve();
             return;
           }
-          if (!joined
-            && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
-            reject(Object.assign(new Error(status), { code: 'GROUND_TEMPORARILY_UNAVAILABLE' }));
-          }
+          this.#handleSubscriptionFailure({ channel, joined, reject, status });
         });
     });
+  }
+
+  #subscribeAwarenessAndWait() {
+    return new Promise((resolve, reject) => {
+      let joined = false;
+      const channel = this.supabase.channel(
+        `ground-awareness:${this.docId}`,
+        { config: { private: true } },
+      );
+      this.awarenessChannel = channel;
+      channel
+        .on('broadcast', { event: 'awareness' }, ({ payload }) => {
+          this.#applyAwarenessBroadcast(payload);
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            this.#scheduleAwarenessBroadcast();
+            joined = true;
+            resolve();
+            return;
+          }
+          this.#handleSubscriptionFailure({ channel, joined, reject, status });
+        });
+    });
+  }
+
+  #handleSubscriptionFailure({ channel, joined, reject, status }) {
+    if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT' && status !== 'CLOSED') {
+      return;
+    }
+    if (channel !== this.channel && channel !== this.awarenessChannel) {
+      return;
+    }
+    if (!joined) {
+      reject(Object.assign(new Error(status), { code: 'GROUND_TEMPORARILY_UNAVAILABLE' }));
+      return;
+    }
+    if (!this.destroying && !this.frozen) {
+      this.#freeze('GROUND_TEMPORARILY_UNAVAILABLE');
+    }
   }
 
   // `#syncToHead` alone cannot recover a rejoin: the client still holds the head
@@ -265,6 +321,42 @@ export class SupabaseCollaborationClient {
       .catch(() => {});
   }
 
+  #scheduleAwarenessBroadcast() {
+    if (this.destroying || this.frozen || !this.awareness || !this.awarenessChannel) {
+      return;
+    }
+    if (this.awarenessBroadcastTimer !== null) {
+      return;
+    }
+    this.awarenessBroadcastTimer = window.setTimeout(() => {
+      this.awarenessBroadcastTimer = null;
+      void this.#broadcastAwareness();
+    }, AWARENESS_BROADCAST_DELAY_MS);
+  }
+
+  async #broadcastAwareness() {
+    if (this.destroying || this.frozen || !this.awareness || !this.awarenessChannel) {
+      return;
+    }
+    const update = encodeAwarenessUpdate(this.awareness, [this.awareness.clientID]);
+    await this.awarenessChannel.send({
+      event: 'awareness',
+      payload: { update: encodeBase64(update) },
+      type: 'broadcast',
+    });
+  }
+
+  #applyAwarenessBroadcast(payload) {
+    if (!this.awareness || typeof payload?.update !== 'string') {
+      return;
+    }
+    try {
+      applyAwarenessUpdate(this.awareness, decodeBase64(payload.update), REMOTE_ORIGIN);
+    } catch {
+      // Awareness is ephemeral and untrusted; malformed broadcasts are ignored.
+    }
+  }
+
   async #flushOnce() {
     if (this.frozen || this.destroying || !this.docId || this.pendingUpdates.length === 0) {
       return;
@@ -305,7 +397,11 @@ export class SupabaseCollaborationClient {
   // A rejected or unconfirmed write means local state may no longer match the
   // server, so persistence stops and the workspace rebuilds from server data.
   #freeze(reason) {
+    if (this.frozen || this.destroying) {
+      return;
+    }
     this.frozen = true;
+    this.connected = false;
     this.pendingUpdates = [];
     this.pendingKind = null;
     this.onAuthoritativeReload?.({ reason, status: 'frozen' });
@@ -355,6 +451,10 @@ export class SupabaseCollaborationClient {
 
   destroy() {
     this.destroying = true;
+    if (this.awarenessBroadcastTimer !== null) {
+      window.clearTimeout(this.awarenessBroadcastTimer);
+      this.awarenessBroadcastTimer = null;
+    }
     this.resolveInitialSync?.();
     this.resolveInitialSync = null;
     this.initialSyncComplete = false;
@@ -371,6 +471,8 @@ export class SupabaseCollaborationClient {
     this.remotePresence = {};
 
     this.#removeChannel();
+    this.awareness?.off?.('change', this.handleAwarenessChange);
+    this.awareness?.off?.('update', this.handleAwarenessUpdate);
     this.awareness?.destroy();
     this.awareness = null;
     this.localUser = null;
@@ -387,8 +489,14 @@ export class SupabaseCollaborationClient {
 
   #removeChannel() {
     if (this.channel) {
-      this.supabase.removeChannel(this.channel);
+      const channel = this.channel;
       this.channel = null;
+      void this.supabase.removeChannel(channel);
+    }
+    if (this.awarenessChannel) {
+      const awarenessChannel = this.awarenessChannel;
+      this.awarenessChannel = null;
+      void this.supabase.removeChannel(awarenessChannel);
     }
   }
 
@@ -426,6 +534,7 @@ export class SupabaseCollaborationClient {
     }
     this.localUser = { ...this.localUser, name: normalizedName };
     this.awareness.setLocalStateField('user', this.localUser);
+    void this.#trackPresence();
     return normalizedName;
   }
 
@@ -456,11 +565,11 @@ export class SupabaseCollaborationClient {
   }
 
   getUserCursor(clientId, resolveCursor) {
-    return resolveCursor(this.#presenceEntry(clientId)?.cursor);
+    return resolveCursor(this.#awarenessState(clientId)?.cursor);
   }
 
   getUserViewport(clientId) {
-    return this.normalizeViewport(this.#presenceEntry(clientId)?.viewport);
+    return this.normalizeViewport(this.#awarenessState(clientId)?.viewport);
   }
 
   // Presence transports one entry per tab; the Participant bar shows one row per
@@ -472,7 +581,8 @@ export class SupabaseCollaborationClient {
         if (!entry?.user || byUser.has(userId)) {
           continue;
         }
-        const cursor = resolveCursor(entry.cursor);
+        const awarenessState = this.#awarenessState(entry.clientId);
+        const cursor = resolveCursor(awarenessState?.cursor);
         byUser.set(userId, {
           ...(cursor ?? {}),
           ...entry.user,
@@ -480,21 +590,29 @@ export class SupabaseCollaborationClient {
           hasCursor: Boolean(cursor),
           isLocal: userId === this.userId,
           participantSessionId: userId,
-          viewport: this.normalizeViewport(entry.viewport),
+          viewport: this.normalizeViewport(awarenessState?.viewport),
         });
       }
     }
     return [...byUser.values()];
   }
 
-  #presenceEntry(clientId) {
-    return Object.values(this.remotePresence)
-      .flat()
-      .find((entry) => entry?.clientId === clientId);
+  #awarenessState(clientId) {
+    return this.awareness?.getStates?.().get(clientId);
   }
 
   #handlePresenceSync() {
     this.remotePresence = this.channel?.presenceState?.() ?? {};
+    const presentClientIds = new Set(
+      Object.values(this.remotePresence).flat().map((entry) => entry?.clientId),
+    );
+    const departedClientIds = [...(this.awareness?.getStates?.().keys() ?? [])].filter((clientId) => (
+      clientId !== this.awareness?.clientID && !presentClientIds.has(clientId)
+    ));
+    if (departedClientIds.length > 0 && this.awareness) {
+      removeAwarenessStates(this.awareness, departedClientIds, REMOTE_ORIGIN);
+      return;
+    }
     this.onAwarenessChange?.(this.collectUsers(this.resolveAwarenessCursor));
   }
 
@@ -503,8 +621,8 @@ export class SupabaseCollaborationClient {
       return;
     }
     await this.channel.track({
-      ...this.awareness.getLocalState(),
       clientId: this.awareness.clientID,
+      user: this.localUser,
       userId: this.userId,
     });
   }
