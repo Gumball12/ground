@@ -49,10 +49,26 @@ test('the README documents every command a reader needs to run Ground', async ()
     'npm run test:e2e:ground',
     'npm run test:e2e:ground:evidence',
     'npm run test:e2e:evidence',
-    'vercel --prod --skip-domain',
   ]) {
     assert.ok(readme.includes(command), `README must document \`${command}\``);
   }
+});
+
+// Deployment runs from Git, so the README must describe the push-to-deploy flow
+// and the environment scoping it depends on, not a CLI promote.
+test('the README describes Git deployment and Preview credential scoping', async () => {
+  const readme = await readSource('README.md');
+
+  for (const phrase of [
+    'every push',
+    'Production-scoped',
+    'VERCEL_BRANCH_URL',
+    'GROUND_PUBLIC_ORIGIN',
+  ]) {
+    assert.ok(readme.includes(phrase), `README must mention ${phrase}`);
+  }
+  assert.match(readme, /Preview[^.]*never receive production database credentials/u);
+  assert.doesNotMatch(readme, /vercel --prod --skip-domain/u);
 });
 
 test('the environment template lists every Ground variable name and no value', async () => {

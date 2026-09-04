@@ -190,20 +190,43 @@ automatic videos are raw evidence, not a narrated demo.
 
 ## Deploy to Vercel
 
+Deployment runs from Git. Connect the repository once in Vercel, and every push
+deploys: a push to `main` becomes Production, and a push to any other branch
+becomes a Preview with its own URL.
+
 The repository ships `vercel.json` with the document route, the runtime
 configuration endpoint, and the browser security headers. Two Functions serve
 the API and the public runtime configuration; everything else is the static
-Vite build.
+Vite build. No framework preset is needed.
 
-```bash
-vercel link
-vercel --prod --skip-domain
+Set these as **Production-scoped** environment variables in the Vercel project:
+
+```text
+GROUND_PUBLIC_ORIGIN            the exact production origin, for example https://ground.example
+GROUND_RATE_LIMIT_HMAC_KEY      a freshly generated random secret
+SUPABASE_URL                    the hosted Supabase project URL
+SUPABASE_PUBLISHABLE_KEY        the Supabase publishable key
+SUPABASE_SECRET_KEY             the Supabase secret key
 ```
 
-Deploy staged first, verify the returned immutable URL, then promote it. Add
-`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and a
-generated `GROUND_RATE_LIMIT_HMAC_KEY` as Production-scoped values only.
-Preview deployments must never receive production database credentials.
+Preview deployments must never receive production database credentials. A
+Preview either gets its own Supabase project through Preview-scoped variables,
+or gets none and reports itself unavailable instead of touching production.
+
+`GROUND_PUBLIC_ORIGIN` covers the production domain. Ground additionally trusts
+the three hosts Vercel supplies for the running deployment, `VERCEL_URL`,
+`VERCEL_BRANCH_URL` and `VERCEL_PROJECT_PRODUCTION_URL`, so a Preview works
+when opened through its branch alias. Nothing a caller sends is trusted.
+
+### Verify before Production
+
+Push the branch first, open the Preview URL, and check the document flow there.
+Merge to `main` only after that passes. Vercel builds independently of GitHub
+Actions, so a red `validate` job does not stop a Production deploy; read the
+Actions result before merging.
+
+To roll back, use Vercel's instant rollback to the previous Production
+deployment rather than patching live state.
 
 ## Limits
 

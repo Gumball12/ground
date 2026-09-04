@@ -120,3 +120,68 @@ test('never turns a hostile VERCEL_URL into an allowed origin', async () => {
     );
   }
 });
+
+// A Git push deploys automatically, and the URL a reviewer opens for a Preview
+// is the branch alias, not the immutable deployment URL. Vercel supplies all
+// three hosts itself, so none of them is caller-influenced.
+test('allows every Vercel-supplied deployment host and nothing else', async () => {
+  const base = {
+    GROUND_PUBLIC_ORIGIN: 'https://ground.example',
+    GROUND_RATE_LIMIT_HMAC_KEY: 'key',
+    NODE_ENV: 'production',
+    SUPABASE_PUBLISHABLE_KEY: 'publishable',
+    SUPABASE_SECRET_KEY: 'secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+  };
+
+  assert.deepEqual(
+    loadGroundHostedEnv({
+      ...base,
+      VERCEL_BRANCH_URL: 'ground-git-main-acme.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'ground.example',
+      VERCEL_URL: 'ground-abc123-acme.vercel.app',
+    }).allowedOrigins,
+    [
+      'https://ground.example',
+      'https://ground-abc123-acme.vercel.app',
+      'https://ground-git-main-acme.vercel.app',
+    ],
+  );
+
+  // The production host usually equals the configured origin, so it must not
+  // appear twice.
+  assert.deepEqual(
+    loadGroundHostedEnv({ ...base, VERCEL_PROJECT_PRODUCTION_URL: 'ground.example' }).allowedOrigins,
+    ['https://ground.example'],
+  );
+
+  assert.deepEqual(
+    loadGroundHostedEnv({
+      ...base,
+      VERCEL_BRANCH_URL: 'ground-git-fix-acme.vercel.app',
+    }).allowedOrigins,
+    ['https://ground.example', 'https://ground-git-fix-acme.vercel.app'],
+  );
+});
+
+test('rejects a hostile value in any Vercel deployment host variable', async () => {
+  const base = {
+    GROUND_PUBLIC_ORIGIN: 'https://ground.example',
+    GROUND_RATE_LIMIT_HMAC_KEY: 'key',
+    NODE_ENV: 'production',
+    SUPABASE_PUBLISHABLE_KEY: 'publishable',
+    SUPABASE_SECRET_KEY: 'secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+  };
+  const hostile = ['', '  ', 'null', 'evil.test/../ground', 'https://evil.test', '*.vercel.app'];
+
+  for (const name of ['VERCEL_URL', 'VERCEL_BRANCH_URL', 'VERCEL_PROJECT_PRODUCTION_URL']) {
+    for (const value of hostile) {
+      assert.deepEqual(
+        loadGroundHostedEnv({ ...base, [name]: value }).allowedOrigins,
+        ['https://ground.example'],
+        `${name}=${value}`,
+      );
+    }
+  }
+});

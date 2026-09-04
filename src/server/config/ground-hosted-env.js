@@ -41,11 +41,20 @@ const requireOrigin = ({ allowLoopback, name, value }) => {
   return url.origin;
 };
 
-// Vercel sets VERCEL_URL to the bare host of the current deployment. Only that
-// exact host becomes an extra allowed Origin: no suffix matching, no wildcard,
-// and nothing a caller can influence.
-const stagedOrigin = (vercelUrl) => {
-  const host = typeof vercelUrl === 'string' ? vercelUrl.trim() : '';
+// Vercel supplies the bare host of the current deployment, of the Git branch
+// alias, and of a production domain. A Git push deploys automatically, and the
+// URL a reviewer opens for a Preview is the branch alias rather than the
+// immutable deployment URL, so all three have to be allowed.
+const VERCEL_HOST_VARIABLES = Object.freeze([
+  'VERCEL_URL',
+  'VERCEL_BRANCH_URL',
+  'VERCEL_PROJECT_PRODUCTION_URL',
+]);
+
+// Only an exact host becomes an allowed Origin: no suffix matching, no
+// wildcard, and nothing a caller can influence.
+const platformOrigin = (vercelHost) => {
+  const host = typeof vercelHost === 'string' ? vercelHost.trim() : '';
   // `null` is a legal host string but the value browsers send for an opaque
   // Origin, so it must never become an allowed Origin.
   if (host === 'null' || !host.includes('.') || !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/u.test(host)) {
@@ -75,12 +84,13 @@ export const loadGroundHostedEnv = (env = {}) => {
     value: values.SUPABASE_URL,
   });
 
-  const staged = stagedOrigin(env.VERCEL_URL);
+  const platformOrigins = VERCEL_HOST_VARIABLES
+    .map((name) => platformOrigin(env[name]))
+    .filter(Boolean);
 
   return Object.freeze({
-    allowedOrigins: Object.freeze(staged && staged !== publicOrigin
-      ? [publicOrigin, staged]
-      : [publicOrigin]),
+    allowedOrigins: Object.freeze([publicOrigin, ...platformOrigins]
+      .filter((origin, index, all) => all.indexOf(origin) === index)),
     publicConfig: Object.freeze({
       groundHosted: true,
       supabasePublishableKey: values.SUPABASE_PUBLISHABLE_KEY,
