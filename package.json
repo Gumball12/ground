@@ -2,7 +2,7 @@
   "name": "ground-webmcp",
   "version": "0.1.48",
   "type": "module",
-  "description": "Ground — one document, different roles. A shared Markdown editor for people and agents, where the server applies the owner's rules to every WebMCP action.",
+  "description": "Ground - One document, Different roles. A shared Markdown editor for people and agents, where the server applies the owner's rules to every WebMCP action.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Gumball12/ground.git"

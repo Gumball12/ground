@@ -40,6 +40,22 @@ test('the lockfile root names the same package as the manifest', async () => {
   assert.equal(lockfile.packages[''].version, manifest.version);
 });
 
+// The design's Definition of Done asks that page metadata, the README, and
+// product copy carry one spelling of the tagline, punctuation included.
+test('page metadata, the README, and product copy share one tagline', async () => {
+  const TAGLINE = 'Ground - One document, Different roles';
+  const [manifest, readme, page] = await Promise.all([
+    readSource('package.json').then(JSON.parse),
+    readSource('README.md'),
+    readSource('src/client/app/index.html'),
+  ]);
+
+  assert.match(readme, new RegExp(`^# ${TAGLINE}$`, 'mu'));
+  assert.ok(manifest.description.startsWith(`${TAGLINE}.`), manifest.description);
+  assert.ok(page.includes(`<title>${TAGLINE}</title>`), 'page title');
+  assert.ok(page.includes(`content="${TAGLINE}.`), 'page description');
+});
+
 test('the license stays MIT and the README credits CollabMD upstream', async () => {
   const [license, readme] = await Promise.all([
     readSource('LICENSE'),
