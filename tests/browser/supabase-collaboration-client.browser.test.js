@@ -169,7 +169,7 @@ it('subscribes before hydrating and buffers a notice that arrives during the fet
 
   // Subscription is established before any hydrate request leaves the client.
   expect(harness.channel.topic).toBe(`ground-document:${DOCUMENT_ID}`);
-  expect(harness.channel.options).toEqual({ config: { private: true } });
+  expect(harness.channel.options.config.private).toBe(true);
   expect(harness.calls).toEqual([]);
 
   harness.channel.emitSubscribed();
@@ -360,6 +360,18 @@ it('rehydrates when the existing channel rejoins after a dropped connection', as
 
   expect(harness.channels.length).toBe(channelsBeforeRejoin);
   expect(bindings.ytext.toString()).toBe('First and second');
+});
+
+// Realtime keys `presenceState()` by the Presence key, and assigns a fresh
+// random key per connection when the channel declares none. Two tabs of one
+// participant would then arrive under two keys, which no mocked Presence map
+// can reveal.
+it('declares the authenticated user id as the Presence key', async () => {
+  const harness = createCollaborationHarness();
+  harness.setHydrate(emptyHydrate);
+  await startClient(harness);
+
+  expect(harness.channel.options.config.presence).toEqual({ key: USER_ID });
 });
 
 it('renders one online participant for two Presence entries sharing a user id', async () => {

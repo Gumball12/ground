@@ -143,8 +143,12 @@ export class SupabaseCollaborationClient {
   #subscribeAndWait() {
     return new Promise((resolve, reject) => {
       let joined = false;
+      // Realtime assigns a random Presence key per connection unless the channel
+      // names one, which would list each of a participant's tabs separately.
       this.channel = this.supabase
-        .channel(`ground-document:${this.docId}`, { config: { private: true } })
+        .channel(`ground-document:${this.docId}`, {
+          config: { presence: { key: this.userId }, private: true },
+        })
         .on('broadcast', { event: 'update' }, ({ payload }) => this.#handleNotice(payload ?? {}))
         .on('presence', { event: 'sync' }, () => this.#handlePresenceSync())
         .subscribe((status) => {
