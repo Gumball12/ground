@@ -395,6 +395,10 @@ it('renders one online participant for two Presence entries sharing a user id', 
   expect(users.length).toBe(2);
   expect(users.filter((user) => user.name === 'Editor').length).toBe(1);
   expect(users.some((user) => user.name === 'Reviewer')).toBe(true);
+  // The Presence key is the authenticated user id, and the Participant bar
+  // needs it to match a connected participant against the Owner's roster.
+  expect(users.map((user) => user.participantSessionId).toSorted())
+    .toEqual(['other-user', USER_ID].toSorted());
 });
 
 it('publishes the local name and viewport through Presence', async () => {

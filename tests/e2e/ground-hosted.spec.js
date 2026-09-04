@@ -65,17 +65,25 @@ test('creates, shares, joins Pending, and assigns both Roles', async ({
   await expectGroundPending(reviewer.page);
   await attachEvidenceScreenshot({ name: 'ground-pending', page: editor.page, testInfo });
 
-  // A Pending visitor may not list participants, so it sees no roster at all.
-  await expect(editor.page.locator('#participantBar [data-participant-session-id]')).toHaveCount(0);
+  // The bar shows connected Active collaborators, so a Pending visitor is
+  // absent from it and the Owner is alone in it until Roles are granted.
   await expect.poll(
     async () => owner.page.locator('#participantBar [data-participant-session-id]').count(),
-  ).toBe(3);
+  ).toBe(1);
 
   await assignGroundRole(owner.page, 'Writer Agent', 'editor');
   await assignGroundRole(owner.page, 'Reviewer Agent', 'reviewer');
 
   await expectGroundEditor(editor.page, { editable: true });
   await expectGroundEditor(reviewer.page, { editable: false });
+
+  // Every Active participant sees the same three connected collaborators, and
+  // the Editor reaches them without the Owner-only roster.
+  for (const page of [owner.page, editor.page, reviewer.page]) {
+    await expect.poll(
+      async () => page.locator('#participantBar [data-participant-session-id]').count(),
+    ).toBe(3);
+  }
 
   // Reopened only to record the granted Roles; the helper closes it each time.
   await owner.page.locator('#manageAccessBtn').click();
@@ -484,6 +492,23 @@ test('recovery makes a new browser the sole Owner and retires the used link', as
   expect(new URL(claimant.page.url()).hash).toBe('');
   await expectGroundEditor(claimant.page, { editable: true });
   await expect(claimant.page.locator('#manageAccessBtn')).toBeVisible();
+
+  // Recovery revokes the previous Owner. They are gone from the bar, which
+  // carries connected Active collaborators, while Manage Access keeps the
+  // durable row that records the revocation.
+  const recoveredBar = claimant.page.locator('#participantBar [data-participant-session-id]');
+  await expect(recoveredBar).toHaveCount(1);
+  await expect(recoveredBar).toContainText('Recovered Owner');
+  await claimant.page.locator('#manageAccessBtn').click();
+  const recoveredDialog = claimant.page.locator('#manageAccessDialog');
+  await expect(recoveredDialog).toHaveAttribute('open', '');
+  await expect(recoveredDialog.locator('[data-participant-session-id]')).toHaveCount(2);
+  await expect(
+    recoveredDialog.locator('[data-participant-session-id]').filter({ hasText: 'Revoked' }),
+  ).toHaveCount(1);
+  await recoveredDialog.getByRole('button', { name: 'Close' }).click();
+  await expect(recoveredDialog).not.toHaveAttribute('open', '');
+
   // Recorded after the dialog closes so no recovery token reaches the image.
   await attachEvidenceScreenshot({
     name: 'ground-recovered-owner',
@@ -493,6 +518,8 @@ test('recovery makes a new browser the sole Owner and retires the used link', as
 
   await expect(owner.page.locator('#governanceStatusPanel')).toContainText('Access revoked');
   await expect(owner.page.locator('.cm-editor')).toHaveCount(0);
+  // The revoked page loses its Realtime channel, so its bar names no one.
+  await expect(owner.page.locator('#participantBar [data-participant-session-id]')).toHaveCount(0);
 
   const replay = await openGroundContext(browser, groundServer.baseURL, 'Replay');
   await replay.page.goto(created.recoveryUrl);

@@ -111,6 +111,8 @@ export const expectGroundPending = async (page) => {
   await expect(page.locator('#governanceStatusPanel')).toContainText('Waiting for access');
   await expect(page.locator('.cm-editor')).toHaveCount(0);
   await expect(page.locator('#governanceRail')).toBeHidden();
+  // Realtime admits Active participants only, so this page names no one.
+  await expect(page.locator('#participantBar [data-participant-session-id]')).toHaveCount(0);
 };
 
 export const expectGroundEditor = async (page, { editable }) => {
@@ -121,14 +123,12 @@ export const expectGroundEditor = async (page, { editable }) => {
 // Only an Owner may list participants, so Roles are assigned from the Owner's
 // Manage access dialog by the name each visitor submitted.
 export const assignGroundRole = async (ownerPage, displayName, roleId) => {
-  // The Owner learns about a new visitor when the document's Activity advances,
-  // so the roster has to carry the visitor before the dialog can list them.
-  await expect(
-    ownerPage.locator('#participantBar [data-participant-session-id]').filter({ hasText: displayName }),
-  ).toHaveCount(1);
   await ownerPage.locator('#manageAccessBtn').click();
   const dialog = ownerPage.locator('#manageAccessDialog');
   await expect(dialog).toHaveAttribute('open', '');
+  // The Owner learns about a new visitor when the document's Activity advances.
+  // A Pending visitor never reaches the Participant bar, so the roster row this
+  // dialog redraws on every refresh is the only place to wait for the join.
   const row = dialog.locator('[data-participant-session-id]').filter({ hasText: displayName });
   await expect(row).toHaveCount(1);
   await row.locator('select').selectOption(roleId);

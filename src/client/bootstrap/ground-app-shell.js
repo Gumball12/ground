@@ -33,6 +33,7 @@ export class GroundAppShell {
     this.elements = bindAppShellElements(doc);
     this.activity = null;
     this.comments = null;
+    this.connectedUsers = [];
     this.session = null;
     this.shellError = null;
     this.snapshot = null;
@@ -161,7 +162,10 @@ export class GroundAppShell {
       governed: true,
       initialTheme: this.themeController.getTheme?.(),
       lineInfoElement: null,
-      onAwarenessChange: () => this.renderGovernance(),
+      onAwarenessChange: (users) => {
+        this.connectedUsers = users;
+        this.renderGovernance();
+      },
       onContentChange: () => {
         this.renderGovernance();
         void this.webMcpTools.refresh();
@@ -174,6 +178,7 @@ export class GroundAppShell {
       destroy: () => {
         this.activity = null;
         this.comments = null;
+        this.connectedUsers = [];
         this.session = null;
         session.destroy();
       },
@@ -247,10 +252,31 @@ export class GroundAppShell {
     }
   }
 
+  // Presence carries who is connected; only an Owner also holds the roster that
+  // names their Role. Everyone reaching Presence is Active, because the Realtime
+  // policies admit no other Access state.
+  #connectedParticipants() {
+    // Losing Access closes the Realtime channel without a final Presence sync,
+    // so the last list would otherwise linger on the status-only page.
+    if (this.snapshot?.state !== 'active') {
+      return [];
+    }
+    const roster = this.snapshot?.participants ?? [];
+    return (this.connectedUsers ?? []).map((user) => ({
+      displayName: user.name,
+      participantSessionId: user.participantSessionId,
+      roleId: roster.find((participant) => (
+        participant.participantSessionId === user.participantSessionId
+      ))?.roleId,
+      state: 'active',
+    }));
+  }
+
   renderGovernance() {
     const documentPath = this.snapshot?.documentPath ?? this.controller?.docId ?? null;
     this.governanceUi.render({
       activity: this.activity?.toJSON() ?? [],
+      connectedParticipants: this.#connectedParticipants(),
       connectionState: { status: this.session ? 'connected' : 'disconnected', unreachable: false },
       participants: this.snapshot?.participants ?? [],
       reviewGroups: this.#reviewGroups(),

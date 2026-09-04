@@ -150,6 +150,11 @@ export class GovernanceUiController {
   render(state = {}) {
     this.state = {
       activity: Array.isArray(state.activity) ? state.activity : [],
+      // The Participant bar draws who is connected now; Manage Access draws the
+      // durable roster. They are different lists and must stay separate.
+      connectedParticipants: Array.isArray(state.connectedParticipants)
+        ? state.connectedParticipants
+        : [],
       connectionState: state.connectionState ?? { status: 'disconnected', unreachable: false },
       participants: Array.isArray(state.participants) ? state.participants : [],
       reviewGroups: Array.isArray(state.reviewGroups) ? state.reviewGroups : [],
@@ -163,6 +168,7 @@ export class GovernanceUiController {
     const accessState = this.state.shellState.accessState;
     const active = ready && accessState === 'active';
     const owner = active && isOwner(this.state);
+
     const showParticipants = ready && ['active', 'pending', 'revoked'].includes(accessState);
 
     this.renderStatus();
@@ -308,7 +314,7 @@ export class GovernanceUiController {
     connection.dataset.governanceConnection = '';
 
     const list = createElement('div', { className: 'participant-list' });
-    this.state.participants.forEach((participant) => {
+    this.state.connectedParticipants.forEach((participant) => {
       const self = participant.participantSessionId === this.state.session?.participantSessionId;
       list.appendChild(this.createParticipant(participant, { self }));
     });
@@ -338,7 +344,11 @@ export class GovernanceUiController {
     const identity = createElement('span', { className: 'participant-identity' });
     appendText(identity, 'strong', participant.displayName || 'Unnamed', 'participant-name');
     const metadata = createElement('span', { className: 'participant-metadata' });
-    appendText(metadata, 'span', titleCase(participant.roleId || 'Unassigned'));
+    // Only an Owner can read the roster a Role comes from. Every other viewer
+    // gets no Role line rather than a guess.
+    if (participant.roleId) {
+      appendText(metadata, 'span', titleCase(participant.roleId));
+    }
     appendText(
       metadata,
       'span',

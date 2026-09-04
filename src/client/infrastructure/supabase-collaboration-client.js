@@ -463,6 +463,7 @@ export class SupabaseCollaborationClient {
           clientId: entry.clientId,
           hasCursor: Boolean(cursor),
           isLocal: userId === this.userId,
+          participantSessionId: userId,
           viewport: this.normalizeViewport(entry.viewport),
         });
       }
