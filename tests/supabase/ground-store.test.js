@@ -140,15 +140,16 @@ test('hydration folds a long log into one snapshot through the real database', a
     actorId: owner.userId,
     documentId: created.documentId,
   });
-  for (const [expectedText, replacementText] of [
-    ['Writer target', 'Writer goal'],
-    ['Reviewer target', 'Reviewer goal'],
-  ]) {
-    await service.webmcp_apply({
+  // Editor updates rather than exact-text edits, so the log grows without the
+  // test depending on any wording in the seed document.
+  const ydoc = new Y.Doc();
+  for (const value of ['First fold marker. ', 'Second fold marker. ']) {
+    const before = Y.encodeStateVector(ydoc);
+    ydoc.getText('codemirror').insert(0, value);
+    await service.append_update({
       actorId: owner.userId,
       documentId: created.documentId,
-      expectedText,
-      replacementText,
+      update: Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString('base64'),
     });
   }
 
@@ -158,7 +159,7 @@ test('hydration folds a long log into one snapshot through the real database', a
   const after = await read();
   assert.deepEqual(after.updates, []);
   assert.equal(after.snapshotSequence, before.headSequence);
-  assert.equal(decodeHydrated(after).ytext.toString().includes('Reviewer goal'), true);
+  assert.equal(decodeHydrated(after).ytext.toString().includes('Second fold marker'), true);
 });
 
 test('the store maps a stale Owner version to GROUND_STALE_STATE', async () => {
